@@ -101,6 +101,8 @@ bool Application::init() {
         if (!SDL_getenv("WWII_SMOKE_NOAUTO")) {
             game_->debugStart();
             game_->sim().setPlayerIntent({0, 0}, true, false);
+            if (SDL_getenv("WWII_SMOKE_GOD"))
+                game_->sim().setGodMode(true);
         }
     }
     // Debug HUD on from the environment (F3 still toggles in-game).

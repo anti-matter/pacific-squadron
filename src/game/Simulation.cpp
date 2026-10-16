@@ -167,6 +167,7 @@ void Simulation::update() {
         if (it->time <= now) {
             if (it->bossRef >= 0) {
                 spawnBoss(it->bossRef);
+                it = spawnQueue_.erase(it);
             } else {
                 int formationId = -1;
                 auto fit = std::find_if(formations_.begin(), formations_.end(),
