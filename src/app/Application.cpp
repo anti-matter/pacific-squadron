@@ -737,9 +737,9 @@ void Application::renderHelp() {
                    white, true);
     renderer_.text("PICKED-UP GUNS (S / C / R) REPLACE YOUR", 192.0f, 252.0f, 1,
                    dim, true);
-    renderer_.text("GUN AND FIRE WITH SPACE. LOOP SPENDS 1", 192.0f, 266.0f, 1,
-                   dim, true);
-    renderer_.text("CHARGE: DASH AND CLEAR ALL ENEMY FIRE.", 192.0f, 280.0f, 1,
+    renderer_.text("GUN AND FIRE WITH SPACE. LOOP CLEARS ALL", 192.0f, 266.0f,
+                   1, dim, true);
+    renderer_.text("ENEMY FIRE AND MAKES YOU INVINCIBLE", 192.0f, 280.0f, 1,
                    dim, true);
 
     renderer_.text("SUPPLY DROPS", 192.0f, 306.0f, 2, gold, true);

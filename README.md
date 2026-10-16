@@ -17,7 +17,8 @@ into `assets/` to override the procedural content.
   turrets/gun emplacements, hp-based attack phases, death chains, and victory
   power-up drops.
 - **Four player weapon classes** (gun / spread / cannon / rocket) with level
-  progression and smart bombs.
+  progression, plus the LOOP special: an evasive aerobatic barrel that
+  grants brief invincibility and clears all enemy fire on screen.
 - Two full stages with distinct terrain, wave scripts, and flagship bosses
   (*Battleship Yamashiro-class*, *Sky Fortress GX-7*).
 - Configurable keyboard **and** gamepad controls (persisted to disk), three
@@ -104,7 +105,7 @@ stage 2: 94 s) — e.g. `WWII_SMOKE=95` covers stage 1's boss arrival.
 | ------------- | --------------------- | ------------------------------ |
 | Move          | WASD / Arrows         | Left stick                     |
 | Fire          | Space                 | A (South) / Right shoulder     |
-| Smart bomb    | Shift / Ctrl          | B (East) / Left shoulder       |
+| Loop (special)| Shift / Ctrl          | B (East) / Left shoulder       |
 | Pause         | Esc / P               | Start                          |
 | Confirm / Back| Enter / Space, Esc    | A / B, Select                  |
 | Debug overlay | F3                    | —                              |
@@ -124,7 +125,7 @@ scaling. Fullscreen (Options) uses the desktop resolution.
 
 Player-feel constants live in one file: **`src/game/Tuning.h`**
 (movement speed, hitbox size, invulnerability windows, special duration,
-respawn behaviour, bomb cap). Per-weapon fire intervals/damage/speed and
+respawn behaviour, loop-charge cap). Per-weapon fire intervals/damage/speed and
 per-stage scroll speed are data-driven:
 `assets/data/weapons/*.json` and `assets/data/stages/*.json`.
 
@@ -137,7 +138,7 @@ slower than the player so dodging is intentional).
 
 - **F3** toggles the debug overlay (FPS/frame time, entity/enemy/projectile
   /particle counts, player position & speed, scroll position, stage/state,
-  weapon, HP/bombs/lives, and every live collider: cyan player hitbox,
+  weapon, HP/loop charges/lives, and every live collider: cyan player hitbox,
   red enemy hitboxes, magenta boss hull, yellow boss components, projectile
   boxes). Also enable at launch with `WWII_DEBUG=1`.
 - `WWII_KEYLOG=1` logs received key events and periodic FPS/frame counts to

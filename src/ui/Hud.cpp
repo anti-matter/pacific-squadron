@@ -55,8 +55,8 @@ void Hud::draw(Renderer& r, const Game& game) const {
                      std::to_string(p.weaponLevel);
     r.text(wl, 60, 28, 1, Color::rgb(0xF0D060));
 
-    // Bombs (special count).
-    r.text("BOMB", 130, 28, 1, Color::rgb(0x70A8F0));
+    // Loop charges (the evasive loop special; internally "bombs").
+    r.text("LOOP", 130, 28, 1, Color::rgb(0x70A8F0));
     for (int i = 0; i < p.bombs && i < 4; ++i)
         r.draw(r.texture("powerup_bomb"), 168 + i * 14, 31, 1.0f,
                Color::rgb(0xFFFFFF), false, 0.0f);
@@ -98,7 +98,7 @@ void Hud::drawDebug(Renderer& r, const Game& game, float fps) const {
                   static_cast<int>(game.state()), game.stageIndex(),
                   kWeapons[static_cast<int>(p.weapon)], p.weaponLevel);
     r.text(buf, 4, kPlayH - 22, 1, Color::rgb(0x80FF80));
-    std::snprintf(buf, sizeof(buf), "HP %d/%d  BOMBS %d  LIVES %d%s", p.hp,
+    std::snprintf(buf, sizeof(buf), "HP %d/%d  LOOP %d  LIVES %d%s", p.hp,
                   p.maxHp, p.bombs, p.lives, p.invulnerable ? "  [IFRAME]" : "");
     r.text(buf, 4, kPlayH - 12, 1, Color::rgb(0x80FF80));
 
