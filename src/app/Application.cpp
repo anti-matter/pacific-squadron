@@ -583,8 +583,13 @@ void Application::renderTitle() {
 
 void Application::renderStageIntro() {
     renderer_.text("STAGE", 192.0f, 200.0f, 2, Color::rgb(0x9AB0C8), true);
-    renderer_.text(game_->stageName(), 192.0f, 230.0f, 3, Color::rgb(0xFFD860),
-                   true);
+    // Auto-fit long stage names ("SOLO OVER THE CORAL SEA" at scale 3 is
+    // wider than the 384px playfield) so they never run off either edge.
+    const std::string name = game_->stageName();
+    int scale = 3;
+    while (scale > 1 && renderer_.textWidth(name, scale) > 368) --scale;
+    renderer_.text(name, 192.0f, scale == 3 ? 230.0f : 234.0f, scale,
+                   Color::rgb(0xFFD860), true);
     renderer_.text("SCRAMBLE!", 192.0f, 300.0f, 2, Color::rgb(0xF0F4F8), true);
 }
 
