@@ -1,0 +1,55 @@
+[
+  {
+    "name": "BATTLESHIP YAMASHIRO-CLASS",
+    "hullSprite": "boss_battleship_hull",
+    "hullWidth": 160, "hullHeight": 96, "hullHp": 70, "hullScore": 3000,
+    "entryY": 120, "hoverAmp": 56, "hoverFreq": 0.07,
+    "deathEffect": 2, "defeatDrop": "powerup_p",
+    "components": [
+      { "name": "FRONT TURRET", "sprite": "boss_big_turret", "offsetX": 0, "offsetY": 30,
+        "width": 40, "height": 40, "hp": 18, "score": 500, "weapon": "b_big_turret",
+        "fireInterval": 1.9, "firstFireDelay": 2.0 },
+      { "name": "REAR TURRET", "sprite": "boss_big_turret", "offsetX": 0, "offsetY": -32,
+        "width": 40, "height": 40, "hp": 18, "score": 500, "weapon": "b_big_turret",
+        "fireInterval": 2.1, "firstFireDelay": 2.5 },
+      { "name": "AA GUN LEFT", "sprite": "boss_aa", "offsetX": -46, "offsetY": -2,
+        "width": 24, "height": 24, "hp": 10, "score": 300, "weapon": "b_aa_flak",
+        "fireInterval": 2.7, "firstFireDelay": 3.0 },
+      { "name": "AA GUN RIGHT", "sprite": "boss_aa", "offsetX": 46, "offsetY": -2,
+        "width": 24, "height": 24, "hp": 10, "score": 300, "weapon": "b_aa_flak",
+        "fireInterval": 2.7, "firstFireDelay": 3.4 },
+      { "name": "BRIDGE", "sprite": "boss_bridge", "offsetX": -22, "offsetY": -6,
+        "width": 36, "height": 44, "hp": 14, "score": 800,
+        "fireInterval": 3.0, "firstFireDelay": 4.0 }
+    ],
+    "phases": [
+      { "hpFraction": 0.60, "rateMul": 0.78, "extraWeapon": "b_radial12", "extraInterval": 3.4 },
+      { "hpFraction": 0.30, "rateMul": 0.60, "extraWeapon": "b_aimed3",   "extraInterval": 2.0 }
+    ]
+  },
+  {
+    "name": "SKY FORTRESS GX-7",
+    "hullSprite": "boss_bomber_hull",
+    "hullWidth": 144, "hullHeight": 96, "hullHp": 85, "hullScore": 5000,
+    "entryY": 120, "hoverAmp": 96, "hoverFreq": 0.12,
+    "deathEffect": 2, "defeatDrop": "powerup_p",
+    "components": [
+      { "name": "NOSE TURRET", "sprite": "boss_turret_small", "offsetX": 0, "offsetY": 36,
+        "width": 24, "height": 24, "hp": 14, "score": 400, "weapon": "b_aimed3",
+        "fireInterval": 1.7, "firstFireDelay": 1.6 },
+      { "name": "TAIL TURRET", "sprite": "boss_turret_small", "offsetX": 0, "offsetY": -38,
+        "width": 24, "height": 24, "hp": 14, "score": 400, "weapon": "b_aimed3",
+        "fireInterval": 2.0, "firstFireDelay": 2.2 },
+      { "name": "ENGINE GUN L", "sprite": "boss_aa", "offsetX": -42, "offsetY": 2,
+        "width": 24, "height": 24, "hp": 10, "score": 350, "weapon": "e_flak",
+        "fireInterval": 2.5, "firstFireDelay": 2.8 },
+      { "name": "ENGINE GUN R", "sprite": "boss_aa", "offsetX": 42, "offsetY": 2,
+        "width": 24, "height": 24, "hp": 10, "score": 350, "weapon": "e_flak",
+        "fireInterval": 2.5, "firstFireDelay": 3.2 }
+    ],
+    "phases": [
+      { "hpFraction": 0.60, "rateMul": 0.72, "extraWeapon": "b_radial12", "extraInterval": 3.0 },
+      { "hpFraction": 0.28, "rateMul": 0.55, "extraWeapon": "e_flak",     "extraInterval": 2.2 }
+    ]
+  }
+]

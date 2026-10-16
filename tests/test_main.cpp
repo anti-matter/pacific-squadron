@@ -1,0 +1,13 @@
+#include "test_framework.h"
+
+int main() {
+    test_movement();
+    test_collision();
+    test_weapons();
+    test_formation();
+    test_scoring();
+    test_levelscript();
+    test_boss();
+    std::printf("%d checks, %d failures\n", g_checks, g_failures);
+    return g_failures == 0 ? 0 : 1;
+}

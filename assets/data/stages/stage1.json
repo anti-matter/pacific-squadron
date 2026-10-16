@@ -1,0 +1,40 @@
+{
+  "name": "SOLO OVER THE CORAL SEA",
+  "duration": 96,
+  "scrollSpeed": 52,
+  "boss": "BATTLESHIP YAMASHIRO-CLASS",
+  "bossTime": 86,
+  "terrain": [
+    { "fromY": 0,    "toY": 2600, "kind": "ocean" },
+    { "fromY": 2600, "toY": 2760, "kind": "shore" },
+    { "fromY": 2760, "toY": 4600, "kind": "island" },
+    { "fromY": 4600, "toY": 4760, "kind": "shore" },
+    { "fromY": 4760, "toY": 99999, "kind": "ocean" }
+  ],
+  "events": [
+    { "trigger": 2,  "enemy": "fighter_light", "formation": "h_line", "count": 3, "x": 192, "y": -30 },
+    { "trigger": 5,  "enemy": "fighter_light", "formation": "single", "count": 1, "x": 110, "y": -30 },
+    { "trigger": 8,  "enemy": "fighter_light", "formation": "wave_right", "count": 4, "x": -30, "y": 120 },
+    { "trigger": 12, "enemy": "fighter_formation", "formation": "v_formation", "count": 5, "x": 192, "y": -40, "movement": "arc_left" },
+    { "trigger": 16, "enemy": "aa_turret", "formation": "single", "count": 1, "x": 96, "y": -30 },
+    { "trigger": 17, "enemy": "aa_turret", "formation": "single", "count": 1, "x": 288, "y": -30 },
+    { "trigger": 20, "enemy": "interceptor", "formation": "v_line", "count": 3, "x": 150, "y": -40 },
+    { "trigger": 24, "enemy": "fighter_light", "formation": "arc", "count": 6, "x": 192, "y": -40 },
+    { "trigger": 28, "enemy": "boat_patrol", "formation": "h_line", "count": 2, "x": 192, "y": -30, "spacing": 90 },
+    { "trigger": 32, "enemy": "heavy_fighter", "formation": "single", "count": 1, "x": 192, "y": -40 },
+    { "trigger": 36, "enemy": "fighter_formation", "formation": "staggered", "count": 6, "x": 110, "y": -40, "movement": "arc_right" },
+    { "trigger": 40, "enemy": "tank", "formation": "single", "count": 1, "x": 220, "y": -30 },
+    { "trigger": 41, "enemy": "bunker", "formation": "single", "count": 1, "x": 90, "y": -30 },
+    { "trigger": 44, "enemy": "bomber", "formation": "single", "count": 1, "x": 192, "y": -60 },
+    { "trigger": 48, "enemy": "fighter_light", "formation": "arc", "count": 5, "x": 260, "y": -40, "movement": "arc_right" },
+    { "trigger": 52, "enemy": "destroyer", "formation": "single", "count": 1, "x": 192, "y": -40 },
+    { "trigger": 56, "enemy": "interceptor", "formation": "wave_left", "count": 4, "x": 414, "y": 100 },
+    { "trigger": 60, "enemy": "heavy_fighter", "formation": "h_line", "count": 2, "x": 192, "y": -40, "spacing": 120 },
+    { "trigger": 64, "enemy": "aa_turret", "formation": "single", "count": 1, "x": 192, "y": -30 },
+    { "trigger": 65, "enemy": "fighter_light", "formation": "v_formation", "count": 5, "x": 100, "y": -40 },
+    { "trigger": 68, "enemy": "bomber", "formation": "h_line", "count": 2, "x": 192, "y": -60, "spacing": 130 },
+    { "trigger": 72, "enemy": "fighter_formation", "formation": "v_formation", "count": 6, "x": 280, "y": -40, "movement": "arc_left" },
+    { "trigger": 76, "enemy": "destroyer", "formation": "single", "count": 1, "x": 120, "y": -40 },
+    { "trigger": 77, "enemy": "boat_patrol", "formation": "h_line", "count": 2, "x": 300, "y": -30 }
+  ]
+}

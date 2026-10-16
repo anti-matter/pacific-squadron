@@ -1,0 +1,9 @@
+[
+  { "name": "powerup_p",      "effect": "weapon_up", "sprite": "powerup_p",      "fallSpeed": 55 },
+  { "name": "powerup_spread", "effect": "spread",    "sprite": "powerup_spread", "fallSpeed": 55 },
+  { "name": "powerup_cannon", "effect": "cannon",    "sprite": "powerup_cannon", "fallSpeed": 55 },
+  { "name": "powerup_rocket", "effect": "rocket",    "sprite": "powerup_rocket", "fallSpeed": 55 },
+  { "name": "powerup_bomb",   "effect": "bomb",      "sprite": "powerup_bomb",   "fallSpeed": 55 },
+  { "name": "powerup_repair", "effect": "repair",    "sprite": "powerup_repair", "fallSpeed": 55 },
+  { "name": "powerup_life",   "effect": "life",      "sprite": "powerup_life",   "fallSpeed": 55 }
+]

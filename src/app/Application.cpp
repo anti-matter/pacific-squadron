@@ -1,0 +1,645 @@
+#include "app/Application.h"
+
+#include <SDL3/SDL.h>
+
+#include <algorithm>
+#include <cmath>
+#include <fstream>
+
+#include <nlohmann/json.hpp>
+
+#include "audio/ProceduralSfx.h"
+#include "core/MathUtil.h"
+#include "core/Rng.h"
+#include "graphics/BitmapFont.h"
+#include "graphics/ProceduralArt.h"
+
+namespace ww {
+
+namespace {
+
+constexpr float kTile = 32.0f;
+
+std::uint32_t hashXY(int x, int y) {
+    std::uint32_t h = 0x9E3779B9u;
+    h ^= static_cast<std::uint32_t>(x) * 0x85EBCA6Bu;
+    h = (h << 13) | (h >> 19);
+    h ^= static_cast<std::uint32_t>(y) * 0xC2B2AE35u;
+    h = (h << 15) | (h >> 17);
+    return h;
+}
+
+const char* oceanFor(std::uint32_t pick) {
+    static const char* names[] = {"tile_ocean_a", "tile_ocean_b", "tile_ocean_c"};
+    return names[pick % 3];
+}
+
+}  // namespace
+
+// ---------------------------------------------------------------------------
+// Init / resources
+// ---------------------------------------------------------------------------
+Application::Application() = default;
+Application::~Application() = default;
+
+bool Application::init() {
+    // Locate the asset directory: cwd/assets, then <exe>/assets.
+    namespace fs = std::filesystem;
+    if (fs::exists("assets/data")) {
+        assetDir_ = "assets";
+    } else {
+        const char* base = SDL_GetBasePath();
+        const fs::path p = fs::path(base ? base : ".") / "assets";
+        if (fs::exists(p / "data")) assetDir_ = p.string();
+        SDL_free(const_cast<char*>(base));
+    }
+    if (assetDir_.empty()) {
+        SDL_Log("Could not find an assets/ directory next to the executable or cwd.");
+        assetDir_ = "assets";  // let data loading produce a clear error
+    }
+    const char* pref = SDL_GetPrefPath("wwii-fighter", "wwii-fighter");
+    prefDir_ = pref ? pref : ".";
+    SDL_free(const_cast<char*>(pref));
+
+    if (!renderer_.init("Pacific Squadron — a WWII arcade shooter", false))
+        return false;
+    input_.init();
+    if (!audio_.init())
+        SDL_Log("Audio unavailable; continuing silently.");
+
+    // Data.
+    std::string err;
+    if (!data_.loadAll(assetDir_, err)) {
+        SDL_Log("Data load error: %s", err.c_str());
+        return false;
+    }
+
+    // Art & fonts.
+    buildFontAtlas(renderer_);
+    generateAllArt(renderer_);
+    loadPngOverrides(renderer_, assetDir_);
+
+    // Audio buffers.
+    std::unordered_map<std::string, SoundBuffer> sfx;
+    generateAllSfx(sfx);
+    for (auto& [name, buf] : sfx) audio_.registerBuffer(name, std::move(buf));
+
+    game_ = std::make_unique<Game>(data_);
+    loadSettings();
+    loadHighScores();
+    input_.loadBindings((prefPath("input.json")).string());
+
+    // Headless smoke test hooks (see cmake smoke script).
+    if (const char* s = SDL_getenv("WWII_SMOKE")) {
+        smokeTime_ = SDL_atof(s);
+        smokeBoss_ = SDL_getenv("WWII_SMOKE_BOSS") != nullptr;
+        if (const char* shot = SDL_getenv("WWII_SMOKE_SHOT")) {
+            smokeShotPath_ = shot;
+            smokeShotAt_ = SDL_getenv("WWII_SMOKE_SHOT_AT")
+                ? SDL_atof(SDL_getenv("WWII_SMOKE_SHOT_AT")) : 10.0f;
+        }
+        if (!SDL_getenv("WWII_SMOKE_NOAUTO")) {
+            game_->debugStart();
+            game_->sim().setPlayerIntent({0, 0}, true, false);
+        }
+    }
+
+    audio_.setMasterVolume(game_->settings().masterVolume);
+    audio_.setMusicVolume(game_->settings().musicVolume);
+    audio_.setSfxVolume(game_->settings().sfxVolume);
+    renderer_.setFullscreen(game_->settings().fullscreen);
+
+    running_ = true;
+    return true;
+}
+
+std::filesystem::path Application::prefPath(const char* file) const {
+    return std::filesystem::path(prefDir_) / file;
+}
+
+bool Application::loadSettings() {
+    std::ifstream in(prefPath("settings.json"), std::ios::binary);
+    if (!in) return false;
+    nlohmann::json j;
+    try { in >> j; } catch (...) { return false; }
+    Settings& s = game_->settings();
+    if (j.contains("master")) s.masterVolume = j["master"].get<float>();
+    if (j.contains("music")) s.musicVolume = j["music"].get<float>();
+    if (j.contains("sfx")) s.sfxVolume = j["sfx"].get<float>();
+    if (j.contains("fullscreen")) s.fullscreen = j["fullscreen"].get<bool>();
+    if (j.contains("difficulty")) s.difficulty = static_cast<Difficulty>(j["difficulty"].get<int>());
+    return true;
+}
+
+void Application::saveSettings() {
+    const Settings& s = game_->settings();
+    nlohmann::json j = {{"master", s.masterVolume},
+                        {"music", s.musicVolume},
+                        {"sfx", s.sfxVolume},
+                        {"fullscreen", s.fullscreen},
+                        {"difficulty", static_cast<int>(s.difficulty)}};
+    std::ofstream out(prefPath("settings.json"), std::ios::binary);
+    if (out) out << j.dump(2);
+}
+
+void Application::loadHighScores() {
+    std::ifstream in(prefPath("highscores.json"), std::ios::binary);
+    if (!in) return;
+    nlohmann::json j;
+    try { in >> j; } catch (...) { return; }
+    if (j.is_array()) game_->loadHighScores(j.get<std::vector<int>>());
+}
+
+void Application::saveHighScores() {
+    std::ofstream out(prefPath("highscores.json"), std::ios::binary);
+    if (out) out << nlohmann::json(game_->highScores()).dump(2);
+}
+
+// ---------------------------------------------------------------------------
+// Loop
+// ---------------------------------------------------------------------------
+int Application::run() {
+    Uint64 prevTicks = SDL_GetTicks();
+    while (running_) {
+        // --- events -----------------------------------------------------
+        SDL_Event ev;
+        input_.newFrame();
+        while (SDL_PollEvent(&ev)) {
+            switch (ev.type) {
+            case SDL_EVENT_QUIT:
+                running_ = false;
+                break;
+            case SDL_EVENT_KEY_DOWN:
+                input_.onKey(static_cast<int>(ev.key.key), true);
+                break;
+            case SDL_EVENT_KEY_UP:
+                input_.onKey(static_cast<int>(ev.key.key), false);
+                break;
+            case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+                input_.onGamepadButton(static_cast<int>(ev.gbutton.button), true);
+                break;
+            case SDL_EVENT_GAMEPAD_BUTTON_UP:
+                input_.onGamepadButton(static_cast<int>(ev.gbutton.button), false);
+                break;
+            case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+                input_.onGamepadAxis(static_cast<int>(ev.gaxis.axis),
+                                     static_cast<float>(ev.gaxis.value));
+                break;
+            default:
+                break;
+            }
+        }
+
+        // --- fixed-step update -------------------------------------------
+        const Uint64 now = SDL_GetTicks();
+        float frameDt = static_cast<float>(now - prevTicks) / 1000.0f;
+        prevTicks = now;
+        if (frameDt > 0.0f) fps_ = fps_ * 0.95f + (1.0f / frameDt) * 0.05f;
+        frameDt = std::min(frameDt, 0.1f);
+        acc_ += frameDt;
+        int steps = 0;
+        while (acc_ >= kSimDt && steps < 4) {
+            GameInput gi = buildGameInput();
+            if (smokeTime_ > 0.0f) {
+                // Autopilot: hold fire, weave, occasionally loop.
+                gi.fire = true;
+                gi.moveX = std::sin(smokeElapsed_ * 1.3f);
+                gi.moveY = std::sin(smokeElapsed_ * 0.7f) * 0.5f;
+            }
+            game_->submitInput(gi);
+            game_->update(kSimDt);
+            acc_ -= kSimDt;
+            ++steps;
+            if (smokeTime_ > 0.0f) {
+                smokeElapsed_ += kSimDt;
+                if (smokeBoss_ && !smokeBossSpawned_ && smokeElapsed_ > 2.0f) {
+                    smokeBossSpawned_ = true;
+                    if (!data_.bosses.empty())
+                        game_->sim().debugSpawnBoss(0);
+                }
+                if (smokeShotAt_ > 0.0f && !smokeShotTaken_ &&
+                    smokeElapsed_ >= smokeShotAt_) {
+                    smokeShotTaken_ = true;
+                    renderer_.requestScreenshot(smokeShotPath_);
+                }
+                if (smokeElapsed_ >= smokeTime_) running_ = false;
+            }
+        }
+        if (steps == 4) acc_ = 0.0f;  // spiral-of-death guard
+
+        consumeGameEvents();
+        updateMusic();
+        audio_.pump();
+
+        renderFrame(fps_);
+    }
+    input_.saveBindings(prefPath("input.json").string());
+    return 0;
+}
+
+GameInput Application::buildGameInput() const {
+    GameInput gi;
+    gi.moveX = input_.axisMoveX();
+    gi.moveY = input_.axisMoveY();
+    const float ax = input_.padStickX, ay = input_.padStickY;
+    gi.moveX = clamp(gi.moveX + ax, -1.0f, 1.0f);
+    gi.moveY = clamp(gi.moveY + ay, -1.0f, 1.0f);
+    gi.fire = input_.held(Action::Fire);
+    gi.special = input_.pressedThisFrame(Action::Special);
+    gi.up = input_.pressedThisFrame(Action::MoveUp);
+    gi.down = input_.pressedThisFrame(Action::MoveDown);
+    gi.left = input_.pressedThisFrame(Action::MoveLeft);
+    gi.right = input_.pressedThisFrame(Action::MoveRight);
+    gi.confirm = input_.pressedThisFrame(Action::Confirm);
+    gi.back = input_.pressedThisFrame(Action::Back);
+    gi.pause = input_.pressedThisFrame(Action::Pause);
+    gi.debugToggle = input_.pressedThisFrame(Action::Debug);
+    return gi;
+}
+
+void Application::consumeGameEvents() {
+    GameEvent ev;
+    while (game_->popEvent(ev)) {
+        switch (ev.type) {
+        case GameEvent::Type::Sound:
+            audio_.play(ev.name, 1.0f, ev.name != "music");
+            break;
+        case GameEvent::Type::SaveHighScores:
+            saveHighScores();
+            break;
+        case GameEvent::Type::SaveSettings:
+            saveSettings();
+            audio_.setMasterVolume(game_->settings().masterVolume);
+            audio_.setMusicVolume(game_->settings().musicVolume);
+            audio_.setSfxVolume(game_->settings().sfxVolume);
+            renderer_.setFullscreen(game_->settings().fullscreen);
+            break;
+        }
+    }
+}
+
+void Application::updateMusic() {
+    if (!audio_.available()) return;
+    std::string want;
+    switch (game_->state()) {
+    case GameState::Title:
+    case GameState::Options:
+    case GameState::HighScores:
+        want = "music_title";
+        break;
+    case GameState::StageIntro:
+    case GameState::Playing:
+    case GameState::Paused:
+    case GameState::StageComplete:
+        want = game_->stageIndex() == 0 ? "music_stage1" : "music_stage2";
+        break;
+    case GameState::GameOver:
+    case GameState::Victory:
+        want = "music_title";
+        break;
+    }
+    if (want != currentMusic_) {
+        currentMusic_ = want;
+        audio_.playMusic(want);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+void Application::renderTerrain(const StageDef* stage, float scrollY,
+                                float time) {
+    const int cols = 12, rows = 18;
+    const int wavePhase = static_cast<int>(time * 1.4f);
+    for (int j = 0; j < rows; ++j) {
+        const float screenY = j * kTile;
+        const float worldY = scrollY + (kPlayH - screenY);
+        const int row = static_cast<int>(std::floor(worldY / kTile));
+        const TerrainKind kind = stage ? terrainAt(*stage, worldY)
+                                       : TerrainKind::Ocean;
+        for (int i = 0; i < cols; ++i) {
+            const std::uint32_t h = hashXY(i, row);
+            const char* texName = "tile_ocean_a";
+            switch (kind) {
+            case TerrainKind::Ocean:
+                texName = oceanFor(h + static_cast<std::uint32_t>(wavePhase));
+                break;
+            case TerrainKind::Island:
+                texName = (h % 5 == 0) ? "tile_sand"
+                        : (h % 2 == 0) ? "tile_jungle_a" : "tile_jungle_b";
+                break;
+            case TerrainKind::Shore:
+                texName = "tile_shore";
+                break;
+            case TerrainKind::Jungle:
+                texName = (h % 2 == 0) ? "tile_jungle_a" : "tile_jungle_b";
+                break;
+            case TerrainKind::Road:
+                texName = (h % 6 < 3) ? "tile_road_v"
+                        : (h % 3 == 0) ? "tile_sand" : "tile_jungle_a";
+                break;
+            case TerrainKind::Airfield:
+                texName = (h % 3 == 0) ? "tile_sand" : "tile_airfield";
+                break;
+            case TerrainKind::Fortress:
+                texName = (h % 7 == 0) ? "tile_sand" : "tile_fortress";
+                break;
+            }
+            const int tid = renderer_.texture(texName);
+            renderer_.drawRegion(tid, 0, 0, 32, 32, i * kTile + 16.0f, screenY + 16.0f);
+        }
+    }
+}
+
+void Application::renderWorld() {
+    const auto& sim = game_->sim();
+    const StageDef* stage = sim.director().stageDef();
+    const float scrollY = sim.director().scrollY();
+    const float time = sim.director().time();
+
+    renderTerrain(stage, scrollY, time);
+
+    auto findAnim = [&](const char* name) -> const AnimDef* {
+        const int i = data_.findAnim(name);
+        return i >= 0 ? &data_.anims[static_cast<std::size_t>(i)] : nullptr;
+    };
+    const AnimDef* exSmall = findAnim("explosion_small");
+    const AnimDef* exMed = findAnim("explosion_medium");
+    const AnimDef* exBig = findAnim("explosion_large");
+
+    const int shadowTex = renderer_.texture("shadow_ell");
+
+    // Pass 1: ground/sea units with shadows.
+    for (const auto& e : sim.entities()) {
+        if (!e.alive) continue;
+        if (e.kind == EKind::Enemy && e.enemyDef >= 0) {
+            const EnemyDef& def = data_.enemies[static_cast<std::size_t>(e.enemyDef)];
+            if (!def.ground && !def.ship) continue;
+            if (def.ship) renderer_.draw(shadowTex, e.pos.x + 5.0f, e.pos.y + 7.0f);
+            const Color tint = e.flashTimer > 0.0f ? Color::rgb(0xFF9090)
+                                                   : Color::rgb(0xFFFFFF);
+            renderer_.draw(renderer_.texture(def.sprite), e.pos.x, e.pos.y, 1.0f,
+                           tint);
+        }
+    }
+
+    // Pass 2: power-ups (bobbing).
+    for (const auto& e : sim.entities()) {
+        if (!e.alive || e.kind != EKind::Powerup) continue;
+        const PowerupDef& def = data_.powerups[static_cast<std::size_t>(e.powerupDef)];
+        const float bob = 2.0f * std::sin(e.age * 6.0f);
+        const float alpha = e.lifeLeft < 2.0f
+            ? (std::fmod(e.lifeLeft * 6.0f, 1.0f) < 0.5f ? 0.35f : 1.0f)
+            : 1.0f;
+        renderer_.draw(renderer_.texture(def.sprite), e.pos.x, e.pos.y + bob, alpha);
+    }
+
+    // Pass 3: boss hull & components (sprites carried on the entities).
+    for (const auto& e : sim.entities()) {
+        if (!e.alive) continue;
+        if (e.kind != EKind::BossHull && e.kind != EKind::BossComponent) continue;
+        const Color tint = e.flashTimer > 0.0f ? Color::rgb(0xFF9090)
+                                               : Color::rgb(0xFFFFFF);
+        renderer_.draw(renderer_.texture(e.sprite), e.pos.x, e.pos.y, 1.0f, tint);
+    }
+
+    // Pass 4: enemy aircraft with shadows.
+    for (const auto& e : sim.entities()) {
+        if (!e.alive || e.kind != EKind::Enemy || e.enemyDef < 0) continue;
+        const EnemyDef& def = data_.enemies[static_cast<std::size_t>(e.enemyDef)];
+        if (def.ground || def.ship) continue;
+        renderer_.draw(shadowTex, e.pos.x + 4.0f, e.pos.y + 8.0f);
+        const Color tint = e.flashTimer > 0.0f ? Color::rgb(0xFF9090)
+                                               : Color::rgb(0xFFFFFF);
+        renderer_.draw(renderer_.texture(def.sprite), e.pos.x, e.pos.y, 1.0f, tint);
+    }
+
+    // Pass 5: player.
+    {
+        const auto p = sim.player();
+        if (p.alive) {
+            const bool blink = p.invulnerable &&
+                               std::fmod(time * 12.0f, 1.0f) < 0.5f;
+            float alpha = blink ? 0.4f : 1.0f;
+            const char* tex = "player_fighter";
+            if (p.bank < -0.25f) tex = "player_fighter_l";
+            else if (p.bank > 0.25f) tex = "player_fighter_r";
+            const int ptex = renderer_.texture(tex);
+            renderer_.draw(shadowTex, p.pos.x + 6.0f, p.pos.y + 14.0f);
+            if (p.specialTimer > 0.0f) {
+                // Aerobatic loop: vertical squash as the plane barrels.
+                const float spin = (0.9f - p.specialTimer) / 0.9f;
+                const float squash =
+                    std::abs(std::sin(spin * 3.14159265f * 4.0f));
+                renderer_.drawScaled(ptex, p.pos.x, p.pos.y, 40.0f,
+                                     8.0f + 32.0f * squash, alpha);
+            } else {
+                renderer_.draw(ptex, p.pos.x, p.pos.y, alpha);
+            }
+        }
+    }
+
+    // Pass 6: projectiles.
+    for (const auto& e : sim.entities()) {
+        if (!e.alive || e.kind != EKind::Shot) continue;
+        const WeaponDef& w = data_.weapons[static_cast<std::size_t>(e.weaponDef)];
+        renderer_.draw(renderer_.texture(w.sprite), e.pos.x, e.pos.y, 1.0f,
+                       Color::rgb(0xFFFFFF), false,
+                       e.rotates ? angleOf(e.vel) * 57.29578f + 90.0f : 0.0f);
+    }
+
+    // Pass 7: particles.
+    for (const auto& pt : sim.particles()) {
+        const std::uint32_t c = pt.color;
+        const int a = static_cast<int>((c & 0xFF) *
+                                       clamp(pt.life / pt.maxLife, 0.0f, 1.0f));
+        const Color pcol{static_cast<std::uint8_t>((c >> 24) & 0xFF),
+                         static_cast<std::uint8_t>((c >> 16) & 0xFF),
+                         static_cast<std::uint8_t>((c >> 8) & 0xFF),
+                         static_cast<std::uint8_t>(a)};
+        renderer_.fillRect(pt.pos.x - pt.size * 0.5f, pt.pos.y - pt.size * 0.5f,
+                           pt.size, pt.size, pcol);
+    }
+
+    // Pass 8: explosions.
+    for (const auto& ex : sim.explosions()) {
+        const std::string texName = ex.splash && ex.sizeClass == 0
+            ? "splash_small"
+            : (ex.splash ? "splash_large"
+               : (ex.sizeClass == 0 ? "explosion_small"
+                  : ex.sizeClass == 1 ? "explosion_medium" : "explosion_large"));
+        const AnimDef* ad = ex.sizeClass == 0 ? exSmall
+                           : ex.sizeClass == 1 ? exMed : exBig;
+        if (!ad) continue;
+        const int tid = renderer_.texture(texName);
+        const int frame = clamp(static_cast<int>(ex.t * ad->fps), 0, ad->frames - 1);
+        renderer_.drawRegion(tid, frame * ad->frameW, 0, ad->frameW, ad->frameH,
+                             ex.pos.x, ex.pos.y);
+    }
+}
+
+void Application::renderTitleBackground(float time) {
+    renderTerrain(nullptr, time * 40.0f, time);
+    // Decorative flyovers.
+    const int en = renderer_.texture("enemy_fighter_light");
+    for (int i = 0; i < 3; ++i) {
+        const float t = std::fmod(time * 0.25f + i * 0.33f, 1.4f) - 0.2f;
+        const float x = 192.0f + std::sin(t * 6.2832f * 1.5f + i) * 130.0f;
+        const float y = -40.0f + t * 620.0f;
+        renderer_.draw(en, x, y, 0.9f, Color::rgb(0xC8C8FF));
+    }
+}
+
+void Application::renderTitle() {
+    const float t = game_->stateTimer();
+    renderTitleBackground(t);
+    dimOverlay();
+    const Color gold = Color::rgb(0xFFD860);
+    const Color white = Color::rgb(0xF0F4F8);
+    renderer_.text("PACIFIC", 192.0f, 96.0f, 4, Color::rgb(0x102030), true);
+    renderer_.text("PACIFIC", 190.0f, 94.0f, 4, gold, true);
+    renderer_.text("SQUADRON", 192.0f, 130.0f, 4, Color::rgb(0x102030), true);
+    renderer_.text("SQUADRON", 190.0f, 128.0f, 4, white, true);
+    renderer_.text("A WORLD WAR II ARCADE SHOOTER", 192.0f, 168.0f, 1,
+                   Color::rgb(0x9AB0C8), true);
+
+    const char* items[] = {"START MISSION", "HIGH SCORES", "OPTIONS"};
+    for (int i = 0; i < 3; ++i) {
+        const bool sel = game_->menuSelection() == i;
+        const std::string s = (sel ? "> " : "  ") + std::string(items[i]) +
+                              (sel ? " <" : "");
+        renderer_.text(s, 192.0f, 300.0f + i * 26.0f, 2,
+                       sel ? gold : white, true);
+    }
+    if (std::fmod(t * 2.0f, 1.0f) < 0.6f)
+        renderer_.text("WASD / ARROWS MOVE   SPACE FIRE   SHIFT LOOP   ESC PAUSE",
+                       192.0f, 470.0f, 1, Color::rgb(0x7A90A8), true);
+    renderer_.text("GAMEPAD SUPPORTED", 192.0f, 486.0f, 1,
+                   Color::rgb(0x50687E), true);
+}
+
+void Application::renderStageIntro() {
+    renderer_.text("STAGE", 192.0f, 200.0f, 2, Color::rgb(0x9AB0C8), true);
+    renderer_.text(game_->stageName(), 192.0f, 230.0f, 3, Color::rgb(0xFFD860),
+                   true);
+    renderer_.text("SCRAMBLE!", 192.0f, 300.0f, 2, Color::rgb(0xF0F4F8), true);
+}
+
+void Application::renderPaused() {
+    renderer_.fillRect(0, 0, kPlayW, kPlayH, Color{0, 0, 0, 150});
+    renderer_.text("PAUSED", 192.0f, 230.0f, 3, Color::rgb(0xFFD860), true);
+    renderer_.text("ESC/ENTER RESUME   BACK QUITS TO TITLE", 192.0f, 280.0f, 1,
+                   Color::rgb(0x9AB0C8), true);
+}
+
+void Application::renderStageComplete() {
+    renderer_.fillRect(0, 0, kPlayW, kPlayH, Color{0, 0, 0, 120});
+    renderer_.text("STAGE CLEAR", 192.0f, 210.0f, 3, Color::rgb(0x7AE87A), true);
+    const std::string s = "SCORE " + std::to_string(game_->score());
+    renderer_.text(s, 192.0f, 270.0f, 2, Color::rgb(0xF0F4F8), true);
+}
+
+void Application::renderGameOver() {
+    renderer_.fillRect(0, 0, kPlayW, kPlayH, Color{0, 0, 0, 150});
+    renderer_.text("GAME OVER", 192.0f, 220.0f, 3, Color::rgb(0xE05050), true);
+    const std::string s = "SCORE " + std::to_string(game_->score());
+    renderer_.text(s, 192.0f, 280.0f, 2, Color::rgb(0xF0F4F8), true);
+    if (std::fmod(game_->stateTimer() * 2.0f, 1.0f) < 0.6f)
+        renderer_.text("PRESS ENTER", 192.0f, 330.0f, 1,
+                       Color::rgb(0x9AB0C8), true);
+}
+
+void Application::renderVictory() {
+    renderer_.fillRect(0, 0, kPlayW, kPlayH, Color{0, 0, 0, 140});
+    renderer_.text("MISSION", 192.0f, 180.0f, 4, Color::rgb(0xFFD860), true);
+    renderer_.text("COMPLETE", 192.0f, 220.0f, 4, Color::rgb(0x7AE87A), true);
+    const std::string s = "FINAL SCORE " + std::to_string(game_->score());
+    renderer_.text(s, 192.0f, 300.0f, 2, Color::rgb(0xF0F4F8), true);
+}
+
+void Application::renderHighScores() {
+    renderer_.text("HIGH SCORES", 192.0f, 100.0f, 3, Color::rgb(0xFFD860), true);
+    const auto& hs = game_->highScores();
+    for (std::size_t i = 0; i < hs.size() && i < 8; ++i) {
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%d.  %07d", static_cast<int>(i) + 1,
+                      hs[i]);
+        renderer_.text(buf, 192.0f, 160.0f + static_cast<float>(i) * 28.0f, 2,
+                       i == 0 ? Color::rgb(0xFFD860) : Color::rgb(0xD8E0E8),
+                       true);
+    }
+    renderer_.text("BACK: ESC / B", 192.0f, 470.0f, 1, Color::rgb(0x9AB0C8),
+                   true);
+}
+
+void Application::renderOptions() {
+    renderer_.text("OPTIONS", 192.0f, 80.0f, 3, Color::rgb(0xFFD860), true);
+    const Settings& s = game_->settings();
+    const char* diffNames[] = {"EASY", "NORMAL", "HARD"};
+    char rows[6][48];
+    std::snprintf(rows[0], 48, "DIFFICULTY   %s",
+                  diffNames[std::min(2, static_cast<int>(s.difficulty))]);
+    std::snprintf(rows[1], 48, "MASTER VOL   %d%%",
+                  static_cast<int>(s.masterVolume * 100.0f + 0.5f));
+    std::snprintf(rows[2], 48, "MUSIC VOL    %d%%",
+                  static_cast<int>(s.musicVolume * 100.0f + 0.5f));
+    std::snprintf(rows[3], 48, "SFX VOL      %d%%",
+                  static_cast<int>(s.sfxVolume * 100.0f + 0.5f));
+    std::snprintf(rows[4], 48, "FULLSCREEN   %s", s.fullscreen ? "ON" : "OFF");
+    std::snprintf(rows[5], 48, "BACK");
+    for (int i = 0; i < 6; ++i) {
+        const bool sel = game_->menuSelection() == i;
+        const std::string t = (sel ? std::string("> ") : std::string("  ")) +
+                              std::string(rows[i]) + (sel ? " <" : "");
+        renderer_.text(t, 192.0f, 150.0f + i * 32.0f, 2,
+                       sel ? Color::rgb(0xFFD860) : Color::rgb(0xD8E0E8), true);
+    }
+    renderer_.text("UP/DOWN SELECT   LEFT/RIGHT ADJUST", 192.0f, 420.0f, 1,
+                   Color::rgb(0x9AB0C8), true);
+}
+
+void Application::dimOverlay() {
+    renderer_.fillRect(0, 0, kPlayW, kPlayH, Color{0, 0, 0, 110});
+}
+
+void Application::renderFrame(float fps) {
+    renderer_.beginFrame(Color::rgb(0x06101C));
+    const auto state = game_->state();
+    if (state == GameState::Title) {
+        renderTitle();
+    } else if (state == GameState::Options) {
+        renderTitleBackground(game_->stateTimer());
+        dimOverlay();
+        renderOptions();
+    } else if (state == GameState::HighScores) {
+        renderTitleBackground(game_->stateTimer());
+        dimOverlay();
+        renderHighScores();
+    } else {
+        renderWorld();
+        if (state == GameState::Playing || state == GameState::Paused ||
+            state == GameState::StageComplete)
+            hud_.draw(renderer_, *game_);
+        if (state == GameState::StageIntro) {
+            renderer_.fillRect(0, 0, kPlayW, kPlayH, Color{0, 0, 0, 120});
+            renderStageIntro();
+        }
+        if (state == GameState::Paused) renderPaused();
+        if (state == GameState::StageComplete) renderStageComplete();
+        if (state == GameState::GameOver) {
+            hud_.draw(renderer_, *game_);
+            renderGameOver();
+        }
+        if (state == GameState::Victory) renderVictory();
+        if (game_->debugOverlay) hud_.drawDebug(renderer_, *game_, fps);
+    }
+    renderer_.endFrame();
+}
+
+void Application::shutdown() {
+    audio_.shutdown();
+    input_.shutdown();
+    renderer_.shutdown();
+}
+
+}  // namespace ww
