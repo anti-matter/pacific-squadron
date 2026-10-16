@@ -743,13 +743,36 @@ void Application::renderHelp() {
                    dim, true);
 
     renderer_.text("SUPPLY DROPS", 192.0f, 306.0f, 2, gold, true);
-    renderer_.text("P  UPGRADE CURRENT GUN", 192.0f, 330.0f, 1, white, true);
-    renderer_.text("S  SPREAD GUN     C  HEAVY CANNON", 192.0f, 346.0f, 1,
-                   white, true);
-    renderer_.text("R  ROCKETS        B  +1 LOOP CHARGE", 192.0f, 362.0f, 1,
-                   white, true);
-    renderer_.text("+  REPAIR 1 HULL  L  EXTRA LIFE", 192.0f, 378.0f, 1, white,
-                   true);
+    // Two fixed columns; glyphs advance 6px at scale 1, so descriptions
+    // start at a constant x and line up vertically (centering whole
+    // lines made the columns drift).
+    struct LegendRow {
+        const char* key;
+        const char* desc;
+    };
+    const LegendRow leftCol[] = {
+        {"P", "UPGRADE CURRENT GUN"},
+        {"S", "SPREAD GUN"},
+        {"R", "ROCKETS"},
+        {"+", "REPAIR 1 HULL"},
+    };
+    const LegendRow rightCol[] = {
+        {"C", "HEAVY CANNON"},
+        {"B", "+1 LOOP CHARGE"},
+        {"L", "EXTRA LIFE"},
+    };
+    constexpr float kKeyX1 = 66.0f, kDescX1 = 90.0f;
+    constexpr float kKeyX2 = 210.0f, kDescX2 = 234.0f;
+    for (int i = 0; i < 4; ++i) {
+        const float y = 330.0f + static_cast<float>(i) * 16.0f;
+        renderer_.text(leftCol[i].key, kKeyX1, y, 1, gold, false);
+        renderer_.text(leftCol[i].desc, kDescX1, y, 1, white, false);
+    }
+    for (int i = 0; i < 3; ++i) {
+        const float y = 330.0f + static_cast<float>(i) * 16.0f;
+        renderer_.text(rightCol[i].key, kKeyX2, y, 1, gold, false);
+        renderer_.text(rightCol[i].desc, kDescX2, y, 1, white, false);
+    }
 
     renderer_.text("ESC / B: BACK", 192.0f, 470.0f, 1,
                    Color::rgb(0x7A90A8), true);
