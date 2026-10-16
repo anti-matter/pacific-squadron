@@ -285,7 +285,6 @@ PixelBuf makeBunker() {
 
 PixelBuf makeShip(int w, int h, bool destroyer) {
     PixelBuf p(w, h);
-    const int bow = 8;
     // Hull: pointed bow at bottom (ships sail toward the player... they face
     // down for the boss battleship; patrol boats face up). Draw facing down.
     for (int y = 0; y < h; ++y) {
@@ -426,18 +425,29 @@ PixelBuf makeJungleTile(int variant) {
     return p;
 }
 
-PixelBuf makeShoreTile() {
-    // Ocean at top, sand at bottom, foam line between.
+PixelBuf makeShoreTile(bool oceanAtTop) {
+    // One coastline per tile: water on one side, sand on the other, with a
+    // foam line between. oceanAtTop=false is the land->sea direction
+    // (leaving an island). Band filling (Application::renderTerrain) uses
+    // this tile for exactly one row, so a shore shows a single coastline.
     PixelBuf p(32, 32);
     const PixelBuf ocean = makeOceanTile(0);
     const PixelBuf sand = makeSandTile(1);
     for (int y = 0; y < 32; ++y)
-        for (int x = 0; x < 32; ++x)
-            p.set(x, y, y < 14 + (x / 8) ? ocean.get(x, y) : sand.get(x, y));
+        for (int x = 0; x < 32; ++x) {
+            const int ly = 14 + (x / 8);
+            const bool isOcean = oceanAtTop ? (y < ly) : (y > ly + 2);
+            p.set(x, y, isOcean ? ocean.get(x, y) : sand.get(x, y));
+        }
     for (int x = 0; x < 32; ++x) {
-        const int fy = 14 + (x / 8);
-        p.set(x, fy, kWhite);
-        p.set(x, fy - 1, col(0xC8DCF0));
+        const int ly = 14 + (x / 8);
+        if (oceanAtTop) {
+            p.set(x, ly, kWhite);
+            p.set(x, ly - 1, col(0xC8DCF0));
+        } else {
+            p.set(x, ly + 2, kWhite);
+            p.set(x, ly + 3, col(0xC8DCF0));
+        }
     }
     return p;
 }
@@ -655,7 +665,8 @@ bool generateAllArt(Renderer& r) {
     add("tile_sand", makeSandTile(0));
     add("tile_jungle_a", makeJungleTile(1));
     add("tile_jungle_b", makeJungleTile(2));
-    add("tile_shore", makeShoreTile());
+    add("tile_shore", makeShoreTile(true));
+    add("tile_shore_in", makeShoreTile(false));
     add("tile_road_v", makeRoadTile(true));
     add("tile_road_h", makeRoadTile(false));
     add("tile_airfield", makeAirfieldTile());

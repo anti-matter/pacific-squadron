@@ -331,6 +331,21 @@ void Application::renderTerrain(const StageDef* stage, float scrollY,
                                 float time) {
     const int cols = 12, rows = 18;
     const int wavePhase = static_cast<int>(time * 1.4f);
+    // Tile choice for a plain (non-shore) terrain kind.
+    auto tileForKind = [&](TerrainKind kind, std::uint32_t h) -> const char* {
+        switch (kind) {
+        case TerrainKind::Ocean:    return oceanFor(h + static_cast<std::uint32_t>(wavePhase));
+        case TerrainKind::Island:   return (h % 5 == 0) ? "tile_sand"
+                                         : (h % 2 == 0) ? "tile_jungle_a" : "tile_jungle_b";
+        case TerrainKind::Jungle:   return (h % 2 == 0) ? "tile_jungle_a" : "tile_jungle_b";
+        case TerrainKind::Road:     return (h % 6 < 3) ? "tile_road_v"
+                                         : (h % 3 == 0) ? "tile_sand" : "tile_jungle_a";
+        case TerrainKind::Airfield: return (h % 3 == 0) ? "tile_sand" : "tile_airfield";
+        case TerrainKind::Fortress: return (h % 7 == 0) ? "tile_sand" : "tile_fortress";
+        case TerrainKind::Shore:    return "tile_sand";  // handled below
+        }
+        return "tile_ocean_a";
+    };
     for (int j = 0; j < rows; ++j) {
         const float screenY = j * kTile;
         const float worldY = scrollY + (kPlayH - screenY);
@@ -340,30 +355,53 @@ void Application::renderTerrain(const StageDef* stage, float scrollY,
         for (int i = 0; i < cols; ++i) {
             const std::uint32_t h = hashXY(i, row);
             const char* texName = "tile_ocean_a";
-            switch (kind) {
-            case TerrainKind::Ocean:
-                texName = oceanFor(h + static_cast<std::uint32_t>(wavePhase));
-                break;
-            case TerrainKind::Island:
-                texName = (h % 5 == 0) ? "tile_sand"
-                        : (h % 2 == 0) ? "tile_jungle_a" : "tile_jungle_b";
-                break;
-            case TerrainKind::Shore:
-                texName = "tile_shore";
-                break;
-            case TerrainKind::Jungle:
-                texName = (h % 2 == 0) ? "tile_jungle_a" : "tile_jungle_b";
-                break;
-            case TerrainKind::Road:
-                texName = (h % 6 < 3) ? "tile_road_v"
-                        : (h % 3 == 0) ? "tile_sand" : "tile_jungle_a";
-                break;
-            case TerrainKind::Airfield:
-                texName = (h % 3 == 0) ? "tile_sand" : "tile_airfield";
-                break;
-            case TerrainKind::Fortress:
-                texName = (h % 7 == 0) ? "tile_sand" : "tile_fortress";
-                break;
+            if (kind == TerrainKind::Shore) {
+                // A shore band must contain exactly ONE coastline:
+                //   sea -> land: foam transition row, one beach row, then
+                //                the land tiles.
+                //   land -> sea: one beach row, foam transition row, then
+                //                ocean.
+                // (Tiling the transition art across the whole band stacked
+                //  multiple coastlines per shore.)
+                const auto& segs = stage->terrain;
+                std::size_t idx = segs.size() - 1;
+                for (std::size_t s = 0; s < segs.size(); ++s)
+                    if (worldY >= segs[s].fromY) idx = s;
+                const TerrainKind prevK =
+                    idx > 0 ? segs[idx - 1].kind : TerrainKind::Ocean;
+                const TerrainKind nextK = idx + 1 < segs.size()
+                    ? segs[idx + 1].kind : TerrainKind::Ocean;
+                // Band edges are not tile-aligned, so count rows from the
+                // boundaries themselves: at most one screen row can lie
+                // within kTile of a boundary (row references step by kTile),
+                // guaranteeing a single waterline row per coastline.
+                const float upperY =
+                    idx + 1 < segs.size() ? segs[idx + 1].fromY
+                                          : segs[idx].toY;
+                const float dUpper = upperY - worldY;   // >0 inside band
+                const float dLower = worldY - segs[idx].fromY;  // >=0
+                const bool prevSea = prevK == TerrainKind::Ocean;
+                const bool nextSea = nextK == TerrainKind::Ocean;
+                // NOTE: worldY grows toward the TOP of the screen (the
+                // forward direction). "prev" terrain is behind/below,
+                // "next" terrain is ahead/above.
+                if (prevSea && !nextSea) {
+                    // Approaching land: water at the bottom of the screen.
+                    if (dLower < kTile) texName = "tile_shore_in";
+                    else if (dLower < 2.0f * kTile) texName = "tile_sand";
+                    else texName = tileForKind(nextK, h);
+                } else if (!prevSea && nextSea) {
+                    // Leaving land: water appears at the top of the screen.
+                    if (dUpper < kTile) texName = "tile_shore";
+                    else if (dUpper < 2.0f * kTile) texName = "tile_sand";
+                    else texName = tileForKind(prevK, h);
+                } else {
+                    // Land-to-land (or sea-to-sea) shore band: a dry sand
+                    // strip, no waterline.
+                    texName = "tile_sand";
+                }
+            } else {
+                texName = tileForKind(kind, h);
             }
             const int tid = renderer_.texture(texName);
             renderer_.drawRegion(tid, 0, 0, 32, 32, i * kTile + 16.0f, screenY + 16.0f);
