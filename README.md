@@ -40,7 +40,10 @@ cmake --build build -j
 ```
 
 On Linux you may need the SDL3 development package, e.g. `apt install
-libsdl3-dev`, or build SDL from source and point CMake at it.
+libsdl3-dev`, or build SDL from source and point CMake at it. At startup the
+game disables SDL's HIDAPI-libusb fallback (the hidraw backend covers normal
+desktop gamepads); on hosts with unresponsive USB devices the libusb scan can
+otherwise freeze launch for many seconds.
 
 The build produces:
 
@@ -99,9 +102,42 @@ SDL_VIDEO_DRIVER=dummy ./build/wwii-fighter
 | Smart bomb    | Shift / Ctrl          | B (East) / Left shoulder       |
 | Pause         | Esc / P               | Start                          |
 | Confirm / Back| Enter / Space, Esc    | A / B, Select                  |
+| Debug overlay | F3                    | —                              |
 
 Bindings, audio volumes, difficulty, and display mode persist to the
 platform preference directory (`SDL_GetPrefPath`).
+
+## Window & scaling
+
+The window is resizable; the 384×512 logical canvas is scaled
+nearest-neighbour and centred. When the window is close to an integer
+multiple (1x/2x/3x/4x) it snaps to exactly that for uniform pixels; at
+awkward sizes it fills the window with fractional nearest-neighbour
+scaling. Fullscreen (Options) uses the desktop resolution.
+
+## Tuning
+
+Player-feel constants live in one file: **`src/game/Tuning.h`**
+(movement speed, hitbox size, invulnerability windows, special duration,
+respawn behaviour, bomb cap). Per-weapon fire intervals/damage/speed and
+per-stage scroll speed are data-driven:
+`assets/data/weapons/*.json` and `assets/data/stages/*.json`.
+
+Current defaults: player speed 230 px/s (instant start/stop, normalised
+diagonals), 10 px hitbox, gun interval 0.14–0.10 s, bullet speed
+380–560 px/s, stage scroll 60 px/s, enemy bullets 80–170 px/s (always
+slower than the player so dodging is intentional).
+
+## Developer tools
+
+- **F3** toggles the debug overlay (FPS/frame time, entity/enemy/projectile
+  /particle counts, player position & speed, scroll position, stage/state,
+  weapon, HP/bombs/lives, and every live collider: cyan player hitbox,
+  red enemy hitboxes, magenta boss hull, yellow boss components, projectile
+  boxes). Also enable at launch with `WWII_DEBUG=1`.
+- `WWII_KEYLOG=1` logs received key events and periodic FPS/frame counts to
+  the console (input/perf triage).
+- `WWII_SMOKE*` headless smoke hooks (table above).
 
 ## Architecture
 
@@ -157,8 +193,9 @@ Design notes:
 
 ## Validation notes
 
-Developed and validated on Linux. Automated verification in headless CI-style
-environments uses the dummy video/audio driver, the unit-test suite, and the
-smoke-test hooks above, plus programmatic pixel checks of captured
-screenshots. Interactive play (GPU renderer, real gamepad) has not been
-verified in this environment.
+Developed and validated on Linux. Automated verification uses the dummy
+video/audio driver, the unit-test suite, the smoke-test hooks above, and
+programmatic pixel inspection of captured screenshots. Desktop runtime was
+verified on KDE/Wayland via Xwayland: window creation, resize (integer snap +
+letterbox), fullscreen at native resolution, WM close, and steady ~60 fps at
+~3 % CPU. Keyboard/gamepad feel still needs a human at the machine.

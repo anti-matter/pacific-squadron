@@ -23,7 +23,7 @@ bool Renderer::init(const std::string& title, bool fullscreen) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
         return false;
     }
-    Uint32 flags = SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    Uint32 flags = SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_RESIZABLE;
     if (fullscreen) flags |= SDL_WINDOW_FULLSCREEN;
     window_ = SDL_CreateWindow(title.c_str(), 1152, 1536, flags);
     if (!window_) {
@@ -176,10 +176,14 @@ void Renderer::endFrame() {
     SDL_SetRenderDrawColor(sdl_, 0, 0, 0, 255);
     SDL_RenderClear(sdl_);
 
-    // Integer scale when it fits; nearest-neighbour fallback otherwise.
+    // Scale policy: snap to an integer multiple when the window is close to
+    // one (perfectly uniform pixels at the natural 1x/2x/3x/4x sizes).
+    // For awkward window sizes, fill the window with nearest-neighbour
+    // fractional scaling - still crisp, just uneven pixel doubling.
     const float fit = std::min(static_cast<float>(winW_) / kCanvasW,
                                static_cast<float>(winH_) / kCanvasH);
-    float scale = std::floor(fit);
+    float scale = std::round(fit);
+    if (std::abs(fit - scale) > 0.12f) scale = fit;
     if (scale < 1.0f) scale = fit;
     const float dw = std::floor(kCanvasW * scale);
     const float dh = std::floor(kCanvasH * scale);

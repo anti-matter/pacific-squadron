@@ -3,6 +3,7 @@
 #include <cstdio>
 
 #include "game/Movement.h"
+#include "game/Tuning.h"
 
 namespace ww {
 namespace {
@@ -74,36 +75,73 @@ void Hud::draw(Renderer& r, const Game& game) const {
 
 void Hud::drawDebug(Renderer& r, const Game& game, float fps) const {
     const auto& sim = game.sim();
-    char buf[96];
-    std::snprintf(buf, sizeof(buf), "FPS %.0f  ENT %d  SHOT %d", fps,
-                  sim.entityCount(), sim.projectileCount());
-    r.text(buf, 4, kPlayH - 32, 1, Color::rgb(0x80FF80));
-    std::snprintf(buf, sizeof(buf), "TIME %.1fs  Y %.0f",
+    char buf[128];
+    const float ms = fps > 0.0f ? 1000.0f / fps : 0.0f;
+    std::snprintf(buf, sizeof(buf), "FPS %.0f (%.1f ms)", fps, ms);
+    r.text(buf, 4, kPlayH - 62, 1, Color::rgb(0x80FF80));
+    int enemies = 0;
+    for (const auto& e : sim.entities())
+        if (e.alive && e.kind == EKind::Enemy) ++enemies;
+    std::snprintf(buf, sizeof(buf), "ENT %d  ENEMY %d  SHOT %d  FX %d",
+                  sim.entityCount(), enemies, sim.projectileCount(),
+                  sim.particleCount());
+    r.text(buf, 4, kPlayH - 52, 1, Color::rgb(0x80FF80));
+    const auto p = sim.player();
+    std::snprintf(buf, sizeof(buf), "POS %.0f,%.0f  SPD %.0f", p.pos.x, p.pos.y,
+                  length(p.vel));
+    r.text(buf, 4, kPlayH - 42, 1, Color::rgb(0x80FF80));
+    std::snprintf(buf, sizeof(buf), "TIME %.1fs  SCROLL %.0f",
                   sim.director().time(), sim.director().scrollY());
+    r.text(buf, 4, kPlayH - 32, 1, Color::rgb(0x80FF80));
+    static const char* kWeapons[] = {"GUN", "SPREAD", "CANNON", "ROCKET"};
+    std::snprintf(buf, sizeof(buf), "STATE %d  STAGE %d  WPN %s L%d",
+                  static_cast<int>(game.state()), game.stageIndex(),
+                  kWeapons[static_cast<int>(p.weapon)], p.weaponLevel);
     r.text(buf, 4, kPlayH - 22, 1, Color::rgb(0x80FF80));
-    std::snprintf(buf, sizeof(buf), "STATE %d  STAGE %d",
-                  static_cast<int>(game.state()), game.stageIndex());
+    std::snprintf(buf, sizeof(buf), "HP %d/%d  BOMBS %d  LIVES %d%s", p.hp,
+                  p.maxHp, p.bombs, p.lives, p.invulnerable ? "  [IFRAME]" : "");
     r.text(buf, 4, kPlayH - 12, 1, Color::rgb(0x80FF80));
 
-    // Player hitbox.
-    const auto p = sim.player();
-    if (p.alive)
-        r.outlineRect(p.pos.x - 5.0f, p.pos.y - 5.0f, 10.0f, 10.0f,
+    // --- hitboxes (mirrors Simulation::buildColliders) --------------------
+    // Player: cyan, deliberately tiny relative to the sprite.
+    if (p.alive) {
+        constexpr float hb = tuning::kPlayerHitbox;
+        r.outlineRect(p.pos.x - hb * 0.5f, p.pos.y - hb * 0.5f, hb, hb,
                       Color::rgb(0x00FFFF));
+    }
 
-    // Enemy hitboxes + spawn anchors.
     const auto& data = game.data();
     for (const auto& e : sim.entities()) {
         if (!e.alive) continue;
-        if (e.kind == EKind::Enemy && e.enemyDef >= 0) {
+        if (e.kind == EKind::Shot) {
+            const WeaponDef& w =
+                data.weapons[static_cast<std::size_t>(e.weaponDef)];
+            float sw = 5.0f, sh = 5.0f;
+            shotSize(w.kind, sw, sh);
+            r.outlineRect(e.pos.x - sw * 0.5f, e.pos.y - sh * 0.5f, sw, sh,
+                          e.team == Team::Player ? Color::rgb(0x80FFFF)
+                                                 : Color::rgb(0xFFA000));
+        } else if (e.kind == EKind::Enemy && e.enemyDef >= 0) {
             const EnemyDef& def = data.enemies[static_cast<std::size_t>(e.enemyDef)];
             r.outlineRect(e.pos.x + def.hitX - def.hitW * 0.5f,
                           e.pos.y + def.hitY - def.hitH * 0.5f,
                           static_cast<float>(def.hitW),
                           static_cast<float>(def.hitH), Color::rgb(0xFF4040));
-        } else if (e.kind == EKind::BossHull || e.kind == EKind::BossComponent) {
-            r.outlineRect(e.pos.x - 12.0f, e.pos.y - 12.0f, 24.0f, 24.0f,
+        } else if (e.kind == EKind::BossHull) {
+            const BossDef& bd = data.bosses[static_cast<std::size_t>(
+                sim.bossDefRef(e))];
+            r.outlineRect(e.pos.x - (bd.hullWidth - 16.0f) * 0.5f,
+                          e.pos.y - (bd.hullHeight - 12.0f) * 0.5f,
+                          bd.hullWidth - 16.0f, bd.hullHeight - 12.0f,
                           Color::rgb(0xFF40FF));
+        } else if (e.kind == EKind::BossComponent) {
+            const BossDef& bd = data.bosses[static_cast<std::size_t>(
+                sim.bossDefRef(e))];
+            const BossComponentDef& cd =
+                bd.components[static_cast<std::size_t>(e.componentIndex)];
+            r.outlineRect(e.pos.x - (cd.width - 6.0f) * 0.5f,
+                          e.pos.y - (cd.height - 6.0f) * 0.5f, cd.width - 6.0f,
+                          cd.height - 6.0f, Color::rgb(0xFFFF40));
         }
     }
 }

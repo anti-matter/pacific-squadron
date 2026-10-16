@@ -103,6 +103,9 @@ bool Application::init() {
             game_->sim().setPlayerIntent({0, 0}, true, false);
         }
     }
+    // Debug HUD on from the environment (F3 still toggles in-game).
+    if (SDL_getenv("WWII_DEBUG"))
+        game_->debugOverlay = true;
 
     audio_.setMasterVolume(game_->settings().masterVolume);
     audio_.setMusicVolume(game_->settings().musicVolume);
@@ -161,6 +164,7 @@ void Application::saveHighScores() {
 int Application::run() {
     Uint64 prevTicks = SDL_GetTicks();
     while (running_) {
+        const Uint64 loopStart = SDL_GetTicks();
         // --- events -----------------------------------------------------
         SDL_Event ev;
         input_.newFrame();
@@ -169,7 +173,13 @@ int Application::run() {
             case SDL_EVENT_QUIT:
                 running_ = false;
                 break;
+            case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+                // Window-manager close button / Alt+F4.
+                running_ = false;
+                break;
             case SDL_EVENT_KEY_DOWN:
+                if (SDL_getenv("WWII_KEYLOG"))
+                    SDL_Log("[keylog] down keycode=%u", (unsigned)ev.key.key);
                 input_.onKey(static_cast<int>(ev.key.key), true);
                 break;
             case SDL_EVENT_KEY_UP:
@@ -232,6 +242,14 @@ int Application::run() {
         audio_.pump();
 
         renderFrame(fps_);
+        // Explicit frame pacing: some compositors (notably Xwayland) do not
+        // block in Present even with vsync enabled, which would otherwise
+        // leave the loop spinning near 100% CPU. On hosts where vsync does
+        // block, this is a no-op because the frame already took >= 16 ms.
+        const Uint64 spentMs = SDL_GetTicks() - loopStart;
+        if (spentMs < 16)
+            SDL_Delay(static_cast<Uint32>(16 - spentMs));
+        if (SDL_getenv("WWII_KEYLOG")) { static int fc=0; if ((fc++ % 240)==0) SDL_Log("[perf] frame %d fps=%.0f", fc, fps_); }
     }
     input_.saveBindings(prefPath("input.json").string());
     return 0;

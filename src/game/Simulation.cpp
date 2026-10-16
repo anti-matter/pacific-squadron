@@ -1,5 +1,7 @@
 #include "game/Simulation.h"
 
+#include "game/Tuning.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -12,6 +14,19 @@ TerrainKind terrainAt(const StageDef& stage, float scrollY) {
         if (scrollY >= seg.fromY) kind = seg.kind;
     }
     return kind;
+}
+
+// Shot collider sizes (shared with the debug overlay; declared in Simulation.h).
+
+void shotSize(ShotKind kind, float& w, float& h) {
+    switch (kind) {
+    case ShotKind::PlayerBullet:  w = 4.0f; h = 8.0f;  break;
+    case ShotKind::PlayerCannon:  w = 7.0f; h = 12.0f; break;
+    case ShotKind::PlayerRocket:  w = 6.0f; h = 13.0f; break;
+    case ShotKind::EnemyBullet:   w = 5.0f; h = 5.0f;  break;
+    case ShotKind::EnemyShell:    w = 8.0f; h = 8.0f;  break;
+    case ShotKind::EnemyFlak:     w = 7.0f; h = 7.0f;  break;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -27,16 +42,6 @@ Vec2 playerAimDir(Vec2 from, Vec2 to) {
     return normalize(d);
 }
 
-void shotSize(ShotKind kind, float& w, float& h) {
-    switch (kind) {
-    case ShotKind::PlayerBullet:  w = 4.0f; h = 8.0f;  break;
-    case ShotKind::PlayerCannon:  w = 7.0f; h = 12.0f; break;
-    case ShotKind::PlayerRocket:  w = 6.0f; h = 13.0f; break;
-    case ShotKind::EnemyBullet:   w = 5.0f; h = 5.0f;  break;
-    case ShotKind::EnemyShell:    w = 8.0f; h = 8.0f;  break;
-    case ShotKind::EnemyFlak:     w = 7.0f; h = 7.0f;  break;
-    }
-}
 
 std::uint32_t rgba(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a) {
     return (static_cast<std::uint32_t>(r) << 24) |
@@ -128,6 +133,7 @@ void Simulation::startStage(int stageIndex, DifficultyMods mods) {
 PlayerStateView Simulation::playerView() const {
     PlayerStateView view;
     view.pos = player_.pos;
+    view.vel = player_.vel;
     view.lives = player_.lives;
     view.hp = player_.hp;
     view.maxHp = player_.maxHp;
@@ -243,11 +249,11 @@ void Simulation::updatePlayer(float dt) {
         p.respawnTimer -= dt;
         if (p.respawnTimer <= 0.0f && p.lives >= 0) {
             p.alive = true;
-            p.pos = {192.0f, 440.0f};
+            p.pos = {tuning::kRespawnX, tuning::kRespawnY};
             p.hp = p.maxHp;
-            p.invuln = 3.0f;
+            p.invuln = tuning::kRespawnInvuln;
             p.weaponLevel = std::max(1, p.weaponLevel - 1);
-            p.fireCooldown = 0.5f;
+            p.fireCooldown = tuning::kRespawnGrace;
             p.burstLeft = 0;
         }
         return;
@@ -258,12 +264,14 @@ void Simulation::updatePlayer(float dt) {
     p.fireCooldown = std::max(0.0f, p.fireCooldown - dt);
 
     // Movement: immediate arcade response, 8 directions.
-    const float kSpeed = 230.0f;
+    const float kSpeed = tuning::kPlayerSpeed;
     Vec2 dir = moveDir_;
     if (lengthSq(dir) > 1.0f) dir = normalize(dir);
+    p.vel = dir * kSpeed;  // informational (debug overlay); movement is instant
     p.pos = p.pos + dir * (kSpeed * dt);
-    p.pos.x = clamp(p.pos.x, 12.0f, kPlayW - 12.0f);
-    p.pos.y = clamp(p.pos.y, 60.0f, kPlayH - 18.0f);
+    p.pos.x = clamp(p.pos.x, tuning::kPlayerMarginX, kPlayW - tuning::kPlayerMarginX);
+    p.pos.y = clamp(p.pos.y, tuning::kPlayerMarginTop,
+                kPlayH - tuning::kPlayerMarginBottom);
     p.bank = lerp(p.bank, dir.x, smoothFactor(14.0f, dt));
 
     // Special / evasive loop.
@@ -272,8 +280,8 @@ void Simulation::updatePlayer(float dt) {
     playerBombWanted_ = false;
     if (specialPressed && p.bombs > 0 && p.specialTimer <= 0.0f) {
         --p.bombs;
-        p.specialTimer = 0.9f;
-        p.invuln = std::max(p.invuln, 1.5f);
+        p.specialTimer = tuning::kSpecialDuration;
+        p.invuln = std::max(p.invuln, tuning::kSpecialInvuln);
         events_.push_back({SimEvent::Type::BombUsed, "bomb", 0, p.pos});
         emitSound("bomb");
         // Clear enemy bullets on screen, converting them to score.
@@ -1024,7 +1032,7 @@ void Simulation::resolveCollisions() {
                 else player_.weaponLevel = std::min(player_.weaponLevel + 1, 2);
                 break;
             case PowerupKind::Bomb:
-                player_.bombs = std::min(player_.bombs + 1, 9);
+                player_.bombs = std::min(player_.bombs + 1, tuning::kBombCap);
                 break;
             case PowerupKind::Life:
                 ++player_.lives;
@@ -1125,7 +1133,7 @@ void Simulation::damagePlayer() {
     if (p.hp <= 0) {
         p.alive = false;
         --p.lives;
-        p.respawnTimer = 1.8f;
+        p.respawnTimer = tuning::kRespawnDelay;
         explosions_.push_back({p.pos, 0.0f, 2, false});
         for (int k = 0; k < 24; ++k) {
             const Vec2 v = fromAngle(rng_.nextFloat() * 2.0f * kPi, rng_.range(30, 160));

@@ -106,6 +106,7 @@ struct DifficultyMods {
 
 struct PlayerStateView {
     Vec2 pos;
+    Vec2 vel;
     int lives = 0;
     int hp = 0;
     int maxHp = 0;
@@ -118,6 +119,9 @@ struct PlayerStateView {
     float respawnTimer = 0.0f;
     float bank = 0.0f;
 };
+
+// Shot collider sizes (definition in Simulation.cpp; shared with debug HUD).
+void shotSize(ShotKind kind, float& w, float& h);
 
 // The playing field. Owns all entities and advances the world by fixed
 // timesteps. No SDL, no audio, no rendering: side effects are surfaced as
@@ -150,6 +154,11 @@ public:
     BossView bossView() const;
 
     int entityCount() const { return liveCount_; }
+    int particleCount() const { return static_cast<int>(particles_.size()); }
+    // Maps a boss hull/component entity to its boss definition index.
+    int bossDefRef(const Entity& e) const {
+        return bosses_[static_cast<std::size_t>(e.bossInstance)].defRef;
+    }
     int projectileCount() const { return shotCount_; }
     Vec2 playerHitboxCenter() const { return player_.pos; }
 
