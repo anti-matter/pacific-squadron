@@ -1,5 +1,9 @@
 #include "game/Game.h"
 
+#ifdef WWII_FLOW_LOG
+#include <cstdio>
+#endif
+
 #include <algorithm>
 
 namespace ww {
@@ -17,6 +21,10 @@ bool Game::pressed(bool now, bool& prev) {
 }
 
 void Game::enterState(GameState s) {
+#ifdef WWII_FLOW_LOG
+    std::fprintf(stderr, "[flow] t=%.1f state -> %d\n", sim_.director().time(),
+                 static_cast<int>(s));
+#endif
     state_ = s;
     stateTimer_ = 0.0f;
     menuSel_ = 0;

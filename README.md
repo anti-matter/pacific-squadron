@@ -89,9 +89,14 @@ SDL_VIDEO_DRIVER=dummy ./build/wwii-fighter
 | -------------------- | ------------------------------------------------- |
 | `WWII_SMOKE`         | seconds to run, autopilot on, then exit 0         |
 | `WWII_SMOKE_BOSS`    | spawn the first boss definition after 2 s         |
+| `WWII_SMOKE_GOD`     | autopilot flies invincible (full-campaign runs)   |
 | `WWII_SMOKE_NOAUTO`  | disable autopilot (just run the title/timer)      |
 | `WWII_SMOKE_SHOT`    | path to write a PNG screenshot                    |
 | `WWII_SMOKE_SHOT_AT` | time (s) at which to capture it (default 10)      |
+
+Note: run smoke durations that cross a stage's scripted `bossTime` to
+exercise the natural boss-spawn path in stage scripts (stage 1: 86 s,
+stage 2: 94 s) — e.g. `WWII_SMOKE=95` covers stage 1's boss arrival.
 
 ## Controls (defaults, rebindable in Options)
 
