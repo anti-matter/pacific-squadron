@@ -308,6 +308,7 @@ void Application::updateMusic() {
     case GameState::Title:
     case GameState::Options:
     case GameState::HighScores:
+    case GameState::Help:
         want = "music_title";
         break;
     case GameState::StageIntro:
@@ -564,8 +565,9 @@ void Application::renderTitle() {
     renderer_.text("A WORLD WAR II ARCADE SHOOTER", 192.0f, 168.0f, 1,
                    Color::rgb(0x9AB0C8), true);
 
-    const char* items[] = {"START MISSION", "HIGH SCORES", "OPTIONS", "QUIT"};
-    for (int i = 0; i < 4; ++i) {
+    const char* items[] = {"START MISSION", "HIGH SCORES", "HELP", "OPTIONS",
+                           "QUIT"};
+    for (int i = 0; i < 5; ++i) {
         const bool sel = game_->menuSelection() == i;
         // Pad both sides so centering is exact; one-sided padding used to
         // shift unselected items right.
@@ -667,6 +669,44 @@ void Application::renderOptions() {
                    Color::rgb(0x9AB0C8), true);
 }
 
+void Application::renderHelp() {
+    const Color gold = Color::rgb(0xFFD860);
+    const Color white = Color::rgb(0xD8E0E8);
+    const Color dim = Color::rgb(0x9AB0C8);
+    renderer_.text("HELP", 192.0f, 36.0f, 3, gold, true);
+    renderer_.text("A 2D ARCADE SHOOTER OVER THE PACIFIC.", 192.0f, 86.0f, 1,
+                   white, true);
+    renderer_.text("FLY TWO MISSIONS, DOWN THE ENEMY FLEET AND", 192.0f, 102.0f,
+                   1, white, true);
+    renderer_.text("SINK ITS ARMED FLAGSHIPS TO WIN.", 192.0f, 118.0f, 1,
+                   white, true);
+
+    renderer_.text("CONTROLS", 192.0f, 152.0f, 2, gold, true);
+    renderer_.text("WASD / ARROWS   MOVE        STICK", 192.0f, 180.0f, 1,
+                   white, true);
+    renderer_.text("SPACE           FIRE        PAD A / RB", 192.0f, 196.0f, 1,
+                   white, true);
+    renderer_.text("SHIFT / CTRL    LOOP        PAD B / LB", 192.0f, 212.0f, 1,
+                   white, true);
+    renderer_.text("ESC / P         PAUSE       PAD START", 192.0f, 228.0f, 1,
+                   white, true);
+    renderer_.text("LOOP SPENDS 1 CHARGE: DASH AND CLEAR", 192.0f, 252.0f, 1,
+                   dim, true);
+    renderer_.text("ALL ENEMY FIRE ON SCREEN.", 192.0f, 268.0f, 1, dim, true);
+
+    renderer_.text("SUPPLY DROPS", 192.0f, 300.0f, 2, gold, true);
+    renderer_.text("P  UPGRADE CURRENT GUN", 192.0f, 328.0f, 1, white, true);
+    renderer_.text("S  SPREAD GUN     C  HEAVY CANNON", 192.0f, 344.0f, 1,
+                   white, true);
+    renderer_.text("R  ROCKETS        B  +1 LOOP CHARGE", 192.0f, 360.0f, 1,
+                   white, true);
+    renderer_.text("+  REPAIR 1 HULL  L  EXTRA LIFE", 192.0f, 376.0f, 1, white,
+                   true);
+
+    renderer_.text("ESC / B: BACK", 192.0f, 470.0f, 1,
+                   Color::rgb(0x7A90A8), true);
+}
+
 void Application::dimOverlay() {
     renderer_.fillRect(0, 0, kPlayW, kPlayH, Color{0, 0, 0, 110});
 }
@@ -684,6 +724,10 @@ void Application::renderFrame(float fps) {
         renderTitleBackground(game_->stateTimer());
         dimOverlay();
         renderHighScores();
+    } else if (state == GameState::Help) {
+        renderTitleBackground(game_->stateTimer());
+        dimOverlay();
+        renderHelp();
     } else {
         renderWorld();
         if (state == GameState::Playing || state == GameState::Paused ||

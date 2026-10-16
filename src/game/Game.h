@@ -16,6 +16,7 @@ enum class GameState : std::uint8_t {
     Title,
     Options,
     HighScores,
+    Help,
     StageIntro,
     Playing,
     Paused,

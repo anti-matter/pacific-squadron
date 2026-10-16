@@ -137,19 +137,24 @@ void Game::update(float dt) {
 
     switch (state_) {
     case GameState::Title: {
-        constexpr int kItems = 4;  // Start / High Scores / Options / Quit
+        constexpr int kItems = 5;  // Start / Scores / Help / Options / Quit
         if (up) menuSel_ = (menuSel_ + kItems - 1) % kItems;
         if (down) menuSel_ = (menuSel_ + 1) % kItems;
         if (confirm) {
             if (menuSel_ == 0) startGame();
             else if (menuSel_ == 1) enterState(GameState::HighScores);
-            else if (menuSel_ == 2) enterState(GameState::Options);
+            else if (menuSel_ == 2) enterState(GameState::Help);
+            else if (menuSel_ == 3) enterState(GameState::Options);
             else events_.push_back({GameEvent::Type::Quit, ""});
         }
         break;
     }
 
     case GameState::HighScores:
+        if (back || confirm) enterState(GameState::Title);
+        break;
+
+    case GameState::Help:
         if (back || confirm) enterState(GameState::Title);
         break;
 

@@ -21,6 +21,7 @@ static void tap(Game& game, void (*setter)(GameInput&, bool)) {
 static void setDown(GameInput& g, bool v) { g.down = v; }
 static void setUp(GameInput& g, bool v) { g.up = v; }
 static void setConfirm(GameInput& g, bool v) { g.confirm = v; }
+static void setBack(GameInput& g, bool v) { g.back = v; }
 
 void test_menu_quit() {
     GameData data;
@@ -28,16 +29,16 @@ void test_menu_quit() {
     CHECK(game.state() == GameState::Title);
     CHECK(game.menuSelection() == 0);
 
-    // Three downs land on QUIT (index 3 of 4).
-    for (int i = 0; i < 3; ++i) tap(game, setDown);
-    CHECK(game.menuSelection() == 3);
+    // Four downs land on QUIT (index 4 of 5).
+    for (int i = 0; i < 4; ++i) tap(game, setDown);
+    CHECK(game.menuSelection() == 4);
 
     // Wrapping: one more down cycles back to START MISSION, and one up
     // from there goes back to QUIT.
     tap(game, setDown);
     CHECK(game.menuSelection() == 0);
     tap(game, setUp);
-    CHECK(game.menuSelection() == 3);
+    CHECK(game.menuSelection() == 4);
 
     // Confirming QUIT emits a Quit event and stays on the title
     // (the application layer performs the actual shutdown).
@@ -49,9 +50,19 @@ void test_menu_quit() {
     CHECK(sawQuit);
     CHECK(game.state() == GameState::Title);
 
-    // The other entries still work: index 2 opens Options.
+    // The other entries still work: index 3 opens Options, index 2 Help.
     tap(game, setUp);
-    CHECK(game.menuSelection() == 2);
+    CHECK(game.menuSelection() == 3);
     tap(game, setConfirm);
     CHECK(game.state() == GameState::Options);
+    tap(game, setBack);
+    CHECK(game.state() == GameState::Title);
+    CHECK(game.menuSelection() == 0);
+    tap(game, setDown);
+    tap(game, setDown);
+    CHECK(game.menuSelection() == 2);
+    tap(game, setConfirm);
+    CHECK(game.state() == GameState::Help);
+    tap(game, setBack);
+    CHECK(game.state() == GameState::Title);
 }

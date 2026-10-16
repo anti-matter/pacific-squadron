@@ -40,6 +40,7 @@ private:
     void renderGameOver();
     void renderVictory();
     void renderHighScores();
+    void renderHelp();
     void renderOptions();
 
     bool loadSettings();
