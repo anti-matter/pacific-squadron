@@ -164,6 +164,13 @@ bool Input::loadBindings(const std::string& path) {
             b.padButtons = e["buttons"].get<std::vector<int>>();
         }
     }
+    // Saved bindings predate the B=Back default; there is no rebind UI, so
+    // the file is a snapshot of the old defaults. Ensure B is always bound
+    // to Back so the "ESC / B: BACK" UI text stays true after upgrades.
+    Binding& back = bindings_[static_cast<int>(Action::Back)];
+    const int bKey = static_cast<int>(SDL_GetKeyFromName("B"));
+    if (std::find(back.keys.begin(), back.keys.end(), bKey) == back.keys.end())
+        back.keys.push_back(bKey);
     return true;
 }
 
