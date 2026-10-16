@@ -690,17 +690,20 @@ void Application::renderHelp() {
                    white, true);
     renderer_.text("ESC / P         PAUSE       PAD START", 192.0f, 228.0f, 1,
                    white, true);
-    renderer_.text("LOOP SPENDS 1 CHARGE: DASH AND CLEAR", 192.0f, 252.0f, 1,
+    renderer_.text("PICKED-UP GUNS (S / C / R) REPLACE YOUR", 192.0f, 252.0f, 1,
                    dim, true);
-    renderer_.text("ALL ENEMY FIRE ON SCREEN.", 192.0f, 268.0f, 1, dim, true);
+    renderer_.text("GUN AND FIRE WITH SPACE. LOOP SPENDS 1", 192.0f, 266.0f, 1,
+                   dim, true);
+    renderer_.text("CHARGE: DASH AND CLEAR ALL ENEMY FIRE.", 192.0f, 280.0f, 1,
+                   dim, true);
 
-    renderer_.text("SUPPLY DROPS", 192.0f, 300.0f, 2, gold, true);
-    renderer_.text("P  UPGRADE CURRENT GUN", 192.0f, 328.0f, 1, white, true);
-    renderer_.text("S  SPREAD GUN     C  HEAVY CANNON", 192.0f, 344.0f, 1,
+    renderer_.text("SUPPLY DROPS", 192.0f, 306.0f, 2, gold, true);
+    renderer_.text("P  UPGRADE CURRENT GUN", 192.0f, 330.0f, 1, white, true);
+    renderer_.text("S  SPREAD GUN     C  HEAVY CANNON", 192.0f, 346.0f, 1,
                    white, true);
-    renderer_.text("R  ROCKETS        B  +1 LOOP CHARGE", 192.0f, 360.0f, 1,
+    renderer_.text("R  ROCKETS        B  +1 LOOP CHARGE", 192.0f, 362.0f, 1,
                    white, true);
-    renderer_.text("+  REPAIR 1 HULL  L  EXTRA LIFE", 192.0f, 376.0f, 1, white,
+    renderer_.text("+  REPAIR 1 HULL  L  EXTRA LIFE", 192.0f, 378.0f, 1, white,
                    true);
 
     renderer_.text("ESC / B: BACK", 192.0f, 470.0f, 1,

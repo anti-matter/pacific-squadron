@@ -73,7 +73,8 @@ void Input::setDefaults() {
     bindings_[static_cast<int>(Action::Pause)].padButtons = {SDL_GAMEPAD_BUTTON_START};
     bindings_[static_cast<int>(Action::Confirm)].keys = {key("Return"), key("Space"), key("Enter")};
     bindings_[static_cast<int>(Action::Confirm)].padButtons = {SDL_GAMEPAD_BUTTON_SOUTH};
-    bindings_[static_cast<int>(Action::Back)].keys = {key("Escape"), key("Backspace")};
+    bindings_[static_cast<int>(Action::Back)].keys = {key("Escape"),
+                                                     key("Backspace"), key("B")};
     bindings_[static_cast<int>(Action::Back)].padButtons = {SDL_GAMEPAD_BUTTON_EAST,
                                                             SDL_GAMEPAD_BUTTON_BACK};
     bindings_[static_cast<int>(Action::Debug)].keys = {key("F3")};
