@@ -25,7 +25,7 @@
     { "trigger": 24, "enemy": "tank", "formation": "staggered", "count": 3, "x": 150, "y": -30 },
     { "trigger": 28, "enemy": "bomber", "formation": "single", "count": 1, "x": 130, "y": -60, "hpMul": 1.15 },
     { "trigger": 30, "enemy": "interceptor", "formation": "v_line", "count": 4, "x": 250, "y": -40 },
-    { "trigger": 34, "enemy": "fighter_formation", "formation": "wedge", "count": 6, "x": 100, "y": -40, "movement": "harbor_loop" },
+    { "trigger": 34, "enemy": "fighter_formation", "formation": "wedge", "count": 6, "x": 22, "y": -40, "movement": "harbor_loop" },
     { "trigger": 38, "enemy": "destroyer", "formation": "h_line", "count": 2, "x": 192, "y": -40, "spacing": 140, "hpMul": 1.1 },
     { "trigger": 44, "enemy": "fighter_light", "formation": "arc", "count": 6, "x": 192, "y": -40, "movement": "arc_left" },
     { "trigger": 48, "enemy": "heavy_fighter", "formation": "v_formation", "count": 3, "x": 192, "y": -40, "rateMul": 0.85 },

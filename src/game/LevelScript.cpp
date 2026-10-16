@@ -33,14 +33,21 @@ void LevelDirector::update(float dt, std::vector<SpawnRequest>& out) {
         const FormationShape shape = formationShapeFromName(ev.formation);
         const bool grouped = shape != FormationShape::Single && ev.count > 1;
         const int formation = grouped ? nextFormationId_++ : -1;
-        const auto offsets = formationOffsets(shape, ev.count);
+        const auto offsets = formationOffsets(shape, ev.count, ev.spacing);
 
         for (int i = 0; i < ev.count; ++i) {
             SpawnRequest req;
             req.time = ev.trigger + static_cast<float>(i) * ev.delayBetween;
             req.enemyRef = ev.enemyRef;
-            req.pos = {ev.x + offsets[static_cast<std::size_t>(i)].x,
+            // Grouped members carry the ANCHOR position; the formation
+            // controller applies the per-member offsets. Baking them in
+            // here too used to double-apply offsets[0] and shift whole
+            // formations (partly) off-screen.
+            req.pos = grouped
+                ? Vec2{ev.x, ev.y}
+                : Vec2{ev.x + offsets[static_cast<std::size_t>(i)].x,
                        ev.y + offsets[static_cast<std::size_t>(i)].y};
+            req.spacing = ev.spacing;
             req.formation = formation;
             req.shape = shape;
             req.pathRef = ev.pathRef;

@@ -9,7 +9,7 @@
 namespace ww {
 
 Game::Game(const GameData& data) : data_(data), sim_(data, 0xC0FFEEu) {
-    highScores_.assign(8, 0);
+    highScores_.assign(8, HighScoreEntry{});
 }
 
 void Game::submitInput(const GameInput& in) { input_ = in; }
@@ -47,13 +47,72 @@ std::string Game::stageName() const {
 
 int Game::highScore() const {
     if (highScores_.empty()) return 0;
-    return *std::max_element(highScores_.begin(), highScores_.end());
+    int best = 0;
+    for (const auto& e : highScores_) best = std::max(best, e.score);
+    return best;
 }
 
-void Game::loadHighScores(std::vector<int> scores) {
+bool Game::scoreQualifies(int score) const {
+    if (score <= 0) return false;
+    if (highScores_.empty()) return true;
+    // Table is kept sorted descending, padded with zero-score rows.
+    return score > highScores_.back().score;
+}
+
+void Game::submitHighScore(const std::string& initials, int score) {
+    HighScoreEntry e;
+    e.score = score;
+    // Sanitize: up to 3 characters, upper-case A-Z only, padded with A.
+    std::string ini;
+    for (char c : initials) {
+        if (ini.size() < 3 && c >= 'A' && c <= 'Z')
+            ini += c;
+    }
+    if (ini.empty()) ini = "AAA";
+    while (ini.size() < 3) ini += 'A';
+    e.initials = ini;
+    highScores_.push_back(e);
+    std::sort(highScores_.begin(), highScores_.end(),
+              [](const HighScoreEntry& a, const HighScoreEntry& b) {
+                  return a.score > b.score;
+              });
+    highScores_.resize(8);
+    events_.push_back({GameEvent::Type::SaveHighScores, ""});
+}
+
+void Game::onTextInput(char c) {
+    if (state_ != GameState::EnterInitials) return;
+    if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
+    if (c < 'A' || c > 'Z' || initialsLen_ >= 3) return;
+    initials_[static_cast<std::size_t>(initialsLen_)] = c;
+    ++initialsLen_;
+    if (initialsLen_ >= 3) {
+        // Classic behaviour: the third letter commits the entry.
+        submitHighScore(initialsEntry(), pendingScore_);
+        enterState(GameState::HighScores);
+    }
+}
+
+void Game::onInitialsBackspace() {
+    if (state_ != GameState::EnterInitials) return;
+    if (initialsLen_ > 0) --initialsLen_;
+}
+
+std::string Game::initialsEntry() const {
+    std::string s;
+    for (int i = 0; i < 3; ++i)
+        s += i < initialsLen_ ? initials_[static_cast<std::size_t>(i)] : 'A';
+    return s;
+}
+
+void Game::loadHighScores(std::vector<HighScoreEntry> scores) {
     highScores_ = std::move(scores);
-    if (highScores_.size() < 8) highScores_.resize(8, 0);
-    std::sort(highScores_.begin(), highScores_.end(), std::greater<int>());
+    if (highScores_.size() < 8) highScores_.resize(8);
+    std::sort(highScores_.begin(), highScores_.end(),
+              [](const HighScoreEntry& a, const HighScoreEntry& b) {
+                  return a.score > b.score;
+              });
+    highScores_.resize(8);
 }
 
 bool Game::popEvent(GameEvent& out) {
@@ -79,21 +138,38 @@ void Game::startStage() {
 void Game::finishStage() {
     score_ = sim_.score();
     if (stageIndex_ + 1 < static_cast<int>(data_.stages.size())) {
+        const int carried = score_;
         ++stageIndex_;
         startStage();
+        // The simulation resets its score for the new stage; carry the
+        // previous stage's points across so the run total is preserved.
+        sim_.setScore(carried);
+        score_ = carried;
     } else {
-        enterState(GameState::Victory);
+        // Final mission complete: record the run (this path previously
+        // skipped high-score recording entirely).
+        if (scoreQualifies(score_)) {
+            pendingScore_ = score_;
+            pendingWasVictory_ = true;
+            initialsLen_ = 0;
+            enterState(GameState::EnterInitials);
+        } else {
+            enterState(GameState::Victory);
+        }
     }
 }
 
 void Game::gameOver() {
     score_ = sim_.score();
-    // Insert into the high-score table.
-    highScores_.push_back(score_);
-    std::sort(highScores_.begin(), highScores_.end(), std::greater<int>());
-    highScores_.resize(8);
-    events_.push_back({GameEvent::Type::SaveHighScores, ""});
-    enterState(GameState::GameOver);
+    if (scoreQualifies(score_)) {
+        // Arcade flow: enter initials, then show the table.
+        pendingScore_ = score_;
+        pendingWasVictory_ = false;
+        initialsLen_ = 0;
+        enterState(GameState::EnterInitials);
+    } else {
+        enterState(GameState::GameOver);
+    }
 }
 
 void Game::processSimEvents() {
@@ -237,11 +313,24 @@ void Game::update(float dt) {
         break;
 
     case GameState::Victory:
-        if ((confirm || back) && stateTimer_ > 1.2f) {
-            if (score_ >= highScore()) enterState(GameState::HighScores);
-            else enterState(GameState::Title);
+        if ((confirm || back) && stateTimer_ > 1.2f)
+            enterState(GameState::Title);
+        break;
+
+    case GameState::EnterInitials: {
+        if (stateTimer_ < 0.5f) break;  // swallow the pass-through press
+        if (back) {
+            // Skip recording; show the plain result screen.
+            enterState(pendingWasVictory_ ? GameState::Victory
+                                          : GameState::GameOver);
+            break;
+        }
+        if (confirm) {  // commit with the letters typed so far (padded)
+            submitHighScore(initialsEntry(), pendingScore_);
+            enterState(GameState::HighScores);
         }
         break;
+    }
     }
 }
 

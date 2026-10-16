@@ -53,6 +53,7 @@ struct Entity {
     float burstTimer = 0.0f;
     float rateMul = 1.0f;
     int forceDrop = -1;
+    bool enteredView = false;  // enemy has been inside the playfield
 
     MoveState move;
     int formation = -1;
@@ -144,6 +145,8 @@ public:
     const std::vector<ExplosionFx>& explosions() const { return explosions_; }
     PlayerStateView player() const { return playerView(); }    const LevelDirector& director() const { return director_; }
     int score() const { return score_; }
+    // Carry a run's score across a stage transition (startStage resets it).
+    void setScore(int s) { score_ = s > 0 ? s : 0; }
     bool playerAlive() const { return player_.alive; }
 
     struct BossView {

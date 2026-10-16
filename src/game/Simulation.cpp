@@ -182,7 +182,8 @@ void Simulation::update() {
                     // Count all queued members sharing this formation.
                     for (const auto& r : spawnQueue_)
                         if (r.formation == it->formation) ++f.totalCount;
-                    f.offsets = formationOffsets(it->shape, f.totalCount);
+                    f.offsets =
+                        formationOffsets(it->shape, f.totalCount, it->spacing);
                     f.anchor = it->pos;
                     const EnemyDef& def =
                         data_.enemies[static_cast<std::size_t>(it->enemyRef)];
@@ -352,6 +353,7 @@ int Simulation::spawnEnemy(int defRef, Vec2 pos, float hpMul, float rateMul,
     e.groundUnit = def.ground;
     e.rateMul = rateMul * mods_.rateMul;
     e.forceDrop = forceDrop;
+    e.enteredView = false;
     e.move = makeMoveState(def, mods_.speedMul, def.pathRef);
     if (pathRef >= 0 && pathRef < static_cast<int>(data_.paths.size())) {
         e.move.pathRef = pathRef;
@@ -550,6 +552,17 @@ void Simulation::updateEnemies(float dt) {
         } else {
             e.move.lastPos = e.pos;  // position owned by the formation controller
         }
+
+        // Visibility guard: once an enemy has entered the playfield it must
+        // never drift fully out of view while alive (data paths could push
+        // formations past the edge, leaving invisible shooters). Enemies
+        // still entering/leaving through the sides are unaffected until
+        // they have been on screen at least once.
+        if (!e.enteredView && e.pos.x > 0.0f && e.pos.x < kPlayW &&
+            e.pos.y > 0.0f && e.pos.y < kPlayH)
+            e.enteredView = true;
+        if (e.enteredView)
+            e.pos.x = clamp(e.pos.x, -24.0f, kPlayW + 24.0f);
 
         // Flash & smoke.
         e.flashTimer = std::max(0.0f, e.flashTimer - dt);

@@ -15,6 +15,7 @@ struct SpawnRequest {
     FormationShape shape = FormationShape::Single;
     int pathRef = -1;        // optional named-path override
     int slot = 0;            // index within formation
+    float spacing = 36.0f;   // formation member spacing
     float hpMul = 1.0f;
     float rateMul = 1.0f;
     float speedMul = 1.0f;

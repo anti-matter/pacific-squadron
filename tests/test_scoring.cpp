@@ -54,7 +54,27 @@ void test_scoring() {
 
     // High-score table handling through Game.
     Game game(data);
-    game.loadHighScores({1000, 500, 750});
+    game.loadHighScores({{"ABC", 1000}, {"DEF", 500}, {"GHI", 750}});
     CHECK(game.highScore() == 1000);
-    CHECK(game.highScores().size() >= 8);
+    CHECK(game.highScores().size() == 8);
+    CHECK(game.highScores()[0].initials == "ABC");
+    CHECK(game.highScores()[0].score == 1000);
+    CHECK(game.highScores()[1].initials == "GHI");
+    CHECK(game.highScores()[2].initials == "DEF");
+    CHECK(game.highScores()[7].score == 0);
+
+    // Qualification + insertion (the "29930 run" scenario).
+    CHECK(game.scoreQualifies(29930));
+    CHECK(!game.scoreQualifies(0));
+    game.submitHighScore("WW", 29930);  // short initials pad with A
+    CHECK(game.highScore() == 29930);
+    CHECK(game.highScores()[0].initials == "WWA");
+    CHECK(game.highScores()[0].score == 29930);
+    CHECK(game.highScores()[1].score == 1000);
+    CHECK(game.highScores().size() == 8);
+    bool sawSave = false;
+    GameEvent ev;
+    while (game.popEvent(ev))
+        if (ev.type == GameEvent::Type::SaveHighScores) sawSave = true;
+    CHECK(sawSave);
 }

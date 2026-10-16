@@ -17,6 +17,7 @@ enum class GameState : std::uint8_t {
     Options,
     HighScores,
     Help,
+    EnterInitials,
     StageIntro,
     Playing,
     Paused,
@@ -55,6 +56,12 @@ struct GameEvent {
 
 enum class Difficulty : std::uint8_t { Easy = 0, Normal = 1, Hard = 2 };
 
+// One high-score row: classic 3-letter arcade initials.
+struct HighScoreEntry {
+    std::string initials = "---";
+    int score = 0;
+};
+
 struct Settings {
     float masterVolume = 0.8f;
     float musicVolume = 0.6f;
@@ -77,8 +84,20 @@ public:
 
     int score() const { return score_; }
     int highScore() const;
-    const std::vector<int>& highScores() const { return highScores_; }
-    void loadHighScores(std::vector<int> scores);
+    const std::vector<HighScoreEntry>& highScores() const { return highScores_; }
+    void loadHighScores(std::vector<HighScoreEntry> scores);
+    // Insert a finished run into the table (sorted, top 8) and request a
+    // save. Used by the initials-entry flow.
+    void submitHighScore(const std::string& initials, int score);
+    // True if `score` would enter the table.
+    bool scoreQualifies(int score) const;
+
+    // EnterInitials state: text-entry of 3 letters (fed by the app layer).
+    void onTextInput(char c);            // 'A'..'Z' fills next slot
+    void onInitialsBackspace();          // delete last letter
+    std::string initialsEntry() const;   // current entry, padded with A
+    int initialsLength() const { return initialsLen_; }
+    int pendingScore() const { return pendingScore_; }
 
     Settings& settings() { return settings_; }
     void loadSettings(Settings s) { settings_ = s; }
@@ -112,7 +131,12 @@ private:
     int menuSel_ = 0;
     int stageIndex_ = 0;
     int score_ = 0;
-    std::vector<int> highScores_;
+    std::vector<HighScoreEntry> highScores_;
+    // EnterInitials bookkeeping.
+    int pendingScore_ = 0;
+    bool pendingWasVictory_ = false;
+    char initials_[3] = {'A', 'A', 'A'};
+    int initialsLen_ = 0;
     Settings settings_;
 
     GameInput input_{};

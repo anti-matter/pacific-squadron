@@ -152,12 +152,33 @@ void Application::loadHighScores() {
     if (!in) return;
     nlohmann::json j;
     try { in >> j; } catch (...) { return; }
-    if (j.is_array()) game_->loadHighScores(j.get<std::vector<int>>());
+    std::vector<HighScoreEntry> table;
+    if (j.is_array()) {
+        for (const auto& e : j) {
+            if (e.is_number_integer()) {  // legacy format: bare scores
+                HighScoreEntry h;
+                h.initials = "---";
+                h.score = e.get<int>();
+                table.push_back(std::move(h));
+            } else if (e.is_object() && e.contains("score") &&
+                       e["score"].is_number_integer()) {
+                HighScoreEntry h;
+                if (e.contains("initials") && e["initials"].is_string())
+                    h.initials = e["initials"].get<std::string>();
+                h.score = e["score"].get<int>();
+                table.push_back(std::move(h));
+            }
+        }
+    }
+    if (!table.empty()) game_->loadHighScores(std::move(table));
 }
 
 void Application::saveHighScores() {
+    nlohmann::json j = nlohmann::json::array();
+    for (const auto& e : game_->highScores())
+        j.push_back({{"initials", e.initials}, {"score", e.score}});
     std::ofstream out(prefPath("highscores.json"), std::ios::binary);
-    if (out) out << nlohmann::json(game_->highScores()).dump(2);
+    if (out) out << j.dump(2) << "\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -180,6 +201,22 @@ int Application::run() {
                 running_ = false;
                 break;
             case SDL_EVENT_KEY_DOWN:
+                // Initials entry intercepts letters/backspace before the
+                // action layer (B is also the Back action, so letters must
+                // not reach it on this screen).
+                if (game_->state() == GameState::EnterInitials &&
+                    !ev.key.repeat) {
+                    const SDL_Keycode kc = ev.key.key;
+                    if (kc >= SDLK_A && kc <= SDLK_Z) {
+                        game_->onTextInput(
+                            static_cast<char>('A' + (kc - SDLK_A)));
+                        break;
+                    }
+                    if (kc == SDLK_BACKSPACE) {
+                        game_->onInitialsBackspace();
+                        break;
+                    }
+                }
                 if (SDL_getenv("WWII_KEYLOG"))
                     SDL_Log("[keylog] down keycode=%u", (unsigned)ev.key.key);
                 input_.onKey(static_cast<int>(ev.key.key), true);
@@ -309,6 +346,7 @@ void Application::updateMusic() {
     case GameState::Options:
     case GameState::HighScores:
     case GameState::Help:
+    case GameState::EnterInitials:
         want = "music_title";
         break;
     case GameState::StageIntro:
@@ -333,7 +371,7 @@ void Application::updateMusic() {
 // ---------------------------------------------------------------------------
 void Application::renderTerrain(const StageDef* stage, float scrollY,
                                 float time) {
-    const int cols = 12, rows = 18;
+    const int cols = 12;
     const int wavePhase = static_cast<int>(time * 1.4f);
     // Tile choice for a plain (non-shore) terrain kind.
     auto tileForKind = [&](TerrainKind kind, std::uint32_t h) -> const char* {
@@ -350,10 +388,15 @@ void Application::renderTerrain(const StageDef* stage, float scrollY,
         }
         return "tile_ocean_a";
     };
-    for (int j = 0; j < rows; ++j) {
-        const float screenY = j * kTile;
-        const float worldY = scrollY + (kPlayH - screenY);
-        const int row = static_cast<int>(std::floor(worldY / kTile));
+    // Smooth (sub-tile) scrolling: iterate WORLD tile rows and compute each
+    // row's screen y from the exact scroll offset, instead of snapping rows
+    // to fixed 32px screen slots (which popped one tile at a time).
+    const float base = scrollY + kPlayH;   // screenY = base - worldY
+    const int rowFirst = static_cast<int>(std::floor(scrollY / kTile)) - 1;
+    const int rowLast = static_cast<int>(std::floor(base / kTile)) + 1;
+    for (int row = rowFirst; row <= rowLast; ++row) {
+        const float tileCenterY = base - (static_cast<float>(row) + 0.5f) * kTile;
+        const float worldY = (static_cast<float>(row) + 0.5f) * kTile;
         const TerrainKind kind = stage ? terrainAt(*stage, worldY)
                                        : TerrainKind::Ocean;
         for (int i = 0; i < cols; ++i) {
@@ -408,7 +451,9 @@ void Application::renderTerrain(const StageDef* stage, float scrollY,
                 texName = tileForKind(kind, h);
             }
             const int tid = renderer_.texture(texName);
-            renderer_.drawRegion(tid, 0, 0, 32, 32, i * kTile + 16.0f, screenY + 16.0f);
+            renderer_.drawRegion(tid, 0, 0, 32, 32,
+                                 static_cast<float>(i) * kTile + 16.0f,
+                                 tileCenterY);
         }
     }
 }
@@ -631,9 +676,9 @@ void Application::renderHighScores() {
     renderer_.text("HIGH SCORES", 192.0f, 100.0f, 3, Color::rgb(0xFFD860), true);
     const auto& hs = game_->highScores();
     for (std::size_t i = 0; i < hs.size() && i < 8; ++i) {
-        char buf[32];
-        std::snprintf(buf, sizeof(buf), "%d.  %07d", static_cast<int>(i) + 1,
-                      hs[i]);
+        char buf[40];
+        std::snprintf(buf, sizeof(buf), "%d.  %s  %07d", static_cast<int>(i) + 1,
+                      hs[i].initials.c_str(), hs[i].score);
         renderer_.text(buf, 192.0f, 160.0f + static_cast<float>(i) * 28.0f, 2,
                        i == 0 ? Color::rgb(0xFFD860) : Color::rgb(0xD8E0E8),
                        true);
@@ -710,6 +755,31 @@ void Application::renderHelp() {
                    Color::rgb(0x7A90A8), true);
 }
 
+void Application::renderEnterInitials() {
+    renderer_.text("NEW HIGH SCORE!", 192.0f, 150.0f, 3, Color::rgb(0xFFD860),
+                   true);
+    const std::string sc =
+        "SCORE " + std::to_string(game_->pendingScore());
+    renderer_.text(sc, 192.0f, 205.0f, 2, Color::rgb(0xF0F4F8), true);
+    renderer_.text("ENTER INITIALS", 192.0f, 250.0f, 2,
+                   Color::rgb(0x9AB0C8), true);
+    // Letters with a blinking cursor on the active slot.
+    const int len = game_->initialsLength();
+    const std::string entry = game_->initialsEntry();
+    for (int i = 0; i < 3; ++i) {
+        const bool filled = i < len;
+        const float x = 144.0f + static_cast<float>(i) * 48.0f;
+        const std::string g(1, filled ? entry[static_cast<std::size_t>(i)]
+                                      : '-');
+        const Color col = filled ? Color::rgb(0xFFD860) : Color::rgb(0x3A5068);
+        renderer_.text(g, x, 290.0f, 3, col, true);
+        if (i == len && std::fmod(game_->stateTimer() * 2.5f, 1.0f) < 0.6f)
+            renderer_.text("_", x, 316.0f, 3, Color::rgb(0xF0F4F8), true);
+    }
+    renderer_.text("TYPE A-Z   BACKSPACE TO FIX   ESC TO SKIP", 192.0f, 360.0f,
+                   1, Color::rgb(0x7A90A8), true);
+}
+
 void Application::dimOverlay() {
     renderer_.fillRect(0, 0, kPlayW, kPlayH, Color{0, 0, 0, 110});
 }
@@ -731,6 +801,10 @@ void Application::renderFrame(float fps) {
         renderTitleBackground(game_->stateTimer());
         dimOverlay();
         renderHelp();
+    } else if (state == GameState::EnterInitials) {
+        renderTitleBackground(game_->stateTimer());
+        dimOverlay();
+        renderEnterInitials();
     } else {
         renderWorld();
         if (state == GameState::Playing || state == GameState::Paused ||
