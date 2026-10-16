@@ -46,6 +46,7 @@ struct GameEvent {
         Sound,           // presentation sound by name
         SaveHighScores,  // persist the table now
         SaveSettings,
+        Quit,            // leave the application (main menu QUIT)
     };
     Type type;
     std::string name;

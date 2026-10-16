@@ -35,3 +35,4 @@ void test_scoring();
 void test_levelscript();
 void test_boss();
 void test_boss_natural_spawn();
+void test_menu_quit();

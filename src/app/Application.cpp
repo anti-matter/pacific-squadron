@@ -294,6 +294,9 @@ void Application::consumeGameEvents() {
             audio_.setSfxVolume(game_->settings().sfxVolume);
             renderer_.setFullscreen(game_->settings().fullscreen);
             break;
+        case GameEvent::Type::Quit:
+            running_ = false;
+            break;
         }
     }
 }
@@ -561,11 +564,13 @@ void Application::renderTitle() {
     renderer_.text("A WORLD WAR II ARCADE SHOOTER", 192.0f, 168.0f, 1,
                    Color::rgb(0x9AB0C8), true);
 
-    const char* items[] = {"START MISSION", "HIGH SCORES", "OPTIONS"};
-    for (int i = 0; i < 3; ++i) {
+    const char* items[] = {"START MISSION", "HIGH SCORES", "OPTIONS", "QUIT"};
+    for (int i = 0; i < 4; ++i) {
         const bool sel = game_->menuSelection() == i;
+        // Pad both sides so centering is exact; one-sided padding used to
+        // shift unselected items right.
         const std::string s = (sel ? "> " : "  ") + std::string(items[i]) +
-                              (sel ? " <" : "");
+                              (sel ? " <" : "  ");
         renderer_.text(s, 192.0f, 300.0f + i * 26.0f, 2,
                        sel ? gold : white, true);
     }
@@ -647,8 +652,9 @@ void Application::renderOptions() {
     std::snprintf(rows[5], 48, "BACK");
     for (int i = 0; i < 6; ++i) {
         const bool sel = game_->menuSelection() == i;
+        // Symmetric side padding so centering is exact (see renderTitle).
         const std::string t = (sel ? std::string("> ") : std::string("  ")) +
-                              std::string(rows[i]) + (sel ? " <" : "");
+                              std::string(rows[i]) + (sel ? " <" : "  ");
         renderer_.text(t, 192.0f, 150.0f + i * 32.0f, 2,
                        sel ? Color::rgb(0xFFD860) : Color::rgb(0xD8E0E8), true);
     }
