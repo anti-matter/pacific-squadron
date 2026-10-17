@@ -507,7 +507,39 @@ void Application::renderWorld() {
         if (e.kind != EKind::BossHull && e.kind != EKind::BossComponent) continue;
         const Color tint = e.flashTimer > 0.0f ? Color::rgb(0xFF9090)
                                                : Color::rgb(0xFFFFFF);
-        renderer_.draw(renderer_.texture(e.sprite), e.pos.x, e.pos.y, 1.0f, tint);
+        const bool hull = e.kind == EKind::BossHull;
+        const float frac = e.maxHp > 0
+            ? static_cast<float>(e.hp) / static_cast<float>(e.maxHp) : 1.0f;
+        std::string texName = e.sprite;
+        if (hull) {
+            // Damage-state sprites (present only for bosses that define them).
+            if (frac < 0.25f && renderer_.texture(e.sprite + "_wreck") >= 0)
+                texName = e.sprite + "_wreck";
+            else if (frac < 0.55f && renderer_.texture(e.sprite + "_dmg") >= 0)
+                texName = e.sprite + "_dmg";
+            // Wake foam trails behind the battleship's stern (screen-up).
+            if (texName.find("battleship") != std::string::npos)
+                renderer_.draw(renderer_.texture("wake_foam"),
+                               e.pos.x + std::sin(time * 2.0f) * 2.0f,
+                               e.pos.y - 108.0f);
+        }
+        renderer_.draw(renderer_.texture(texName), e.pos.x, e.pos.y, 1.0f, tint);
+        // Burning / smoking hull once the armor is broken.
+        if (hull && frac < 0.55f) {
+            const int fire = renderer_.texture("fire_puff");
+            const int smoke = renderer_.texture("smoke_puff");
+            const int n = frac < 0.25f ? 3 : 2;
+            for (int k = 0; k < n; ++k) {
+                const float fx = e.pos.x + static_cast<float>((k * 53) % 61) - 30.0f;
+                const float fy = e.pos.y + static_cast<float>((k * 37) % 41) - 20.0f;
+                const float fl = 0.75f + 0.35f * std::sin(time * 13.0f + k * 2.1f);
+                renderer_.drawScaled(fire, fx, fy, 14.0f * fl, 16.0f * fl);
+                const float rise = std::fmod(time * 22.0f + k * 31.0f, 62.0f);
+                renderer_.drawScaled(smoke, fx - rise * 0.15f, fy - 10.0f - rise,
+                                     12.0f + rise * 0.35f, 12.0f + rise * 0.35f,
+                                     1.0f - rise / 70.0f);
+            }
+        }
     }
 
     // Pass 4: enemy aircraft with shadows.

@@ -2,7 +2,7 @@
   {
     "name": "BATTLESHIP YAMASHIRO-CLASS",
     "hullSprite": "boss_battleship_hull",
-    "hullWidth": 160, "hullHeight": 96, "hullHp": 70, "hullScore": 3000,
+    "hullWidth": 96, "hullHeight": 124, "hullHp": 70, "hullScore": 3000,
     "entryY": 120, "hoverAmp": 56, "hoverFreq": 0.07,
     "deathEffect": 2, "defeatDrop": "powerup_p",
     "components": [
@@ -12,10 +12,10 @@
       { "name": "REAR TURRET", "sprite": "boss_big_turret", "offsetX": 0, "offsetY": -32,
         "width": 40, "height": 40, "hp": 18, "score": 500, "weapon": "b_big_turret",
         "fireInterval": 2.1, "firstFireDelay": 2.5 },
-      { "name": "AA GUN LEFT", "sprite": "boss_aa", "offsetX": -46, "offsetY": -2,
+      { "name": "AA GUN LEFT", "sprite": "boss_aa", "offsetX": -28, "offsetY": -2,
         "width": 24, "height": 24, "hp": 10, "score": 300, "weapon": "b_aa_flak",
         "fireInterval": 2.7, "firstFireDelay": 3.0 },
-      { "name": "AA GUN RIGHT", "sprite": "boss_aa", "offsetX": 46, "offsetY": -2,
+      { "name": "AA GUN RIGHT", "sprite": "boss_aa", "offsetX": 28, "offsetY": -2,
         "width": 24, "height": 24, "hp": 10, "score": 300, "weapon": "b_aa_flak",
         "fireInterval": 2.7, "firstFireDelay": 3.4 },
       { "name": "BRIDGE", "sprite": "boss_bridge", "offsetX": -22, "offsetY": -6,
