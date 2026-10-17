@@ -77,6 +77,17 @@ target_link_libraries(wwii-fighter PRIVATE
 target_compile_features(wwii-fighter PRIVATE cxx_std_20)
 target_set_warnings_runtime(wwii-fighter)
 
+# Build identity: git hash baked into the binary (debug startup log).
+add_custom_target(buildinfo ALL
+    COMMAND ${CMAKE_COMMAND}
+        -DREPO_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+        -DBUILD_INFO_HEADER=${CMAKE_CURRENT_BINARY_DIR}/generated/buildinfo.h
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenVersion.cmake
+    BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/generated/buildinfo.h
+    COMMENT "Generating buildinfo.h")
+add_dependencies(wwii-fighter buildinfo)
+target_include_directories(wwii-fighter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
+
 # Copy assets next to the binary so the game runs from the build dir.
 add_custom_command(TARGET wwii-fighter POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory

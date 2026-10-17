@@ -28,8 +28,14 @@ bool Renderer::init(const std::string& title, bool fullscreen) {
     // (wayland / x11 / dummy / ...) without needing env archaeology.
     SDL_Log("SDL video driver: %s",
             SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "(none)");
-    // Build stamp: lets us prove which compilation a window came from.
-    SDL_Log("PACIFIC SQUADRON build %s %s (flagship-art)", __DATE__, __TIME__);
+    // Build stamp: identifies exactly which commit the binary came from
+    // (a git hash, unlike __TIME__ which only reflects one TU's compile).
+#if __has_include("buildinfo.h")
+#include "buildinfo.h"
+    SDL_Log("PACIFIC SQUADRON build %s (built %s)", WW_BUILD_HASH, WW_BUILD_TS);
+#else
+    SDL_Log("PACIFIC SQUADRON build %s %s (no git info)", __DATE__, __TIME__);
+#endif
 #endif
     Uint32 flags = SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_RESIZABLE;
     if (fullscreen) flags |= SDL_WINDOW_FULLSCREEN;
