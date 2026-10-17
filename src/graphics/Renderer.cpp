@@ -28,6 +28,8 @@ bool Renderer::init(const std::string& title, bool fullscreen) {
     // (wayland / x11 / dummy / ...) without needing env archaeology.
     SDL_Log("SDL video driver: %s",
             SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "(none)");
+    // Build stamp: lets us prove which compilation a window came from.
+    SDL_Log("PACIFIC SQUADRON build %s %s (flagship-art)", __DATE__, __TIME__);
 #endif
     Uint32 flags = SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_RESIZABLE;
     if (fullscreen) flags |= SDL_WINDOW_FULLSCREEN;
