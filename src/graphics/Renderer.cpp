@@ -23,6 +23,12 @@ bool Renderer::init(const std::string& title, bool fullscreen) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
         return false;
     }
+#ifndef NDEBUG
+    // Startup portability report: confirms which backend SDL picked
+    // (wayland / x11 / dummy / ...) without needing env archaeology.
+    SDL_Log("SDL video driver: %s",
+            SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "(none)");
+#endif
     Uint32 flags = SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_RESIZABLE;
     if (fullscreen) flags |= SDL_WINDOW_FULLSCREEN;
     window_ = SDL_CreateWindow(title.c_str(), 1152, 1536, flags);
