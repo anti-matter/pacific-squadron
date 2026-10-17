@@ -5,6 +5,7 @@
 #include <string>
 
 #include "audio/Audio.h"
+#include "core/Rng.h"
 #include "game/Game.h"
 #include "graphics/Renderer.h"
 #include "input/Input.h"
@@ -26,6 +27,10 @@ public:
 private:
     GameInput buildGameInput() const;
     void consumeGameEvents();
+    // Routes a game sound event to the audio layer: explosion classes are
+    // resolved to a random timbre variant with pan (from world x) and
+    // playback-pitch jitter so repeats never sound identical.
+    void playGameSound(const std::string& name, Vec2 pos);
     void updateMusic();
 
     void renderFrame(float fps);
@@ -71,6 +76,7 @@ private:
     float flashT_ = 0.0f;        // white screen flash on boss detonation
     float armorFlashT_ = 0.0f;   // armor-break silhouette pulse
     int lastBossBoom_ = 0;
+    Rng boomRng_{0x800D5u};  // variant/pitch/pan variation for explosions
     int prevCompAlive_ = 0;
     float lastWorldTime_ = 0.0f;
     bool smokeBossSpawned_ = false;

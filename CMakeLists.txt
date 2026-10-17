@@ -108,7 +108,9 @@ add_executable(wwii_tests
     tests/test_levelscript.cpp
     tests/test_boss.cpp
     tests/test_ground_scroll.cpp
+    tests/test_sfx.cpp
     tests/test_menu.cpp)
 target_link_libraries(wwii_tests PRIVATE gamecore)
+target_sources(wwii_tests PRIVATE src/audio/ProceduralSfx.cpp)
 target_set_warnings(wwii_tests)
 add_test(NAME unit_tests COMMAND wwii_tests)

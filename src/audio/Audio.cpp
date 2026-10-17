@@ -1,6 +1,7 @@
 #include "audio/Audio.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 
 #include "core/MathUtil.h"
@@ -38,6 +39,8 @@ struct Audio::Impl {
     ma_engine engine{};
     ma_sound_group musicGroup{};
     ma_sound_group sfxGroup{};
+    ma_uint32 channels = 2;         // engine output channel count
+    float limGain[2] = {1.0f, 1.0f};  // limiter envelope (audio thread only)
     bool engineUp = false;
 
     std::unordered_map<std::string, SoundBuffer> buffers;
@@ -54,10 +57,19 @@ bool Audio::init() {
     impl_ = std::make_unique<Impl>();
     ma_engine_config ecfg = ma_engine_config_init();
     ecfg.sampleRate = 44100;  // matches our synthesized buffers
+    // Master safety limiter: stacked explosions (very common — strafing a
+    // destroyer while a wingman explodes) sum well past full scale. The
+    // engine's post-mix onProcess hook shapes the final master (music +
+    // sfx) with a fast-attack / musical-release gain follower plus a
+    // tanh soft-clip guard, instead of hard digital clipping. Pure
+    // miniaudio API + math: fully portable, no platform audio code.
+    ecfg.onProcess = &Audio::limiterProcess;
+    ecfg.pProcessUserData = impl_.get();
     if (ma_engine_init(&ecfg, &impl_->engine) != MA_SUCCESS) {
         impl_.reset();
         return false;
     }
+    impl_->channels = ecfg.channels ? ecfg.channels : 2;
     if (ma_sound_group_init(&impl_->engine, 0, nullptr, &impl_->musicGroup) != MA_SUCCESS ||
         ma_sound_group_init(&impl_->engine, 0, nullptr, &impl_->sfxGroup) != MA_SUCCESS) {
         ma_engine_uninit(&impl_->engine);
@@ -67,6 +79,32 @@ bool Audio::init() {
     impl_->engineUp = true;
     available_ = true;
     return true;
+}
+
+// Runs on the audio thread: allocation-free, branch-light.
+void Audio::limiterProcess(void* userData, float* frames,
+                           unsigned long long frameCount) {
+    auto* self = static_cast<Audio*>(userData);
+    if (!self || !self->impl_) return;
+    Impl* impl = self->impl_.get();
+    const int nch = static_cast<int>(impl->channels);
+    // One-pole smoothing coefficients for the gain envelope.
+    const float kAtk = 1.0f - std::exp(-1.0f / (44100.0f * 0.004f));   // 4 ms
+    const float kRel = 1.0f - std::exp(-1.0f / (44100.0f * 0.180f));   // 180 ms
+    const float kThresh = 0.794f;  // -2 dBFS
+    for (unsigned long long i = 0; i < frameCount; ++i) {
+        for (int c = 0; c < nch; ++c) {
+            float& s = frames[i * nch + c];
+            float& gv = impl->limGain[c & 1];
+            const float mag = std::fabs(s);
+            const float target = mag > kThresh ? kThresh / mag : 1.0f;
+            // Fast attack (gain must drop quickly), slow release.
+            gv += (target < gv ? kAtk : kRel) * (target - gv);
+            s *= gv;
+            // Final soft-clip guard for instantaneous inter-sample peaks.
+            if (s > 0.999f || s < -0.999f) s = std::tanh(s);
+        }
+    }
 }
 
 Audio::Audio() = default;
@@ -105,7 +143,8 @@ void Audio::registerBuffer(const std::string& name, SoundBuffer buf) {
     impl_->buffers[name] = std::move(buf);
 }
 
-void Audio::play(const std::string& name, float volume, bool allowConcurrent) {
+void Audio::play(const std::string& name, float volume, bool allowConcurrent,
+                 float pan, float pitch) {
     if (!impl_ || !impl_->engineUp) return;
     auto it = impl_->buffers.find(name);
     if (it == impl_->buffers.end() || it->second.samples.empty()) return;
@@ -119,7 +158,7 @@ void Audio::play(const std::string& name, float volume, bool allowConcurrent) {
         impl_->voices.clear();
     }
     // Cap concurrent voices.
-    if (impl_->voices.size() > 24) {
+    if (impl_->voices.size() > 32) {
         auto* oldest = impl_->voices.front();
         ma_sound_stop(&oldest->sound);
         ma_sound_uninit(&oldest->sound);
@@ -139,6 +178,9 @@ void Audio::play(const std::string& name, float volume, bool allowConcurrent) {
     }
     voice->ds = ds;
     ma_sound_set_volume(&voice->sound, clamp(volume, 0.0f, 1.0f));
+    ma_sound_set_pan(&voice->sound, clamp(pan, -1.0f, 1.0f));
+    if (pitch > 0.0f)
+        ma_sound_set_pitch(&voice->sound, pitch);
     ma_sound_start(&voice->sound);
     impl_->voices.push_back(voice);
 }

@@ -177,7 +177,7 @@ void Game::processSimEvents() {
     while (sim_.popEvent(ev)) {
         switch (ev.type) {
         case SimEvent::Type::Sound:
-            events_.push_back({GameEvent::Type::Sound, ev.name});
+            events_.push_back({GameEvent::Type::Sound, ev.name, ev.pos});
             break;
         case SimEvent::Type::BossDefeated:
             bossDefeated_ = true;

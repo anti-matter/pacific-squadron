@@ -52,6 +52,7 @@ struct GameEvent {
     };
     Type type;
     std::string name;
+    Vec2 pos{};  // world origin of the event (Sound events pan by x)
 };
 
 enum class Difficulty : std::uint8_t { Easy = 0, Normal = 1, Hard = 2 };

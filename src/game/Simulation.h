@@ -255,6 +255,14 @@ private:
     void emitSound(const char* name) {
         events_.push_back({SimEvent::Type::Sound, name, 0, {}});
     }
+    // Sound anchored at a world position (the audio layer pans by x).
+    void emitSoundAt(const char* name, Vec2 pos) {
+        events_.push_back({SimEvent::Type::Sound, name, 0, pos});
+    }
+    // Fire a sound `delay` seconds from now (boss finale secondaries).
+    void emitSoundDelayed(const char* name, Vec2 pos, float delay) {
+        soundQueue_.push_back({simTime_ + delay, name, pos});
+    }
     PlayerStateView playerView() const;
 
     const GameData& data_;
@@ -289,6 +297,11 @@ private:
     int score_ = 0;
     bool godMode_ = false;
     std::vector<SimEvent> events_;
+    // Deferred sounds (fused against an internal clock) for staggered
+    // detonation audio such as the boss death finale.
+    struct DelayedSound { float at; std::string name; Vec2 pos; };
+    std::vector<DelayedSound> soundQueue_;
+    float simTime_ = 0.0f;
     std::size_t eventRead_ = 0;
 };
 

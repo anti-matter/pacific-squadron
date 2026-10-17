@@ -334,12 +334,40 @@ GameInput Application::buildGameInput() const {
     return gi;
 }
 
+// Explosion classes resolve to a random timbre variant (independent synth
+// seeds), a pitch jitter of +-10% and a stereo pan derived from the world
+// x position, so repeated detonations never sound copy-pasted. Everything
+// else plays by name as before.
+void Application::playGameSound(const std::string& name, Vec2 pos) {
+    struct BoomClass { const char* base; int variants; float volume; };
+    static constexpr BoomClass kBooms[] = {
+        {"explosion_small", 3, 0.85f},
+        {"explosion_medium", 3, 0.95f},
+        {"explosion_large", 3, 1.00f},
+        {"explosion_boss", 2, 1.00f},
+    };
+    for (const BoomClass& k : kBooms) {
+        if (name == k.base) {
+            const int v = 1 + boomRng_.rangeInt(0, k.variants - 1);
+            // Unanchored events carry pos {0,0}: keep those centred.
+            const float pan = (pos.x == 0.0f && pos.y == 0.0f)
+                                  ? 0.0f
+                                  : clamp((pos.x - 192.0f) / 192.0f, -1.0f, 1.0f) * 0.55f;
+            const float pitch = 1.0f + boomRng_.range(-0.10f, 0.10f);
+            audio_.play(std::string(k.base) + "_" + std::to_string(v),
+                        k.volume, true, pan, pitch);
+            return;
+        }
+    }
+    audio_.play(name, 1.0f, name != "music");
+}
+
 void Application::consumeGameEvents() {
     GameEvent ev;
     while (game_->popEvent(ev)) {
         switch (ev.type) {
         case GameEvent::Type::Sound:
-            audio_.play(ev.name, 1.0f, ev.name != "music");
+            playGameSound(ev.name, ev.pos);
             break;
         case GameEvent::Type::SaveHighScores:
             saveHighScores();

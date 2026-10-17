@@ -133,6 +133,8 @@ void Simulation::startStage(int stageIndex, DifficultyMods mods) {
     spawnQueue_.clear();
     events_.clear();
     eventRead_ = 0;
+    soundQueue_.clear();
+    simTime_ = 0.0f;
     score_ = 0;
 
     player_ = PlayerInternal{};
@@ -173,6 +175,16 @@ void Simulation::setPlayerIntent(Vec2 moveDir, bool fire, bool special) {
 // ---------------------------------------------------------------------------
 void Simulation::update() {
     const float dt = kSimDt;
+    simTime_ += dt;
+    // Fire fused sounds that have come due.
+    for (auto it = soundQueue_.begin(); it != soundQueue_.end();) {
+        if (it->at <= simTime_) {
+            emitSoundAt(it->name.c_str(), it->pos);
+            it = soundQueue_.erase(it);
+        } else {
+            ++it;
+        }
+    }
 
     // Director -> spawn queue -> world.
     director_.update(dt, spawnQueue_);
@@ -795,10 +807,13 @@ void Simulation::updateBosses(float dt) {
             b.deathChain -= dt;
             if (b.deathChain <= 0.0f) {
                 b.deathChain = 0.14f;
-                explosions_.push_back({b.pos + Vec2{rng_.range(-90, 90),
-                                                    rng_.range(-56, 56)},
-                                       0.0f, rng_.chance(0.4f) ? 2 : 1, false});
-                emitSound("explosion");
+                const Vec2 bp = b.pos + Vec2{rng_.range(-90, 90), rng_.range(-56, 56)};
+                explosions_.push_back({bp, 0.0f, rng_.chance(0.4f) ? 2 : 1, false});
+                // Break-up sequence: vary class and variant (audio layer adds
+                // pan/pitch jitter) so the chain never sounds like a machine
+                // gun of identical pops.
+                emitSoundAt(rng_.chance(0.35f) ? "explosion_large" : "explosion_medium",
+                            bp);
                 // Blow remaining components as the ship breaks apart.
                 for (int ci : b.components) {
                     Entity& e = pool_[static_cast<std::size_t>(ci)];
@@ -818,6 +833,15 @@ void Simulation::updateBosses(float dt) {
                 explosions_.push_back({b.pos + Vec2{52, 26}, -0.20f, 3, false});
                 explosions_.push_back({b.pos + Vec2{-34, 34}, -0.42f, 2, false});
                 explosions_.push_back({b.pos + Vec2{38, -34}, -0.42f, 2, false});
+                // Finale audio: one massive layered detonation, with the
+                // staggered visual secondary blasts matched by fused booms
+                // at their own positions (the audio layer randomizes the
+                // variant, pitch and pan of each).
+                emitSoundAt("explosion_boss", b.pos);
+                emitSoundDelayed("explosion_large", b.pos + Vec2{-52, -26}, 0.20f);
+                emitSoundDelayed("explosion_large", b.pos + Vec2{52, 26}, 0.20f);
+                emitSoundDelayed("explosion_medium", b.pos + Vec2{-34, 34}, 0.42f);
+                emitSoundDelayed("explosion_medium", b.pos + Vec2{38, -34}, 0.42f);
                 if (b.hull >= 0) kill(b.hull);
                 spawnPowerup(data_.findPowerup(def.defeatDrop), b.pos);
                 events_.push_back({SimEvent::Type::BossDefeated, "boss_defeated",
@@ -1168,7 +1192,7 @@ void Simulation::resolveCollisions() {
                 explosions_.push_back({tm.pos, 0.0f, 1, false});
                 events_.push_back({SimEvent::Type::BossComponentDestroyed,
                                    cd.name, cd.score, tm.pos});
-                emitSound("explosion");
+                emitSoundAt("explosion_medium", tm.pos);
                 kill(p.target);
             } else if (targetKind == static_cast<int>(EKind::BossHull)) {
                 BossInstance& b = bosses_[static_cast<std::size_t>(bossInst)];
@@ -1177,7 +1201,7 @@ void Simulation::resolveCollisions() {
                 b.stateTimer = 0.0f;
                 b.deathChain = 0.0f;
                 addScore(bdef.hullScore);
-                events_.push_back({SimEvent::Type::Sound, "explosion_large", 0, {}});
+                emitSoundAt("explosion_large", tm.pos);
             }
         }
         if (consumeShot) kill(p.shot);
@@ -1201,6 +1225,7 @@ void Simulation::damagePlayer() {
         --p.lives;
         p.respawnTimer = tuning::kRespawnDelay;
         explosions_.push_back({p.pos, 0.0f, 2, false});
+        emitSoundAt("explosion_medium", p.pos);
         for (int k = 0; k < 24; ++k) {
             const Vec2 v = fromAngle(rng_.nextFloat() * 2.0f * kPi, rng_.range(30, 160));
             particles_.push_back({p.pos, v, rng_.range(0.4f, 0.9f), 0.9f,
@@ -1223,7 +1248,7 @@ void Simulation::killEnemy(int i, bool byPlayer) {
     }
     const bool overWater = !def.ground;  // simple effect placement heuristic
     explosions_.push_back({e.pos, 0.0f, def.deathEffect, overWater && def.deathEffect > 0});
-    emitSound(def.deathEffect >= 2 ? "explosion_large" : "explosion");
+    emitSoundAt(def.deathSound.c_str(), e.pos);
 
     // Debris/spark particles.
     const int puffs = 6 + def.deathEffect * 6;

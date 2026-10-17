@@ -60,6 +60,122 @@ SoundBuffer finish(std::vector<float>&& b) {
     return out;
 }
 
+// ---------------------------------------------------------------------------
+// Explosion synthesis engine.
+//
+// Physical explosions are built ONLY from noise layers — never from a clean
+// sine/oscillator — following the shape:
+//
+//   CRACK/THUMP  ->  filtered-noise BLAST  ->  low RUMBLE  ->  DEBRIS decay
+//
+// addBoom() is the workhorse: white noise through a one-pole lowpass whose
+// cutoff slides across the layer (bright crack -> dull body), shaped by a
+// fast-attack power-decay envelope. Optional slow amplitude wobble makes the
+// rumble organic without implying a musical pitch.
+// ---------------------------------------------------------------------------
+struct BoomLayer {
+    float t0, dur, amp, rise, decayPow, lpStart, lpEnd;
+};
+
+void addBoom(std::vector<float>& b, const BoomLayer& L, Rng& rng,
+             float tremolo = 0.0f, float tremHz = 0.0f) {
+    const int s0 = static_cast<int>(L.t0 * kRate);
+    const int n = static_cast<int>(L.dur * kRate);
+    while (static_cast<int>(b.size()) < s0 + n) b.push_back(0.0f);
+    float y = 0.0f;
+    for (int i = 0; i < n; ++i) {
+        const float tt = static_cast<float>(i) / static_cast<float>(n);
+        const float v = rng.nextFloat() * 2.0f - 1.0f;
+        const float k = L.lpStart + (L.lpEnd - L.lpStart) * tt;   // 1 = white
+        y += k * (v - y);
+        float env = (L.rise > 0.0f && tt < L.rise) ? tt / L.rise : 1.0f;
+        env *= std::pow(1.0f - tt, L.decayPow);
+        if (tremHz > 0.0f)
+            env *= 1.0f + tremolo * std::sin(kTau * tremHz * (L.t0 + tt * L.dur));
+        b[static_cast<std::size_t>(s0 + i)] += y * L.amp * env;
+    }
+}
+
+// Hard pressure transient: a few milliseconds of near-white noise with an
+// instantaneous attack plus a dull thump under it — physical impact, no ring.
+void addCrack(std::vector<float>& b, float t0, float amp, Rng& rng) {
+    addBoom(b, {t0, 0.012f, amp, 0.0f, 2.5f, 0.95f, 0.55f}, rng);
+    addBoom(b, {t0, 0.045f, amp * 0.55f, 0.0f, 3.5f, 0.35f, 0.10f}, rng);
+}
+
+// Sparse, irregular debris grains with a diminishing level.
+void addDebris(std::vector<float>& b, float t0, float window, int count,
+               float amp, Rng& rng) {
+    for (int j = 0; j < count; ++j) {
+        const float p = static_cast<float>(j) / static_cast<float>(count);
+        const float g0 = t0 + window * p * rng.range(0.55f, 1.35f) * 0.9f;
+        const float gAmp = amp * (1.0f - p) * rng.range(0.25f, 1.0f);
+        addBoom(b, {g0, rng.range(0.004f, 0.014f), gAmp, 0.0f,
+                    rng.range(2.0f, 5.0f), rng.range(0.45f, 0.9f), 0.2f}, rng);
+    }
+}
+
+// --- explosion classes ------------------------------------------------------
+// Each class layers: CRACK -> body blast (bright->dull) -> rumble -> debris.
+// Class identity comes from spectrum, layering and time structure, not just
+// amplitude: smalls are short and bass-light, larges carry long sub rumble,
+// the boss detonation adds staggered secondary blasts inside one buffer.
+
+void buildSmall(std::vector<float>& b, Rng& rng) {   // ~0.24 s
+    addCrack(b, 0.0f, rng.range(0.85f, 1.0f), rng);
+    addBoom(b, {0.001f, rng.range(0.11f, 0.15f), 0.65f, 0.0f, 2.2f, 0.30f, 0.08f}, rng);
+    addBoom(b, {0.004f, rng.range(0.18f, 0.26f), 0.35f, 0.01f, 1.8f, 0.07f, 0.02f}, rng);
+    // Light chest-thump: present but clearly bass-light vs. the medium class.
+    addBoom(b, {0.01f, rng.range(0.16f, 0.24f), 0.30f, 0.02f, 1.6f, 0.045f, 0.015f}, rng);
+    addDebris(b, 0.05f, 0.16f, rng.rangeInt(2, 4), 0.35f, rng);
+}
+
+void buildMedium(std::vector<float>& b, Rng& rng) {  // ~0.5 s
+    addCrack(b, 0.0f, 1.0f, rng);
+    addBoom(b, {0.001f, rng.range(0.16f, 0.22f), 0.85f, 0.0f, 2.0f, 0.42f, 0.10f}, rng);
+    addBoom(b, {0.006f, rng.range(0.30f, 0.42f), 0.45f, 0.015f, 1.6f, 0.10f, 0.03f}, rng);
+    addBoom(b, {0.03f, rng.range(0.34f, 0.46f), 0.35f, 0.04f, 1.4f, 0.045f, 0.015f},
+            rng, 0.30f, rng.range(6.0f, 11.0f));
+    addDebris(b, 0.08f, 0.38f, rng.rangeInt(6, 10), 0.4f, rng);
+}
+
+void buildLarge(std::vector<float>& b, Rng& rng) {   // ~1.0 s
+    addCrack(b, 0.0f, 1.0f, rng);
+    addBoom(b, {0.001f, rng.range(0.24f, 0.32f), 1.0f, 0.0f, 1.9f, 0.50f, 0.10f}, rng);
+    addBoom(b, {0.0f, 0.10f, 0.90f, 0.0f, 3.0f, 0.06f, 0.02f}, rng);      // sub thump
+    addBoom(b, {0.01f, rng.range(0.55f, 0.75f), 0.55f, 0.02f, 1.5f, 0.09f, 0.03f}, rng);
+    addBoom(b, {0.05f, rng.range(0.85f, 1.10f), 0.50f, 0.06f, 1.3f, 0.04f, 0.012f},
+            rng, 0.35f, rng.range(5.0f, 9.0f));
+    addDebris(b, 0.12f, 0.85f, rng.rangeInt(10, 16), 0.45f, rng);
+}
+
+void buildBoss(std::vector<float>& b, Rng& rng) {    // ~2.0-2.4 s
+    addCrack(b, 0.0f, 1.0f, rng);
+    addBoom(b, {0.001f, 0.40f, 1.0f, 0.0f, 1.8f, 0.55f, 0.10f}, rng);
+    addBoom(b, {0.0f, 0.14f, 1.0f, 0.0f, 3.0f, 0.05f, 0.015f}, rng);      // LF impact
+    addBoom(b, {0.17f, rng.range(0.30f, 0.38f), 0.60f, 0.005f, 1.9f,
+                rng.range(0.30f, 0.45f), 0.08f}, rng);                    // secondary 1
+    addBoom(b, {0.40f, rng.range(0.26f, 0.34f), 0.50f, 0.005f, 1.9f,
+                rng.range(0.25f, 0.40f), 0.07f}, rng);                    // secondary 2
+    addBoom(b, {0.03f, rng.range(1.60f, 2.00f), 0.60f, 0.05f, 1.25f, 0.045f, 0.012f},
+            rng, 0.40f, rng.range(4.0f, 8.0f));                           // long rumble
+    addBoom(b, {0.62f, 0.20f, 0.35f, 0.01f, 2.2f, 0.12f, 0.04f}, rng);    // secondary 3
+    addDebris(b, 0.20f, 1.70f, rng.rangeInt(16, 24), 0.50f, rng);
+}
+
+// Synthesize `n` variants per class from independent seeds so repeated
+// playback can switch timbres, not just pitch.
+SoundBuffer makeBoomVariant(void (*build)(std::vector<float>&, Rng&),
+                            std::uint64_t seed, float peak) {
+    Rng rng(seed);
+    std::vector<float> b;
+    build(b, rng);
+    normalize(b, peak);
+    SoundBuffer out;
+    out.samples = std::move(b);
+    return out;
+}
+
 // --- music sequencer -------------------------------------------------------
 struct MusicTrack {
     int bpm;
@@ -75,11 +191,13 @@ SoundBuffer renderMusic(const MusicTrack& tr) {
     std::vector<float> mix;
     Rng rng(0xBEEFu);
 
-    auto midiHz = [](int m) { return 440.0f * std::pow(2.0f, (m - 69) / 12.0f); };
+    auto midiHz = [](int m) {
+        return 440.0f * std::pow(2.0f, (static_cast<float>(m) - 69.0f) / 12.0f);
+    };
 
     for (int bar = 0; bar < static_cast<int>(tr.melody.size()); ++bar) {
         for (int s = 0; s < 16; ++s) {
-            const float t0 = (bar * 16 + s) * stepDur;
+            const float t0 = static_cast<float>(bar * 16 + s) * stepDur;
             const int mel = tr.melody[static_cast<std::size_t>(bar)][static_cast<std::size_t>(s)];
             if (mel > 0)
                 addSweep(mix, t0, stepDur * 1.6f, midiHz(mel), midiHz(mel), 0.20f,
@@ -95,7 +213,7 @@ SoundBuffer renderMusic(const MusicTrack& tr) {
         }
     }
     // Pad the loop boundary with a small tail.
-    while (static_cast<int>(mix.size()) < static_cast<int>((totalSteps + 8) * stepDur * kRate))
+    while (static_cast<int>(mix.size()) < static_cast<int>(static_cast<float>(totalSteps + 8) * stepDur * kRate))
         mix.push_back(0.0f);
     return finish(std::move(mix));
 }
@@ -115,16 +233,29 @@ void generateAllSfx(std::unordered_map<std::string, SoundBuffer>& out) {
       addNoise(b, 0, 0.06f, 0.08f, 35, 4, rng);
       out["enemy_gun"] = finish(std::move(b)); }
 
-    { std::vector<float> b;
-      addNoise(b, 0, 0.55f, 0.6f, 7, 6, rng);
-      addSweep(b, 0, 0.4f, 150, 40, 0.4f, 8, false);
-      out["explosion"] = finish(std::move(b)); }
-
-    { std::vector<float> b;
-      addNoise(b, 0, 1.1f, 0.8f, 4.5, 9, rng);
-      addSweep(b, 0, 0.9f, 110, 28, 0.6f, 5, false);
-      addSweep(b, 0.05f, 0.5f, 70, 22, 0.5f, 4, false);
-      out["explosion_large"] = finish(std::move(b)); }
+    // ---- explosion families ------------------------------------------------
+    // Four physical classes (noise layers, no pitched oscillators), several
+    // hand-seeded variants each. The audio layer picks a variant at random
+    // per play and adds pitch/pan jitter, so repeat detonations never sound
+    // identical. Peak levels set a loudness hierarchy with headroom for the
+    // master limiter (see Audio::init).
+    for (int v = 1; v <= 3; ++v) {
+        const auto vv = static_cast<std::uint64_t>(v);
+        out["explosion_small_" + std::to_string(v)] =
+            makeBoomVariant(buildSmall, 0x5EA11u + vv * 7717u, 0.60f);
+        out["explosion_medium_" + std::to_string(v)] =
+            makeBoomVariant(buildMedium, 0xB0000u + vv * 9931u, 0.75f);
+        out["explosion_large_" + std::to_string(v)] =
+            makeBoomVariant(buildLarge, 0xB1600u + vv * 12203u, 0.88f);
+    }
+    for (int v = 1; v <= 2; ++v) {
+        const auto vv = static_cast<std::uint64_t>(v);
+        out["explosion_boss_" + std::to_string(v)] =
+            makeBoomVariant(buildBoss, 0xB0550u + vv * 15731u, 0.95f);
+    }
+    // Legacy names keep working (older code paths / data references).
+    out["explosion"] = out["explosion_medium_1"];
+    out["explosion_large"] = out["explosion_large_1"];
 
     { std::vector<float> b;
       addSweep(b, 0, 0.28f, 320, 70, 0.4f, 10, true, 0.7f);
@@ -146,10 +277,13 @@ void generateAllSfx(std::unordered_map<std::string, SoundBuffer>& out) {
       addSweep(b, 0.06f, 0.09f, 990, 990, 0.28f, 14, true, 0.5f);
       out["menu_confirm"] = finish(std::move(b)); }
 
-    { std::vector<float> b;
-      addNoise(b, 0, 0.5f, 0.35f, 5, 3, rng);
-      addSweep(b, 0.35f, 0.7f, 120, 30, 0.6f, 5, false);
-      addNoise(b, 0.35f, 0.6f, 0.7f, 6, 8, rng);
+    { std::vector<float> b;   // LOOP BOMB: huge pressure-wave blast.
+      addCrack(b, 0.0f, 1.0f, rng);
+      addBoom(b, {0.0f, 0.12f, 1.0f, 0.0f, 2.6f, 0.05f, 0.015f}, rng);
+      addBoom(b, {0.001f, 0.30f, 0.90f, 0.0f, 1.8f, 0.50f, 0.10f}, rng);
+      addBoom(b, {0.02f, 0.70f, 0.50f, 0.03f, 1.4f, 0.08f, 0.025f}, rng);
+      addBoom(b, {0.06f, 0.90f, 0.45f, 0.06f, 1.2f, 0.04f, 0.012f}, rng, 0.35f, 6.0f);
+      addDebris(b, 0.10f, 0.80f, 12, 0.45f, rng);
       out["bomb"] = finish(std::move(b)); }
 
     { std::vector<float> b;

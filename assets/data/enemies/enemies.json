@@ -26,7 +26,8 @@
     "hitbox": [0, 0, 34, 22], "hp": 9, "score": 500, "speed": 42,
     "path": "straight", "angleDeg": 90,
     "weapon": "e_flak", "fireInterval": 3.4, "aimAtPlayer": false,
-    "dropChance": 0.38, "drop": "random", "deathEffect": 2, "smokeWhileDamaged": 0.6 },
+    "dropChance": 0.38, "drop": "random", "deathEffect": 2,
+    "deathSound": "explosion_medium", "smokeWhileDamaged": 0.6 },
 
   { "name": "aa_turret", "sprite": "turret_aa", "width": 32, "height": 32,
     "hitbox": [0, 0, 16, 14], "hp": 3, "score": 200, "speed": 0,
@@ -38,23 +39,24 @@
     "hitbox": [0, 0, 22, 16], "hp": 4, "score": 250, "speed": 15,
     "path": "drift_down", "ground": true,
     "weapon": "e_shell", "fireInterval": 2.5, "aimAtPlayer": true,
-    "dropChance": 0.16, "deathEffect": 1 },
+    "dropChance": 0.16, "deathEffect": 1, "deathSound": "explosion_medium" },
 
   { "name": "bunker", "sprite": "bunker", "width": 32, "height": 32,
     "hitbox": [0, 0, 20, 16], "hp": 8, "score": 300, "speed": 0,
     "path": "static", "ground": true,
     "weapon": "e_flak", "fireInterval": 3.2, "aimAtPlayer": false,
-    "dropChance": 0.26, "deathEffect": 2 },
+    "dropChance": 0.26, "deathEffect": 2, "deathSound": "explosion_medium" },
 
   { "name": "boat_patrol", "sprite": "boat_patrol", "width": 44, "height": 20,
     "hitbox": [0, 0, 26, 12], "hp": 2, "score": 150, "speed": 20,
     "path": "drift_down", "ship": true, "ground": true,
     "weapon": "e_light_gun", "fireInterval": 2.6, "aimAtPlayer": true,
-    "dropChance": 0.10, "deathEffect": 1 },
+    "dropChance": 0.10, "deathEffect": 1, "deathSound": "explosion_small" },
 
   { "name": "destroyer", "sprite": "ship_destroyer", "width": 64, "height": 30,
     "hitbox": [0, 0, 40, 18], "hp": 11, "score": 400, "speed": 14,
     "path": "drift_down", "ship": true, "ground": true,
     "weapon": "e_burst3", "fireInterval": 3.0, "aimAtPlayer": true,
-    "dropChance": 0.42, "drop": "random", "deathEffect": 2, "smokeWhileDamaged": 0.55 }
+    "dropChance": 0.42, "drop": "random", "deathEffect": 2,
+    "deathSound": "explosion_large", "smokeWhileDamaged": 0.55 }
 ]

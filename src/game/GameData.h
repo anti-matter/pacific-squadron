@@ -133,6 +133,7 @@ struct EnemyDef {
     DropKind dropKind = DropKind::Random;
     std::string dropWeapon = "";     // for WeaponSpecific drops
     int deathEffect = 1;             // 0 small, 1 medium, 2 large
+    std::string deathSound;          // explosion class name; empty = from deathEffect
     float smokeWhileDamaged = 0.5f;  // hp fraction below which it smokes
     int pathRef = -1;                // resolved at load
     int weaponRef = -1;              // resolved at load

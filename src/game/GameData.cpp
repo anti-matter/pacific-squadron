@@ -271,6 +271,9 @@ bool parseEnemiesJson(const std::string& text, std::vector<EnemyDef>& out, std::
             e.dropWeapon = drop;
         }
         e.deathEffect = clamp(getI(j, "deathEffect", 1), 0, 2);
+        e.deathSound = getS(j, "deathSound", "");
+        if (e.deathSound.empty())
+            e.deathSound = e.deathEffect >= 2 ? "explosion_large" : "explosion_small";
         e.smokeWhileDamaged = getF(j, "smokeWhileDamaged", e.smokeWhileDamaged);
         out.push_back(std::move(e));
     }
