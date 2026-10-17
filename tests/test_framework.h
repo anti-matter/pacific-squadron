@@ -37,4 +37,5 @@ void test_boss();
 void test_boss_natural_spawn();
 void test_boss_slot_pinning();
 void test_formation_edge_despawn();
+void test_ground_scroll_anchor();
 void test_menu_quit();

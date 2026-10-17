@@ -136,8 +136,12 @@ void Simulation::startStage(int stageIndex, DifficultyMods mods) {
     score_ = 0;
 
     player_ = PlayerInternal{};
-    if (stageIndex < static_cast<int>(data_.stages.size()))
+    if (stageIndex < static_cast<int>(data_.stages.size())) {
         director_.load(data_.stages[static_cast<std::size_t>(stageIndex)]);
+        // The difficulty scroll factor belongs to the world clock itself so
+        // terrain and ground units can never diverge (see LevelScript.h).
+        director_.setScrollMul(mods.speedMul);
+    }
 }
 
 PlayerStateView Simulation::playerView() const {
@@ -199,6 +203,7 @@ void Simulation::update() {
                         data_.enemies[static_cast<std::size_t>(it->enemyRef)];
                     f.lead = formationLeadState(def, it->shape, it->pos,
                                                 it->speedMul * mods_.speedMul);
+                    f.scrollsWithTerrain = def.ground;
                     if (it->pathRef >= 0 &&
                         it->pathRef < static_cast<int>(data_.paths.size())) {
                         f.lead.pathRef = it->pathRef;
@@ -495,6 +500,7 @@ void Simulation::spawnPowerup(int defRef, Vec2 pos) {
 // Formations
 // ---------------------------------------------------------------------------
 void Simulation::updateFormations(float dt) {
+    const float scroll = director_.scrollRate();
     for (auto& f : formations_) {
         if (f.done) continue;
         // Remove dead members.
@@ -525,7 +531,11 @@ void Simulation::updateFormations(float dt) {
                 f.lead.pathRef < static_cast<int>(data_.paths.size())
             ? &data_.paths[static_cast<std::size_t>(f.lead.pathRef)]
             : nullptr;
-        f.anchor = advanceMovement(f.lead, f.anchor, player_.pos, leadPath, 0.0f, dt);
+        // Ground/sea anchors are carried by the world scroll (Static =
+        // terrain-fixed installations, DriftDown = carried + own way);
+        // air groups fly their screen-space paths unscaled.
+        f.anchor = advanceMovement(f.lead, f.anchor, player_.pos, leadPath,
+                                   f.scrollsWithTerrain ? scroll : 0.0f, dt);
         // A formation that leaves the playfield escapes without bonus.
         if (f.anchor.y > kPlayH + 80.0f || f.anchor.y < -220.0f ||
             f.anchor.x < -120.0f || f.anchor.x > kPlayW + 120.0f) {
@@ -564,9 +574,9 @@ void Simulation::updateFormations(float dt) {
 // Enemies
 // ---------------------------------------------------------------------------
 void Simulation::updateEnemies(float dt) {
-    const float scroll = director_.stageDef() ? director_.stageDef()->scrollSpeed *
-                                                    mods_.speedMul
-                                              : 60.0f;
+    // Same clock the terrain is rendered from: guarantees solo ground
+    // units stay welded to the terrain at any difficulty.
+    const float scroll = director_.scrollRate();
     for (std::size_t i = 0; i < pool_.size(); ++i) {
         Entity& e = pool_[i];
         if (!e.alive || e.kind != EKind::Enemy) continue;

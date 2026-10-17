@@ -188,6 +188,10 @@ private:
         std::vector<int> members;
         bool done = false;
         bool escaped = false;
+        // Ground/sea groups ride the world scroll so they stay fixed on
+        // (or carried by) the terrain; air groups keep screen-relative
+        // paths authored in screen space.
+        bool scrollsWithTerrain = false;
     };
 
     struct BossInstance {

@@ -34,6 +34,13 @@ public:
 
     float time() const { return time_; }
     float scrollY() const { return scrollY_; }
+    // Difficulty-adjusted world scroll rate. THE single source of truth:
+    // terrain rendering (scrollY) and ground-unit drift must both use it,
+    // or installations visibly slide over the terrain.
+    void setScrollMul(float m) { scrollMul_ = m; }
+    float scrollRate() const {
+        return (stage_ ? stage_->scrollSpeed : 60.0f) * scrollMul_;
+    }
     bool bossDue() const { return bossDue_; }
     const StageDef* stageDef() const { return stage_; }
     int nextFormationId() { return nextFormationId_++; }
@@ -42,6 +49,7 @@ private:
     const StageDef* stage_ = nullptr;
     float time_ = 0.0f;
     float scrollY_ = 0.0f;
+    float scrollMul_ = 1.0f;
     bool bossDue_ = false;
     int nextFormationId_ = 1;
     std::vector<SpawnEvent> events_;  // local copy with fired flags

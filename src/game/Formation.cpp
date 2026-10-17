@@ -63,8 +63,14 @@ MoveState formationLeadState(const EnemyDef& def, FormationShape shape,
                              Vec2 anchor, float speedMul) {
     MoveState m;
     m.pattern = def.pattern;
-    if (m.pattern == MovePattern::Static || m.pattern == MovePattern::Formation)
+    if (def.ground) {
+        // Ground and sea groups ride the world scroll: the simulation
+        // passes the terrain scroll rate to their anchor, so Static means
+        // "welded to the terrain" and DriftDown means "carried + own way".
+        if (m.pattern == MovePattern::Formation) m.pattern = MovePattern::Static;
+    } else if (m.pattern == MovePattern::Static || m.pattern == MovePattern::Formation) {
         m.pattern = MovePattern::Straight;
+    }
     if (shape == FormationShape::SideWaveLeft) {
         m.pattern = MovePattern::SineSide;
         m.angleDeg = 0.0f;

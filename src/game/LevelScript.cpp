@@ -10,6 +10,7 @@ void LevelDirector::load(const StageDef& stage) {
     stage_ = &stage;
     time_ = 0.0f;
     scrollY_ = 0.0f;
+    scrollMul_ = 1.0f;
     bossDue_ = false;
     nextFormationId_ = 1;
     events_ = stage.events;
@@ -19,7 +20,7 @@ void LevelDirector::load(const StageDef& stage) {
 void LevelDirector::update(float dt, std::vector<SpawnRequest>& out) {
     if (!stage_) return;
     time_ += dt;
-    scrollY_ += stage_->scrollSpeed * dt;
+    scrollY_ += scrollRate() * dt;
 
     for (auto& ev : events_) {
         if (ev.fired || ev.trigger > time_) continue;
