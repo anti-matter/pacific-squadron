@@ -58,9 +58,23 @@ bool Application::init() {
         SDL_Log("Could not find an assets/ directory next to the executable or cwd.");
         assetDir_ = "assets";  // let data loading produce a clear error
     }
-    const char* pref = SDL_GetPrefPath("wwii-fighter", "wwii-fighter");
+    const char* pref = SDL_GetPrefPath("pacific-squadron", "pacific-squadron");
     prefDir_ = pref ? pref : ".";
-    SDL_free(const_cast<char*>(pref));
+    // First launch after the wwii-fighter rename: carry over saves/settings
+    // from the old preference folder (copied, never moved, so nothing is lost).
+    if (pref != nullptr) {
+        if (const char* oldPref = SDL_GetPrefPath("wwii-fighter", "wwii-fighter")) {
+            std::error_code ec;
+            if (fs::is_directory(oldPref, ec))
+                for (const auto& e : fs::directory_iterator(oldPref, ec))
+                    if (e.is_regular_file()) {
+                        const auto dst = fs::path(prefDir_) / e.path().filename();
+                        if (!fs::exists(dst, ec)) fs::copy_file(e.path(), dst, ec);
+                    }
+            SDL_free(const_cast<char*>(oldPref));
+        }
+        SDL_free(const_cast<char*>(pref));
+    }
 
     if (!renderer_.init("Pacific Squadron — a WWII arcade shooter", false))
         return false;

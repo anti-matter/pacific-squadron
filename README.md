@@ -37,7 +37,7 @@ are vendored in `third_party/`.
 ```sh
 cmake -S . -B build
 cmake --build build -j
-./build/wwii-fighter          # runs from the build dir; assets are copied there
+./build/pacific-squadron          # runs from the build dir; assets are copied there
 ```
 
 On Linux you may need the SDL3 development package, e.g. `apt install
@@ -51,7 +51,7 @@ The build produces:
 | Target          | What it is                                            |
 | --------------- | ----------------------------------------------------- |
 | `gamecore`      | SDL-free simulation/game logic static library         |
-| `wwii-fighter`  | the game (SDL presentation + audio + input)           |
+| `pacific-squadron`  | the game (SDL presentation + audio + input)           |
 | `wwii_tests`    | unit tests (also registered with CTest)               |
 
 Optional: `-DWWII_ENABLE_SANITIZERS=address,undefined` enables sanitizers.
@@ -78,12 +78,12 @@ The binary supports an env-var driven autopilot for automated validation
 
 ```sh
 # 25 s of gameplay on the dummy video/audio driver
-WWII_SMOKE=25 SDL_VIDEO_DRIVER=dummy SDL_AUDIODRIVER=dummy ./build/wwii-fighter
+WWII_SMOKE=25 SDL_VIDEO_DRIVER=dummy SDL_AUDIODRIVER=dummy ./build/pacific-squadron
 
 # spawn the stage boss after 2 s, grab a screenshot at t=25 s
 WWII_SMOKE=30 WWII_SMOKE_BOSS=1 \
 WWII_SMOKE_SHOT=/tmp/boss.png WWII_SMOKE_SHOT_AT=25 \
-SDL_VIDEO_DRIVER=dummy ./build/wwii-fighter
+SDL_VIDEO_DRIVER=dummy ./build/pacific-squadron
 ```
 
 | Variable             | Effect                                            |

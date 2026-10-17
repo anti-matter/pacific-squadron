@@ -62,7 +62,7 @@ target_set_warnings(gamecore)
 # ---------------------------------------------------------------------------
 # Game executable
 # ---------------------------------------------------------------------------
-add_executable(wwii-fighter
+add_executable(pacific-squadron
     src/main.cpp
     src/app/Application.cpp
     src/graphics/Renderer.cpp
@@ -72,10 +72,10 @@ add_executable(wwii-fighter
     src/audio/ProceduralSfx.cpp
     src/input/Input.cpp
     src/ui/Hud.cpp)
-target_link_libraries(wwii-fighter PRIVATE
+target_link_libraries(pacific-squadron PRIVATE
     gamecore third_party SDL3::SDL3 nlohmann_json)
-target_compile_features(wwii-fighter PRIVATE cxx_std_20)
-target_set_warnings_runtime(wwii-fighter)
+target_compile_features(pacific-squadron PRIVATE cxx_std_20)
+target_set_warnings_runtime(pacific-squadron)
 
 # Build identity: git hash baked into the binary (debug startup log).
 add_custom_target(buildinfo ALL
@@ -85,14 +85,14 @@ add_custom_target(buildinfo ALL
         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenVersion.cmake
     BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/generated/buildinfo.h
     COMMENT "Generating buildinfo.h")
-add_dependencies(wwii-fighter buildinfo)
-target_include_directories(wwii-fighter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
+add_dependencies(pacific-squadron buildinfo)
+target_include_directories(pacific-squadron PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
 # Copy assets next to the binary so the game runs from the build dir.
-add_custom_command(TARGET wwii-fighter POST_BUILD
+add_custom_command(TARGET pacific-squadron POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/assets
-        $<TARGET_FILE_DIR:wwii-fighter>/assets)
+        $<TARGET_FILE_DIR:pacific-squadron>/assets)
 
 # ---------------------------------------------------------------------------
 # Tests
