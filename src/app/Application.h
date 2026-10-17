@@ -67,6 +67,12 @@ private:
     float smokeElapsed_ = 0.0f;
     bool smokeBoss_ = false;
     int smokeBossIdx_ = 0;
+    // Boss presentation timers.
+    float flashT_ = 0.0f;        // white screen flash on boss detonation
+    float armorFlashT_ = 0.0f;   // armor-break silhouette pulse
+    int lastBossBoom_ = 0;
+    int prevCompAlive_ = 0;
+    float lastWorldTime_ = 0.0f;
     bool smokeBossSpawned_ = false;
     float smokeShotAt_ = 0.0f;
     bool smokeShotTaken_ = false;

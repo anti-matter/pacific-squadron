@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <fstream>
 
 #include <nlohmann/json.hpp>
@@ -467,6 +468,12 @@ void Application::renderWorld() {
     const float scrollY = sim.director().scrollY();
     const float time = sim.director().time();
 
+    // Decay presentation timers (clamped dt tolerates per-stage time resets).
+    const float dt = clamp(time - lastWorldTime_, 0.0f, 0.1f);
+    lastWorldTime_ = time;
+    flashT_ = std::max(0.0f, flashT_ - dt);
+    armorFlashT_ = std::max(0.0f, armorFlashT_ - dt);
+
     renderTerrain(stage, scrollY, time);
 
     auto findAnim = [&](const char* name) -> const AnimDef* {
@@ -477,6 +484,7 @@ void Application::renderWorld() {
     const AnimDef* exMed = findAnim("explosion_medium");
     const AnimDef* exBig = findAnim("explosion_large");
     const AnimDef* exXl = findAnim("explosion_xlarge");
+    const AnimDef* exBoss = findAnim("boss_explosion");
     const AnimDef* muzzleAd = findAnim("muzzle_flash");
     const int muzzleTex = renderer_.texture("muzzle_flash");
 
@@ -508,12 +516,15 @@ void Application::renderWorld() {
     }
 
     // Pass 3: boss hull & components (sprites carried on the entities).
+    int compAlive = 0;
+    bool hullAlive = false;
     for (const auto& e : sim.entities()) {
         if (!e.alive) continue;
         if (e.kind != EKind::BossHull && e.kind != EKind::BossComponent) continue;
         const Color tint = e.flashTimer > 0.0f ? Color::rgb(0xFF9090)
                                                : Color::rgb(0xFFFFFF);
         const bool hull = e.kind == EKind::BossHull;
+        if (hull) hullAlive = true; else ++compAlive;
         const float frac = e.maxHp > 0
             ? static_cast<float>(e.hp) / static_cast<float>(e.maxHp) : 1.0f;
         std::string texName = e.sprite;
@@ -534,6 +545,17 @@ void Application::renderWorld() {
                                e.pos.y - 140.0f);
         }
         renderer_.draw(renderer_.texture(texName), e.pos.x, e.pos.y, 1.0f, tint);
+        // Armor-break pulse: white silhouette flashes over the hull for a
+        // beat after the LAST destructible mount dies (hull now vulnerable).
+        if (hull && armorFlashT_ > 0.0f) {
+            const int flash = renderer_.texture(e.sprite + "_flash");
+            if (flash >= 0) {
+                const float p = armorFlashT_ / 0.85f;
+                const float a = 0.75f * p * (0.45f + 0.55f * std::sin(time * 24.0f));
+                if (a > 0.01f)
+                    renderer_.draw(flash, e.pos.x, e.pos.y, a);
+            }
+        }
         // Burning / smoking hull once the armor is broken.
         if (hull && frac < 0.70f) {
             const int fire = renderer_.texture("fire_puff");
@@ -550,6 +572,20 @@ void Application::renderWorld() {
                                      1.0f - rise / 70.0f);
             }
         }
+        // Sky Fortress: trailing engine smoke so damage reads per nacelle
+        // line rather than as generic hull fire.
+        if (hull && texName.find("bomber") != std::string::npos && frac < 0.60f) {
+            const int smoke = renderer_.texture("smoke_puff");
+            const int n = frac < 0.30f ? 4 : 2;
+            const float nx[4] = {-46.0f, 46.0f, -68.0f, 68.0f};
+            for (int k = 0; k < n; ++k) {
+                const float rise = std::fmod(time * 26.0f + k * 17.0f, 56.0f);
+                renderer_.drawScaled(smoke, e.pos.x + nx[k],
+                                     e.pos.y + 12.0f - rise * 0.8f,
+                                     9.0f + rise * 0.3f, 9.0f + rise * 0.3f,
+                                     0.8f - rise / 72.0f);
+            }
+        }
         // Wounded components sputter: small flame + smoke so the player can
         // read which mounts are about to die.
         if (!hull && frac < 0.5f) {
@@ -564,6 +600,10 @@ void Application::renderWorld() {
                                  0.9f - rise / 40.0f);
         }
     }
+    // Armored again? No: once the last mount dies, flash the hull once.
+    if (hullAlive && prevCompAlive_ > 0 && compAlive == 0)
+        armorFlashT_ = 0.85f;
+    prevCompAlive_ = hullAlive ? compAlive : 0;
 
     // Pass 4: enemy aircraft with shadows.
     for (const auto& e : sim.entities()) {
@@ -632,26 +672,62 @@ void Application::renderWorld() {
     }
 
     // Pass 8: explosions.
+    int bossBooms = 0;
     for (const auto& ex : sim.explosions()) {
+        if (ex.t < 0.0f) continue;   // fuse delay for staggered finales
         const std::string texName = ex.splash && ex.sizeClass == 0
             ? "splash_small"
             : (ex.splash ? "splash_large"
                : (ex.sizeClass == 0 ? "explosion_small"
                   : ex.sizeClass == 1 ? "explosion_medium"
-                  : ex.sizeClass == 3 ? "explosion_xlarge" : "explosion_large"));
+                  : ex.sizeClass == 3 ? "explosion_xlarge"
+                  : ex.sizeClass == 4 ? "boss_explosion" : "explosion_large"));
         const AnimDef* ad = ex.sizeClass == 0 ? exSmall
                            : ex.sizeClass == 1 ? exMed
-                           : ex.sizeClass == 3 ? exXl : exBig;
+                           : ex.sizeClass == 3 ? exXl
+                           : ex.sizeClass == 4 ? exBoss : exBig;
+        if (ex.sizeClass == 4) {
+            ++bossBooms;
+            // Smoke-hook: negative WWII_SMOKE_SHOT_AT captures N seconds
+            // after the detonation core appears (afterglow shot).
+            if (smokeShotAt_ < 0.0f && !smokeShotTaken_ && !smokeShotPath_.empty() &&
+                ex.t >= -smokeShotAt_) {
+                smokeShotTaken_ = true;
+                renderer_.requestScreenshot(smokeShotPath_);
+            }
+        }
         if (!ad) continue;
         const int tid = renderer_.texture(texName);
         const int frame = clamp(static_cast<int>(ex.t * ad->fps), 0, ad->frames - 1);
         renderer_.drawRegion(tid, frame * ad->frameW, 0, ad->frameW, ad->frameH,
                              ex.pos.x, ex.pos.y);
     }
+    // Boss detonation: new class-4 blast => full-playfield white flash.
+    if (bossBooms > lastBossBoom_) flashT_ = 0.45f;
+    lastBossBoom_ = bossBooms;
+    if (flashT_ > 0.0f) {
+        const float a = clamp(flashT_ / 0.45f, 0.0f, 1.0f);
+        renderer_.fillRect(0.0f, 0.0f, kPlayW, kPlayH,
+                           Color{255, 255, 255,
+                                 static_cast<std::uint8_t>(235.0f * a *
+                                                           std::sqrt(a))});
+    }
 }
 
 void Application::renderTitleBackground(float time) {
     renderTerrain(nullptr, time * 40.0f, time);
+    // Beauty shot: the battleship flagship idles at the bottom of the
+    // screen, half cropped by the frame edge, slowly swaying.
+    const int hull = renderer_.texture("boss_battleship_hull");
+    if (hull >= 0) {
+        const float bx = 192.0f + std::sin(time * 0.12f) * 30.0f;
+        const float by = 486.0f + std::sin(time * 0.5f) * 3.0f;
+        const int wake = renderer_.texture("wake_foam");
+        if (wake >= 0)
+            renderer_.draw(wake, bx + std::sin(time * 2.0f) * 2.0f, by - 140.0f,
+                           0.45f, Color::rgb(0x50687C));
+        renderer_.draw(hull, bx, by, 1.0f, Color::rgb(0x9AA4AC));
+    }
     // Decorative flyovers.
     const int en = renderer_.texture("enemy_fighter_light");
     for (int i = 0; i < 3; ++i) {

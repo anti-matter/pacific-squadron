@@ -3,6 +3,7 @@
   { "name": "explosion_medium",  "frameWidth": 40, "frameHeight": 40, "frames": 8, "fps": 13, "loop": false, "pivot": [20, 20] },
   { "name": "explosion_large",   "frameWidth": 64, "frameHeight": 64, "frames": 8, "fps": 10, "loop": false, "pivot": [32, 32] },
   { "name": "explosion_xlarge",  "frameWidth": 96, "frameHeight": 96, "frames": 8, "fps": 9, "loop": false, "pivot": [48, 48] },
+  { "name": "boss_explosion",    "frameWidth": 128, "frameHeight": 128, "frames": 6, "fps": 7, "loop": false, "pivot": [64, 64] },
   { "name": "splash_small",      "frameWidth": 24, "frameHeight": 24, "frames": 6, "fps": 12, "loop": false, "pivot": [12, 12] },
   { "name": "splash_large",      "frameWidth": 48, "frameHeight": 48, "frames": 6, "fps": 11, "loop": false, "pivot": [24, 24] },
   { "name": "muzzle_flash",      "frameWidth": 16, "frameHeight": 16, "frames": 3, "fps": 20, "loop": false, "pivot": [8, 8] }

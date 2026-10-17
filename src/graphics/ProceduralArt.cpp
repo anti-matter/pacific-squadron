@@ -53,6 +53,7 @@ struct PlaneStyle {
     std::uint32_t body, bodyHi, bodyDk;
     bool twin = false; // twin engine
     bool redDot = false; // enemy marking
+    bool amberMark = false; // elite accent (amber nose band + wingtip caps)
 };
 
 PixelBuf makePlane(const PlaneStyle& st, int bankRows = 0) {
@@ -168,6 +169,19 @@ PixelBuf makePlane(const PlaneStyle& st, int bankRows = 0) {
         // Red tail band.
         for (int x = -3; x <= 3; ++x)
             p.set(cx + x, tailY + 4, kRed);
+    }
+    // Elite accent: amber nose band + wingtip caps (matches the boss
+    // hazard-ring language so tough targets read instantly).
+    if (st.amberMark) {
+        const std::uint32_t amber = col(0xC8A83C);
+        for (int x = -3; x <= 3; ++x) p.set(cx + x, cy - st.len / 2 + 4, amber);
+        for (int side = -1; side <= 1; side += 2) {
+            const int tipShift = static_cast<int>(bankRows * side);
+            for (int d = half - 1; d <= half; ++d)
+                for (int c = 0; c < 3; ++c)
+                    if (p.get(cx + side * d, wingY + c + tipShift))
+                        p.set(cx + side * d, wingY + c + tipShift, amber);
+        }
     }
     return p;
 }
@@ -285,6 +299,103 @@ PixelBuf makeExplosionSheet(int frames, int frameSize, std::uint64_t seed,
     return sheet;
 }
 
+// ---------------------------------------------------------------------------
+// Boss-death explosion: 6 frames x 128px. White detonation core + expanding
+// shockwave ring + lobed fireball + flung embers, collapsing into smoke.
+// ---------------------------------------------------------------------------
+PixelBuf makeBossExplosionSheet() {
+    const int FR = 6, S = 128;
+    PixelBuf sheet(FR * S, S);
+    Rng rng(0xB5DEA1u);
+    for (int f = 0; f < FR; ++f) {
+        const float t = static_cast<float>(f) / (FR - 1);
+        const float cx = f * S + S * 0.5f, cy = S * 0.5f;
+        // Organic lobes, stable across frames.
+        float lobes[24];
+        {
+            Rng lr(0xB055u + static_cast<std::uint64_t>(f) * 13u);
+            for (int k = 0; k < 24; ++k) lobes[k] = lr.range(0.78f, 1.16f);
+        }
+        const float fireR = 16.0f + 46.0f * std::sqrt(t);
+        const float ringR = 12.0f + 104.0f * t;
+        const int ringA = static_cast<int>(t < 0.55f ? 235.0f * (1.0f - t / 0.55f) : 0.0f);
+        const int outA = t > 0.72f ? static_cast<int>(255.0f * (1.0f - t) / 0.28f) : 255;
+        for (int y = 0; y < S; ++y) {
+            for (int x = 0; x < S; ++x) {
+                const float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
+                const float dist = std::sqrt(dx * dx + dy * dy);
+                int ang = static_cast<int>((std::atan2(dy, dx) + 3.15f) / 6.29f * 24.0f) % 24;
+                const float edge = fireR * lobes[static_cast<std::size_t>(ang)];
+                std::uint32_t c = 0;
+                if (dist <= edge) {
+                    const float te = dist / std::max(0.01f, edge);
+                    if (t < 0.16f)
+                        c = te < 0.82f ? col(0xFFFFF8) : col(0xFFE070);
+                    else if (t < 0.42f)
+                        c = te < 0.34f ? col(0xFFFCE0)
+                          : te < 0.62f ? col(0xFFC23A)
+                          : te < 0.86f ? col(0xF0641E) : col(0xC23018);
+                    else if (t < 0.72f)
+                        c = te < 0.22f ? col(0xFFD870)
+                          : te < 0.55f ? col(0xE8681E)
+                          : te < 0.82f ? col(0x9A3414) : col(0x4A2A1C);
+                    else
+                        c = te < 0.40f ? col(0xA8481A, 220)
+                          : te < 0.72f ? col(0x5C3420, 200) : col(0x302A28, 170);
+                    // Inner heat shimmer keeps the core alive late.
+                    if (t >= 0.42f && t < 0.72f && te < 0.16f) c = col(0xFF8A30);
+                }
+                // Shockwave ring (outside the fireball).
+                if (ringA > 0 && dist > edge) {
+                    const float rd = std::abs(dist - ringR);
+                    if (rd <= 2.5f)
+                        c = col(t < 0.3f ? 0xFFFFFF : 0xFFCFA0,
+                                static_cast<std::uint8_t>(ringA * (1.0f - rd / 3.0f)));
+                }
+                if (c != 0) {
+                    if (outA < 255)  // global late fade
+                        c = col((c >> 8) & 0xFFFFFF,
+                                static_cast<std::uint8_t>((c & 0xFF) * outA / 255));
+                    sheet.set(x + f * S, y, c);
+                }
+            }
+        }
+        // Flung embers on the early frames.
+        if (t < 0.6f) {
+            for (int k = 0; k < 18; ++k) {
+                const float a = rng.range(0.0f, 6.28f);
+                const float d = fireR * rng.range(1.05f, 1.5f + t * 1.4f);
+                sheet.set(static_cast<int>(cx + std::cos(a) * d),
+                          static_cast<int>(cy + std::sin(a) * d),
+                          t < 0.3f ? col(0xFFF4C0, 240) : col(0xF07A20, 210));
+            }
+        }
+        // Late smoke clumps.
+        if (t > 0.6f) {
+            for (int k = 0; k < 16; ++k) {
+                const float a = k / 16.0f * 6.283f + 0.9f;
+                const float d = fireR * rng.range(0.6f, 1.05f);
+                const int sx = static_cast<int>(cx + std::cos(a) * d);
+                const int sy = static_cast<int>(cy + std::sin(a) * d) - (f - 3) * 5;
+                for (int q = 0; q < 4; ++q)
+                    sheet.set(sx + (q % 2), sy + (q / 2),
+                              col(0x34302E, static_cast<std::uint8_t>(120 - k * 4)));
+            }
+        }
+    }
+    return sheet;
+}
+
+// Pure-white silhouette of a sprite, used for the armor-break flash.
+PixelBuf toFlashSilhouette(const PixelBuf& src) {
+    PixelBuf p(src.w, src.h);
+    for (int y = 0; y < src.h; ++y)
+        for (int x = 0; x < src.w; ++x)
+            if (((src.get(x, y)) & 0xFF) > 170)   // skip water shadow/soft foam
+                p.set(x, y, col(0xFFFFFF, 235));
+    return p;
+}
+
 PixelBuf makeMuzzleSheet() {
     PixelBuf sheet(16 * 3, 16);
     for (int f = 0; f < 3; ++f) {
@@ -318,6 +429,13 @@ PixelBuf makeAATurret() {
         const float bx = cx + 13.5f * std::cos(a);
         const float by = 20.0f + 10.5f * std::sin(a);
         p.fillEllipse(bx, by, 2.6f, 2.0f, (k % 2) ? col(0x8A7A52) : col(0x6A5A3C));
+    }
+    // Amber hazard dashes (armored-target language shared with bosses).
+    for (int k = 0; k < 16; ++k) {
+        if (k % 2) continue;
+        const float a = k * 0.3927f + 0.15f;
+        p.set(static_cast<int>(cx + 14.5f * std::cos(a)),
+              static_cast<int>(20.5f + 11.5f * std::sin(a)), col(0xC8A83C));
     }
     // Concrete gun platform inside.
     p.fillEllipse(cx, 19, 10.0f, 8.0f, col(0x5C5C52));
@@ -1266,7 +1384,11 @@ bool generateAllArt(Renderer& r) {
         add("enemy_interceptor", p);
         add("enemy_interceptor_m", mirror);
     }
-    addDown("enemy_heavy_fighter", {40, 30, kEnGreen, shade(kEnGreen, 1.2f), kEnGreenDk, true});
+    {
+        PlaneStyle st{40, 30, kEnGreen, shade(kEnGreen, 1.2f), kEnGreenDk, true};
+        st.amberMark = true;   // elite heavy fighter
+        addDown("enemy_heavy_fighter", st);
+    }
     addDown("enemy_bomber", {56, 40, kEnGrey, shade(kEnGrey, 1.2f), kEnGreyDk, true});
 
     // Ground & sea.
@@ -1322,16 +1444,19 @@ bool generateAllArt(Renderer& r) {
     add("boss_battleship_hull_light", makeBattleshipHull(1));
     add("boss_battleship_hull_dmg", makeBattleshipHull(2));
     add("boss_battleship_hull_wreck", makeBattleshipHull(3));
+    add("boss_battleship_hull_flash", toFlashSilhouette(makeBattleshipHull(0)));
     add("boss_big_turret", makeBigTurret());
     add("boss_aa", makeBossAA());
     add("boss_bridge", makeBridge());
     add("boss_bomber_hull", makeGiantBomberHull(0));
     add("boss_bomber_hull_dmg", makeGiantBomberHull(2));
+    add("boss_bomber_hull_flash", toFlashSilhouette(makeGiantBomberHull(0)));
     add("boss_turret_small", makeTurretSmall());
     add("wake_foam", makeWake());
     add("fire_puff", makeFirePuff());
     add("smoke_puff", makeSmokePuff());
     add("explosion_xlarge", makeExplosionSheet(8, 96, 0xE5D4u, false));
+    add("boss_explosion", makeBossExplosionSheet());
 
     return true;
 }
@@ -1347,12 +1472,14 @@ void loadPngOverrides(Renderer& renderer, const std::string& assetDir) {
         "powerup_p", "powerup_spread", "powerup_cannon", "powerup_rocket",
         "powerup_bomb", "powerup_repair", "powerup_life",
         "explosion_small", "explosion_medium", "explosion_large",
-        "explosion_xlarge",
+        "explosion_xlarge", "boss_explosion",
         "splash_small", "splash_large", "muzzle_flash",
         "boss_battleship_hull", "boss_battleship_hull_light",
         "boss_battleship_hull_dmg",
-        "boss_battleship_hull_wreck", "boss_big_turret", "boss_aa",
+        "boss_battleship_hull_wreck", "boss_battleship_hull_flash",
+        "boss_big_turret", "boss_aa",
         "boss_bridge", "boss_bomber_hull", "boss_bomber_hull_dmg",
+        "boss_bomber_hull_flash",
         "wake_foam", "fire_puff", "smoke_puff",
     };
     for (const char* n : names) {

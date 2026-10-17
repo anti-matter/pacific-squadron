@@ -765,10 +765,14 @@ void Simulation::updateBosses(float dt) {
             }
             if (b.stateTimer > 2.6f) {
                 b.state = 3;
-                // Catastrophic finale: one XL blast core + two large flanks.
-                explosions_.push_back({b.pos, 0.0f, 3, false});
-                explosions_.push_back({b.pos + Vec2{-52, -26}, 0.0f, 2, false});
-                explosions_.push_back({b.pos + Vec2{52, 26}, 0.0f, 2, false});
+                // Catastrophic finale: boss-scale detonation core, then a
+                // staggered double-XL + large pair (negative t = fuse delay,
+                // the renderer holds delayed blasts off-screen).
+                explosions_.push_back({b.pos, 0.0f, 4, false});
+                explosions_.push_back({b.pos + Vec2{-52, -26}, -0.20f, 3, false});
+                explosions_.push_back({b.pos + Vec2{52, 26}, -0.20f, 3, false});
+                explosions_.push_back({b.pos + Vec2{-34, 34}, -0.42f, 2, false});
+                explosions_.push_back({b.pos + Vec2{38, -34}, -0.42f, 2, false});
                 if (b.hull >= 0) kill(b.hull);
                 spawnPowerup(data_.findPowerup(def.defeatDrop), b.pos);
                 events_.push_back({SimEvent::Type::BossDefeated, "boss_defeated",
@@ -871,7 +875,9 @@ void Simulation::updateEffects(float dt) {
     }
     for (auto it = explosions_.begin(); it != explosions_.end();) {
         it->t += dt;
-        const float dur = it->sizeClass == 0 ? 0.42f : (it->sizeClass == 1 ? 0.62f : 0.9f);
+        const float dur = it->sizeClass == 0 ? 0.42f
+                        : it->sizeClass == 1 ? 0.62f
+                        : it->sizeClass >= 4 ? 1.05f : 0.9f;
         if (it->t >= dur)
             it = explosions_.erase(it);
         else
@@ -1158,7 +1164,6 @@ void Simulation::damagePlayer() {
                                                     : rgba(90, 90, 90, 200),
                                   1.2f});
         }
-        emitSound("explosion_large");
         events_.push_back({SimEvent::Type::PlayerDied, "", p.lives, p.pos});
     }
 }
