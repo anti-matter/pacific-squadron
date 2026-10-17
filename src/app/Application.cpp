@@ -122,6 +122,8 @@ bool Application::init() {
             if (SDL_getenv("WWII_SMOKE_GOD"))
                 game_->sim().setGodMode(true);
         }
+        if (SDL_getenv("WWII_SMOKE_HELP"))
+            game_->debugSetState(GameState::Help);
     }
     // Debug HUD on from the environment (F3 still toggles in-game).
     if (SDL_getenv("WWII_DEBUG"))
@@ -890,42 +892,44 @@ void Application::renderHelp() {
                    white, true);
     renderer_.text("ESC / P         PAUSE       PAD START", 192.0f, 228.0f, 1,
                    white, true);
-    renderer_.text("PICKED-UP GUNS (S / C / R) REPLACE YOUR", 192.0f, 252.0f, 1,
+    renderer_.text("PICKED-UP GUNS REPLACE YOUR GUN", 192.0f, 252.0f, 1,
                    dim, true);
-    renderer_.text("GUN AND FIRE WITH SPACE. LOOP CLEARS ALL", 192.0f, 266.0f,
+    renderer_.text("AND FIRE WITH SPACE. LOOP CLEARS ALL", 192.0f, 266.0f,
                    1, dim, true);
     renderer_.text("ENEMY FIRE AND MAKES YOU INVINCIBLE", 192.0f, 280.0f, 1,
                    dim, true);
 
-    renderer_.text("SUPPLY DROPS", 192.0f, 306.0f, 2, gold, true);
-    // Two fixed columns; glyphs advance 6px at scale 1, so descriptions
-    // start at a constant x and line up vertically (centering whole
-    // lines made the columns drift).
+    renderer_.text("SUPPLY DROPS", 192.0f, 304.0f, 2, gold, true);
+    // Legend shows the actual pickup sprites next to each description
+    // (icons are center-anchored, descriptions start at a constant x so
+    // the columns line up vertically).
     struct LegendRow {
-        const char* key;
+        const char* sprite;
         const char* desc;
     };
     const LegendRow leftCol[] = {
-        {"P", "UPGRADE CURRENT GUN"},
-        {"S", "SPREAD GUN"},
-        {"R", "ROCKETS"},
-        {"+", "REPAIR 1 HULL"},
+        {"powerup_p", "UPGRADE CURRENT GUN"},
+        {"powerup_spread", "SPREAD GUN"},
+        {"powerup_rocket", "ROCKETS"},
+        {"powerup_repair", "REPAIR 1 HULL"},
     };
     const LegendRow rightCol[] = {
-        {"C", "HEAVY CANNON"},
-        {"B", "+1 LOOP CHARGE"},
-        {"L", "EXTRA LIFE"},
+        {"powerup_cannon", "HEAVY CANNON"},
+        {"powerup_bomb", "+1 LOOP CHARGE"},
+        {"powerup_life", "EXTRA LIFE"},
     };
-    constexpr float kKeyX1 = 66.0f, kDescX1 = 90.0f;
-    constexpr float kKeyX2 = 210.0f, kDescX2 = 234.0f;
+    constexpr float kIconX1 = 74.0f, kDescX1 = 94.0f;
+    constexpr float kIconX2 = 218.0f, kDescX2 = 238.0f;
     for (int i = 0; i < 4; ++i) {
-        const float y = 330.0f + static_cast<float>(i) * 16.0f;
-        renderer_.text(leftCol[i].key, kKeyX1, y, 1, gold, false);
+        const float y = 330.0f + static_cast<float>(i) * 20.0f;
+        const int tex = renderer_.texture(leftCol[i].sprite);
+        if (tex >= 0) renderer_.draw(tex, kIconX1, y);
         renderer_.text(leftCol[i].desc, kDescX1, y, 1, white, false);
     }
     for (int i = 0; i < 3; ++i) {
-        const float y = 330.0f + static_cast<float>(i) * 16.0f;
-        renderer_.text(rightCol[i].key, kKeyX2, y, 1, gold, false);
+        const float y = 330.0f + static_cast<float>(i) * 20.0f;
+        const int tex = renderer_.texture(rightCol[i].sprite);
+        if (tex >= 0) renderer_.draw(tex, kIconX2, y);
         renderer_.text(rightCol[i].desc, kDescX2, y, 1, white, false);
     }
 

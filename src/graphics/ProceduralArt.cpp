@@ -518,12 +518,180 @@ PixelBuf makeShip(int w, int h, bool destroyer) {
 // ---------------------------------------------------------------------------
 // Power-ups / bullets / misc
 // ---------------------------------------------------------------------------
-PixelBuf makePowerup(char letter, std::uint32_t c1, std::uint32_t c2) {
+// ---------------------------------------------------------------------------
+// Power-up icons (pass 2): each pickup is a distinct object silhouette —
+// bold fills, dark edges, top-left shine — instead of a lettered badge.
+// Canvas stays 22x22; core mass stays <= ~14px so the HUD bomb counter
+// (14px pitch) does not overlap.
+// ---------------------------------------------------------------------------
+
+// Weapon upgrade: brass bullet riding up through a green chevron arrow.
+PixelBuf makePowerupUpgrade() {
     PixelBuf p(22, 22);
-    p.fillEllipse(11, 11, 11, 11, c2);
-    p.fillEllipse(11, 11, 9.5f, 9.5f, c1);
-    p.fillEllipse(11, 9, 7, 6, shade(c1, 1.2f));
-    p.glyph(letter, 9, 8, kWhite);
+    p.fillEllipse(12.5f, 14.0f, 8.5f, 8.0f, col(0x000000, 60));   // soft shadow
+    // Green up-chevron, 2px thick, lit on the outer tips.
+    const std::uint32_t gr = col(0x38A038), grHi = col(0x8CD868), grDk = col(0x1E6E22);
+    for (int r = 0; r <= 4; ++r)
+        for (int sx : {-1, 1}) {
+            p.set(11 + sx * r, 3 + r, r == 0 ? grHi : gr);
+            p.set(11 + sx * r, 4 + r, grDk);
+        }
+    // Bullet along the shaft: copper tip, brass body, lit left rail.
+    p.fillEllipse(11.0f, 10.5f, 2.4f, 2.6f, col(0xE8A040));
+    p.set(10, 9, col(0xF8E0A8));
+    p.fillRect(9, 12, 5, 6, col(0xC8902C));
+    p.vline(9, 12, 17, col(0xE8C060));
+    p.vline(13, 12, 17, col(0x8A6420));
+    p.fillRect(9, 17, 5, 1, col(0x6E4E18));                        // base rim
+    return p;
+}
+
+// Spread gun: three bullets fanning out of a steel hub.
+PixelBuf makePowerupSpread() {
+    PixelBuf p(22, 22);
+    const double pi = 3.14159265358979;
+    auto bullet = [&](double angDeg) {
+        const double a = angDeg * pi / 180.0;
+        const double dx = std::sin(a), dy = -std::cos(a);
+        const double nx = -dy, ny = dx;                             // perpendicular
+        for (double t = 1.0; t <= 12.0; t += 0.5) {
+            const double x = 11.0 + dx * t, y = 17.0 + dy * t;
+            for (double w = -1.5; w <= 1.5; w += 0.5) {
+                std::uint32_t c;
+                if (t > 9.8) c = w <= 0 ? col(0xF0E0B0) : col(0xC07828);   // copper tip
+                else if (w < -0.5) c = col(0x1A1A1A);                      // outline
+                else if (w < 0.5) c = w < 0 ? col(0xE8C060) : col(0xC8902C);
+                else c = col(0x1A1A1A);                                    // outline
+                p.set(static_cast<int>(std::lround(x + nx * w)),
+                      static_cast<int>(std::lround(y + ny * w)), c);
+            }
+        }
+    };
+    bullet(-34.0); bullet(0.0); bullet(34.0);
+    // Hub plate with the classic magenta supply mark.
+    p.fillEllipse(11.0f, 17.0f, 4.5f, 4.0f, col(0x1A1A1A));
+    p.fillEllipse(11.0f, 16.5f, 3.5f, 3.0f, col(0x7C838A));
+    p.fillEllipse(11.0f, 16.0f, 2.0f, 1.8f, col(0xC868B8));
+    return p;
+}
+
+// Heavy cannon: fat armour-piercing shell, copper driving band, iron nose.
+PixelBuf makePowerupCannon() {
+    PixelBuf p(22, 22);
+    p.fillEllipse(12.0f, 12.0f, 7.0f, 8.5f, col(0x000000, 60));    // soft shadow
+    p.fillEllipse(11.0f, 10.0f, 6.0f, 8.0f, col(0x1A1D20));        // silhouette
+    p.fillEllipse(11.0f, 9.5f, 5.0f, 7.0f, col(0x6E757C));         // steel body
+    p.fillEllipse(11.0f, 6.0f, 3.5f, 3.5f, col(0x9AA2A8));         // hardened nose
+    p.set(9, 5, col(0xE8EEF2));                                    // nose shine
+    p.fillRect(6, 10, 10, 3, col(0xB87830));                       // copper band
+    p.vline(6, 10, 12, col(0xE0A858));
+    p.fillRect(6, 13, 10, 1, col(0x7A4E1C));                       // band seam
+    p.fillRect(8, 14, 6, 3, col(0x565C61));                        // tapered base
+    p.vline(15, 8, 13, col(0x2A2E33));                             // dark edge
+    return p;
+}
+
+// Rocket: red nose, grey body, swept fins, live exhaust flame.
+PixelBuf makePowerupRocket() {
+    PixelBuf p(22, 22);
+    // Nose cone.
+    for (int y = 2; y <= 4; ++y) {
+        const int hw = y - 2;
+        for (int x = 11 - hw; x <= 11 + hw; ++x)
+            p.set(x, y, x < 11 ? col(0xE85A48) : (x > 11 ? col(0x8A2418) : col(0xC23A2A)));
+    }
+    p.fillRect(9, 5, 5, 2, col(0xC23A2A));
+    p.vline(9, 5, 6, col(0xE85A48));
+    p.vline(13, 5, 6, col(0x8A2418));
+    // Body.
+    p.fillRect(9, 7, 5, 9, col(0xD8DCE0));
+    p.vline(9, 7, 15, col(0xF4F6F8));
+    p.vline(13, 7, 15, col(0x9AA0A6));
+    p.fillRect(9, 8, 5, 1, col(0x3A5A6E));                         // cockpit band
+    // Swept fins.
+    for (int i = 0; i < 4; ++i) {
+        p.set(8 - i, 12 + i, col(0x8A2A2A)); p.set(7 - i, 12 + i, col(0x1A1A1A));
+        p.set(14 + i, 12 + i, col(0x8A2A2A)); p.set(15 + i, 12 + i, col(0x1A1A1A));
+    }
+    p.fillRect(10, 15, 2, 1, col(0x565C61));                       // nozzle
+    // Exhaust: white core, gold, then orange.
+    p.fillRect(10, 16, 2, 2, col(0xFFF4C8));
+    p.fillRect(9, 18, 4, 2, col(0xFFB028));
+    p.set(10, 20, col(0xF06820, 220)); p.set(11, 20, col(0xF06820, 220));
+    p.set(11, 21, col(0xF06820, 120));
+    return p;
+}
+
+// Loop bomb: falling aerial bomb, steel-blue body, tail fins, yellow cap.
+PixelBuf makePowerupBomb() {
+    PixelBuf p(22, 22);
+    // Tail assembly (top).
+    p.fillRect(9, 1, 4, 1, col(0xC8A83C));                         // service cap
+    p.fillRect(8, 2, 6, 3, col(0x2E3338));
+    p.vline(11, 2, 4, col(0x6E757C));
+    p.set(7, 3, col(0x2E3338)); p.set(14, 3, col(0x2E3338));       // fin tips
+    // Body with dark outline ring so it reads over open water.
+    p.fillEllipse(11.0f, 10.0f, 5.0f, 6.5f, col(0x14181E));
+    p.fillEllipse(11.0f, 10.0f, 4.0f, 5.5f, col(0x5A7EC0));
+    p.vline(8, 7, 13, col(0x9AC0E8));                              // lit edge
+    p.vline(13, 6, 14, col(0x2E4468));                             // shaded edge
+    p.set(9, 7, col(0xF0F6FF));                                    // shine
+    // Nose cone (pointing down = falling).
+    for (int i = 0; i < 4; ++i) {
+        const int hw = std::max(0, 3 - i);
+        for (int x = -hw; x <= hw; ++x)
+            p.set(11 + x, 15 + i, x <= 0 ? col(0x4A6AA8) : col(0x2E4468));
+    }
+    p.set(11, 19, col(0x14181E));                                  // fuse tip
+    return p;
+}
+
+// Repair: white first-aid crate with red cross, handle and latches.
+PixelBuf makePowerupRepair() {
+    PixelBuf p(22, 22);
+    p.fillRect(6, 18, 12, 2, col(0x000000, 60));                   // ground shadow
+    // Carry handle.
+    p.fillRect(9, 3, 5, 3, col(0x3A4046));
+    p.fillRect(10, 4, 3, 2, col(0x10141A));
+    // Case.
+    p.fillRect(4, 5, 14, 12, col(0x1A1A1A));                       // outline
+    p.fillRect(5, 6, 12, 10, col(0xE8E8E0));
+    p.fillRect(5, 6, 12, 1, col(0xFFFFF8));                        // lid shine
+    p.fillRect(5, 9, 12, 1, col(0xB0B0A8));                        // lid seam
+    p.fillRect(5, 15, 12, 1, col(0x909088));                       // base shade
+    p.fillRect(6, 10, 1, 5, col(0xFFFFF8));                        // lit corner
+    // Red cross.
+    p.fillRect(10, 10, 3, 5, col(0xC23A2A));
+    p.fillRect(8, 11, 7, 3, col(0xC23A2A));
+    p.fillRect(10, 14, 3, 1, col(0x8A2418));                       // cross shade
+    p.fillRect(13, 11, 2, 1, col(0x8A2418));
+    // Latches on the seam.
+    p.fillRect(7, 9, 1, 2, col(0x60605A));
+    p.fillRect(15, 9, 1, 2, col(0x60605A));
+    return p;
+}
+
+// Extra life: miniature golden fighter, nose-up like the player.
+PixelBuf makePowerupLife() {
+    PixelBuf p(22, 22);
+    // Prop.
+    p.fillRect(7, 1, 8, 1, col(0x3A4046));
+    p.set(11, 1, col(0x101010));
+    // Wings with dark leading edge and white star dots.
+    p.fillRect(2, 9, 18, 3, col(0xD8B040));
+    p.fillRect(2, 9, 18, 1, col(0x8A6420));
+    p.fillRect(2, 11, 18, 1, col(0xF4DC88));
+    p.set(4, 10, kWhite); p.set(18, 10, kWhite);
+    // Fuselage.
+    p.fillRect(9, 3, 4, 14, col(0xF0D878));
+    p.vline(9, 3, 16, col(0xFFF4B0));
+    p.vline(12, 3, 16, col(0xB88E28));
+    p.fillRect(10, 3, 2, 2, col(0x8A6420));                        // spinner cowl
+    p.fillRect(10, 7, 2, 3, col(0x3A5A6E));                        // canopy
+    // Tailplane + rudder.
+    p.fillRect(6, 15, 10, 2, col(0xD8B040));
+    p.fillRect(6, 15, 10, 1, col(0x8A6420));
+    p.fillRect(10, 17, 2, 1, col(0xB88E28));
     return p;
 }
 
@@ -1435,13 +1603,13 @@ bool generateAllArt(Renderer& r) {
     add("flak_enemy", makeFlak());
 
     // Power-ups.
-    add("powerup_p", makePowerup('P', col(0x2E7A2E), col(0x183A18)));
-    add("powerup_spread", makePowerup('S', col(0x9A3A8A), col(0x4A1842)));
-    add("powerup_cannon", makePowerup('C', col(0x8A4A1A), col(0x42220C)));
-    add("powerup_rocket", makePowerup('R', col(0x8A2A2A), col(0x421414)));
-    add("powerup_bomb", makePowerup('B', col(0x2A4A9A), col(0x142242)));
-    add("powerup_repair", makePowerup('+', col(0xD8D8D0), col(0x606058)));
-    add("powerup_life", makePowerup('L', col(0xC23A2A), col(0x5A1A12)));
+    add("powerup_p", makePowerupUpgrade());
+    add("powerup_spread", makePowerupSpread());
+    add("powerup_cannon", makePowerupCannon());
+    add("powerup_rocket", makePowerupRocket());
+    add("powerup_bomb", makePowerupBomb());
+    add("powerup_repair", makePowerupRepair());
+    add("powerup_life", makePowerupLife());
 
     // Effects.
     add("explosion_small", makeExplosionSheet(8, 24, 0xE5A1u, false));

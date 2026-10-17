@@ -113,6 +113,8 @@ public:
 
     // Headless smoke-testing hook (used with WWII_SMOKE env).
     void debugStart() { startGame(); }
+    // Headless smoke capture: jump straight to a UI screen.
+    void debugSetState(GameState s) { state_ = s; }
 
 private:
     void enterState(GameState s);
