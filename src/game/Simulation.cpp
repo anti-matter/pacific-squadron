@@ -750,8 +750,8 @@ void Simulation::updateBosses(float dt) {
             b.deathChain -= dt;
             if (b.deathChain <= 0.0f) {
                 b.deathChain = 0.14f;
-                explosions_.push_back({b.pos + Vec2{rng_.range(-70, 70),
-                                                    rng_.range(-40, 40)},
+                explosions_.push_back({b.pos + Vec2{rng_.range(-90, 90),
+                                                    rng_.range(-56, 56)},
                                        0.0f, rng_.chance(0.4f) ? 2 : 1, false});
                 emitSound("explosion");
                 // Blow remaining components as the ship breaks apart.
@@ -765,9 +765,10 @@ void Simulation::updateBosses(float dt) {
             }
             if (b.stateTimer > 2.6f) {
                 b.state = 3;
-                explosions_.push_back({b.pos, 0.0f, 2, false});
-                explosions_.push_back({b.pos + Vec2{-40, -20}, 0.0f, 2, false});
-                explosions_.push_back({b.pos + Vec2{40, 20}, 0.0f, 2, false});
+                // Catastrophic finale: one XL blast core + two large flanks.
+                explosions_.push_back({b.pos, 0.0f, 3, false});
+                explosions_.push_back({b.pos + Vec2{-52, -26}, 0.0f, 2, false});
+                explosions_.push_back({b.pos + Vec2{52, 26}, 0.0f, 2, false});
                 if (b.hull >= 0) kill(b.hull);
                 spawnPowerup(data_.findPowerup(def.defeatDrop), b.pos);
                 events_.push_back({SimEvent::Type::BossDefeated, "boss_defeated",

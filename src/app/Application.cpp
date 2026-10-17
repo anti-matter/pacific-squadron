@@ -93,6 +93,9 @@ bool Application::init() {
     if (const char* s = SDL_getenv("WWII_SMOKE")) {
         smokeTime_ = SDL_atof(s);
         smokeBoss_ = SDL_getenv("WWII_SMOKE_BOSS") != nullptr;
+        if (const char* bi = SDL_getenv("WWII_SMOKE_BOSS"))
+            smokeBossIdx_ = SDL_atoi(bi) - 1;  // ordinal: 1 -> first boss, 2 -> second
+        if (smokeBossIdx_ < 0) smokeBossIdx_ = 0;
         if (const char* shot = SDL_getenv("WWII_SMOKE_SHOT")) {
             smokeShotPath_ = shot;
             smokeShotAt_ = SDL_getenv("WWII_SMOKE_SHOT_AT")
@@ -263,8 +266,8 @@ int Application::run() {
                 smokeElapsed_ += kSimDt;
                 if (smokeBoss_ && !smokeBossSpawned_ && smokeElapsed_ > 2.0f) {
                     smokeBossSpawned_ = true;
-                    if (!data_.bosses.empty())
-                        game_->sim().debugSpawnBoss(0);
+                    if (smokeBossIdx_ < static_cast<int>(data_.bosses.size()))
+                        game_->sim().debugSpawnBoss(smokeBossIdx_);
                 }
                 if (smokeShotAt_ > 0.0f && !smokeShotTaken_ &&
                     smokeElapsed_ >= smokeShotAt_) {
@@ -473,6 +476,9 @@ void Application::renderWorld() {
     const AnimDef* exSmall = findAnim("explosion_small");
     const AnimDef* exMed = findAnim("explosion_medium");
     const AnimDef* exBig = findAnim("explosion_large");
+    const AnimDef* exXl = findAnim("explosion_xlarge");
+    const AnimDef* muzzleAd = findAnim("muzzle_flash");
+    const int muzzleTex = renderer_.texture("muzzle_flash");
 
     const int shadowTex = renderer_.texture("shadow_ell");
 
@@ -513,22 +519,26 @@ void Application::renderWorld() {
         std::string texName = e.sprite;
         if (hull) {
             // Damage-state sprites (present only for bosses that define them).
-            if (frac < 0.25f && renderer_.texture(e.sprite + "_wreck") >= 0)
+            // Thresholds are generous because a stripped hull dies quickly:
+            // each state must be on screen for a readable beat.
+            if (frac < 0.35f && renderer_.texture(e.sprite + "_wreck") >= 0)
                 texName = e.sprite + "_wreck";
-            else if (frac < 0.55f && renderer_.texture(e.sprite + "_dmg") >= 0)
+            else if (frac < 0.70f && renderer_.texture(e.sprite + "_dmg") >= 0)
                 texName = e.sprite + "_dmg";
+            else if (frac < 0.85f && renderer_.texture(e.sprite + "_light") >= 0)
+                texName = e.sprite + "_light";
             // Wake foam trails behind the battleship's stern (screen-up).
             if (texName.find("battleship") != std::string::npos)
                 renderer_.draw(renderer_.texture("wake_foam"),
                                e.pos.x + std::sin(time * 2.0f) * 2.0f,
-                               e.pos.y - 108.0f);
+                               e.pos.y - 140.0f);
         }
         renderer_.draw(renderer_.texture(texName), e.pos.x, e.pos.y, 1.0f, tint);
         // Burning / smoking hull once the armor is broken.
-        if (hull && frac < 0.55f) {
+        if (hull && frac < 0.70f) {
             const int fire = renderer_.texture("fire_puff");
             const int smoke = renderer_.texture("smoke_puff");
-            const int n = frac < 0.25f ? 3 : 2;
+            const int n = frac < 0.35f ? 3 : 2;
             for (int k = 0; k < n; ++k) {
                 const float fx = e.pos.x + static_cast<float>((k * 53) % 61) - 30.0f;
                 const float fy = e.pos.y + static_cast<float>((k * 37) % 41) - 20.0f;
@@ -539,6 +549,19 @@ void Application::renderWorld() {
                                      12.0f + rise * 0.35f, 12.0f + rise * 0.35f,
                                      1.0f - rise / 70.0f);
             }
+        }
+        // Wounded components sputter: small flame + smoke so the player can
+        // read which mounts are about to die.
+        if (!hull && frac < 0.5f) {
+            const int fire = renderer_.texture("fire_puff");
+            const int smoke = renderer_.texture("smoke_puff");
+            const float fl = 0.7f + 0.3f * std::sin(time * 15.0f + e.pos.x);
+            renderer_.drawScaled(fire, e.pos.x + 3.0f, e.pos.y - 3.0f,
+                                 9.0f * fl, 10.0f * fl);
+            const float rise = std::fmod(time * 26.0f + e.pos.y, 34.0f);
+            renderer_.drawScaled(smoke, e.pos.x - rise * 0.1f, e.pos.y - 8.0f - rise,
+                                 8.0f + rise * 0.3f, 8.0f + rise * 0.3f,
+                                 0.9f - rise / 40.0f);
         }
     }
 
@@ -585,6 +608,14 @@ void Application::renderWorld() {
         renderer_.draw(renderer_.texture(w.sprite), e.pos.x, e.pos.y, 1.0f,
                        Color::rgb(0xFFFFFF), false,
                        e.rotates ? angleOf(e.vel) * 57.29578f + 90.0f : 0.0f);
+        // Brief muzzle flash at the gun while the shell is still fresh.
+        if (muzzleAd && muzzleTex >= 0 && e.team == Team::Enemy && e.age < 0.10f) {
+            const int frame = clamp(static_cast<int>(e.age * muzzleAd->fps), 0,
+                                    muzzleAd->frames - 1);
+            renderer_.drawRegion(muzzleTex, frame * muzzleAd->frameW, 0,
+                                 muzzleAd->frameW, muzzleAd->frameH,
+                                 e.pos.x, e.pos.y - 4.0f);
+        }
     }
 
     // Pass 7: particles.
@@ -606,9 +637,11 @@ void Application::renderWorld() {
             ? "splash_small"
             : (ex.splash ? "splash_large"
                : (ex.sizeClass == 0 ? "explosion_small"
-                  : ex.sizeClass == 1 ? "explosion_medium" : "explosion_large"));
+                  : ex.sizeClass == 1 ? "explosion_medium"
+                  : ex.sizeClass == 3 ? "explosion_xlarge" : "explosion_large"));
         const AnimDef* ad = ex.sizeClass == 0 ? exSmall
-                           : ex.sizeClass == 1 ? exMed : exBig;
+                           : ex.sizeClass == 1 ? exMed
+                           : ex.sizeClass == 3 ? exXl : exBig;
         if (!ad) continue;
         const int tid = renderer_.texture(texName);
         const int frame = clamp(static_cast<int>(ex.t * ad->fps), 0, ad->frames - 1);

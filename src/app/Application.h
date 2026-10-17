@@ -66,6 +66,7 @@ private:
     float smokeTime_ = 0.0f;
     float smokeElapsed_ = 0.0f;
     bool smokeBoss_ = false;
+    int smokeBossIdx_ = 0;
     bool smokeBossSpawned_ = false;
     float smokeShotAt_ = 0.0f;
     bool smokeShotTaken_ = false;
