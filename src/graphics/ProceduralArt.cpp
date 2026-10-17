@@ -740,39 +740,28 @@ PixelBuf makeGrassEdgeTile() {
 // Bosses
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
-// Battleship Yamashiro-class (pass 2): 208x168 canvas, hull centred, bow
-// DOWN. damage: 0 intact, 1 light, 2 heavy, 3 wreck. Primary shapes first:
-// long armored hull with forecastle break, broad belt, aft deckhouse block,
-// catapult + floatplane; components (pagoda bridge, big turrets, AA) ride
-// above on painted barbettes/pedestals with amber hazard rings.
+// Battleship Yamashiro-class (pass 3): 208x168 canvas, hull centred, bow
+// DOWN. damage: 0 intact, 1 light, 2 heavy, 3 wreck. Reads as a classic
+// steel capital ship at a glance: long narrow 2:1 silhouette, grey steel
+// decks (no teak), raked fine bow, rounded cruiser stern, single funnel,
+// aft catapult + floatplane, triple-gun turrets with long protruding
+// barrels. Component legibility comes from the sprites' own silhouettes —
+// no painted-on target rings.
 // ---------------------------------------------------------------------------
 namespace ship {
 constexpr int W = 208, H = 168;
-constexpr int yTop = 8, yBot = 160;
+constexpr int yTop = 6, yBot = 162;
 constexpr float L = static_cast<float>(yBot - yTop);
 
 inline float half(float t) {
-    // 0 = stern (top) .. 1 = bow tip (bottom).
-    if (t < 0.05f) return 34.0f + 16.0f * std::sqrt(std::max(0.0f, t / 0.05f));
-    if (t < 0.50f) return 50.0f;                       // armour waist
-    if (t < 0.66f) return 50.0f - 4.0f * ((t - 0.50f) / 0.16f);   // sheer drop
-    if (t < 0.84f) return 46.0f - 14.0f * ((t - 0.66f) / 0.18f);  // foredeck taper
-    return std::max(0.0f, 32.0f * (1.0f - (t - 0.84f) / 0.16f));  // fine bow
+    // 0 = stern (top) .. 1 = bow tip (bottom). Long narrow warship hull.
+    if (t < 0.04f) return 30.0f + 8.0f * std::sqrt(std::max(0.0f, t / 0.04f));
+    if (t < 0.55f) return 38.0f;                                   // straight waist
+    if (t < 0.70f) return 38.0f - 4.0f * ((t - 0.55f) / 0.15f);    // sheer forward
+    if (t < 0.86f) return 34.0f - 14.0f * ((t - 0.70f) / 0.16f);   // foredeck taper
+    return std::max(0.0f, 20.0f * (1.0f - (t - 0.86f) / 0.14f));   // raked bow
 }
 }  // namespace ship
-
-// Dashed amber hazard ring: the "targetable component" visual language.
-inline void hazardRing(PixelBuf& p, float cx, float cy, float rx, float ry) {
-    for (int k = 0; k < 24; ++k) {
-        if (k % 2) continue;
-        const float a0 = k * 0.2618f;
-        for (int s = 0; s < 4; ++s) {
-            const float a = a0 + s * 0.065f;
-            p.set(static_cast<int>(cx + rx * std::cos(a)),
-                  static_cast<int>(cy + ry * std::sin(a)), col(0xC8A83C));
-        }
-    }
-}
 
 PixelBuf makeBattleshipHull(int damage) {
     using namespace ship;
@@ -781,28 +770,45 @@ PixelBuf makeBattleshipHull(int damage) {
     auto halfAt = [&](int y) { return half(static_cast<float>(y - yTop) / L); };
 
     // --- water shadow -------------------------------------------------------
-    for (int y = yTop; y <= yBot + 6; ++y) {
-        const int hw = static_cast<int>(halfAt(std::min(y - 5, yBot))) + 4;
+    for (int y = yTop; y <= yBot + 5; ++y) {
+        const int hw = static_cast<int>(halfAt(std::min(y - 4, yBot))) + 3;
         for (int x = -hw; x <= hw; ++x)
-            p.set(cx + x + 5, y + 7, col(0x050F1A, 115));
+            p.set(cx + x + 4, y + 5, col(0x050F1A, 110));
     }
     // --- bow wave, spray & side foam ----------------------------------------
     for (int k = 0; k < 64; ++k) {
         const float a = static_cast<float>(k) / 63.0f;
-        const float bowY = yBot - 6.0f - 46.0f * a;
-        const float spread = 6.0f + 36.0f * a;
-        const std::uint32_t foam = col(0xE8F2FA, static_cast<std::uint8_t>(205 - 160 * a));
+        const float bowY = yBot - 4.0f - 40.0f * a;
+        const float spread = 4.0f + 30.0f * a;
+        const std::uint32_t foam = col(0xE8F2FA, static_cast<std::uint8_t>(200 - 160 * a));
         for (int sx : {-1, 1}) {
             const int fx = cx + static_cast<int>(sx * (halfAt(static_cast<int>(bowY)) + spread));
             p.set(fx, static_cast<int>(bowY), foam);
-            p.set(fx + sx, static_cast<int>(bowY) + 1, col(0xC8DCF0, 120));
+            p.set(fx + sx, static_cast<int>(bowY) + 1, col(0xC8DCF0, 110));
             if (k % 7 == 0) p.set(fx + sx * 3, static_cast<int>(bowY) - 2, col(0xFFFFFF, 150));
         }
     }
-    for (int y = yTop + 6; y < yBot - 8; y += 2) {
+    for (int y = yTop + 6; y < yBot - 8; y += 3) {
         const int hw = static_cast<int>(halfAt(y));
-        p.set(cx - hw - 2, y, col(0xC8DCF0, 75));
-        p.set(cx + hw + 2, y + 1, col(0xC8DCF0, 75));
+        p.set(cx - hw - 2, y, col(0xC8DCF0, 70));
+        p.set(cx + hw + 2, y + 1, col(0xC8DCF0, 70));
+    }
+
+    // --- AA sponsons first (shoulders sticking out past the belt) -----------
+    for (int sx : {-1, 1}) {
+        const int ex = cx + sx * 46;                 // sponson outer edge
+        const int ix = cx + sx * 34;
+        for (int y = 74; y <= 94; ++y)
+            for (int x = std::min(ix, ex); x <= std::max(ix, ex); ++x) {
+                const int edge = sx > 0 ? ex - x : x - ex;
+                std::uint32_t c = col(0x4E555C);
+                if (edge <= 1) c = col(0x23282D);
+                else if (y == 74 || y == 94) c = col(0x2E343A);
+                else if ((y % 5) == 0) c = col(0x434A50);
+                p.set(x, y, c);
+            }
+        // Support struts where the sponson overhangs the belt.
+        for (int y : {78, 84, 90}) p.set(cx + sx * (halfAt(y) + 3), y, col(0x1E2226));
     }
 
     // --- hull body with armour-belt plates ----------------------------------
@@ -810,134 +816,149 @@ PixelBuf makeBattleshipHull(int damage) {
         const int hw = static_cast<int>(halfAt(y));
         for (int x = -hw; x <= hw; ++x) {
             const int dEdge = hw - std::abs(x);
-            std::uint32_t c = col(0x6E757C);
-            if (dEdge <= 1) c = col(0x2A2E33);
+            std::uint32_t c = col(0x4E555C);
+            if (dEdge <= 1) c = col(0x23282D);
             else if (dEdge <= 4) {
                 // Alternating belt plates (12px blocks) with dark seams.
                 const int plate = (y / 12) % 2;
-                c = plate ? col(0x565D63) : col(0x646B71);
-                if (y % 12 == 0) c = col(0x33383D);
-                if (dEdge <= 2) c = col(0x40464C);
+                c = plate ? col(0x3E444A) : col(0x495057);
+                if (y % 12 == 0) c = col(0x2C3136);
+                if (dEdge <= 2) c = col(0x33383D);
             }
-            else if (x < 0 && y < yTop + static_cast<int>(L) / 2) c = col(0x7C838A);
+            else if (x < 0 && y < yTop + static_cast<int>(L) / 2) c = col(0x596067);
             p.set(cx + x, y, c);
         }
     }
 
-    // --- decks: teak main deck + lighter raised forecastle -------------------
+    // --- decks: weathered steel with panel seams -----------------------------
     for (int y = yTop + 3; y <= yBot - 3; ++y) {
-        const bool forecastle = y > yTop + static_cast<int>(L) * 2 / 3;
-        const int inset = forecastle ? 7 : 6;
+        const bool forecastle = y > yTop + static_cast<int>(L) * 3 / 4;
+        const int inset = forecastle ? 6 : 5;
         const int hw = static_cast<int>(halfAt(y)) - inset;
         for (int x = -hw; x <= hw; ++x) {
-            std::uint32_t c = forecastle ? col(0x7E6540) : col(0x6E5636);
-            if ((y % 3) == 0) c = forecastle ? col(0x6A5434) : col(0x5C4728);
-            else if ((x + y) % 13 == 0) c = forecastle ? col(0x8E7550) : col(0x7E6540);
+            std::uint32_t c = col(0x626970);
+            if ((y % 4) == 0) c = col(0x525A61);
+            else if ((x + y) % 17 == 0) c = col(0x6E757C);
             p.set(cx + x, y, c);
         }
         // Forecastle break edge (step in deck height).
-        if (!forecastle && y == yTop + static_cast<int>(L) * 2 / 3)
-            for (int x = -hw; x <= hw; ++x) p.set(cx + x, y, col(0x2A2E33));
+        if (!forecastle && y == yTop + static_cast<int>(L) * 3 / 4)
+            for (int x = -hw; x <= hw; ++x) p.set(cx + x, y, col(0x23282D));
     }
     for (int y = yTop + 6; y < yBot - 6; ++y)
-        if (std::abs(y % 4) != 3) p.set(cx, y, col(0x8A7148));   // spine
+        if (std::abs(y % 4) != 3) p.set(cx, y, col(0x7C838A));   // centreline walkway
 
-    // --- barbette pedestals for the main turrets (match JSON offsets) --------
+    // --- barbette collars for the main turrets (match JSON offsets) ----------
     for (int dy : {-48, 44}) {
         const float by = static_cast<float>(H / 2 + dy);
         // Cast shadow sells the turret riding ABOVE the deck.
         p.fillEllipse(static_cast<float>(cx) + 3.0f, by + 4.0f, 21.0f, 21.0f,
                       col(0x0A0806, 90));
-        p.fillEllipse(static_cast<float>(cx), by, 20.0f, 20.0f, col(0x3C4247));
-        p.fillEllipse(static_cast<float>(cx), by, 17.0f, 17.0f, col(0x565C61));
-        p.fillEllipse(static_cast<float>(cx), by - 1, 13.0f, 13.0f, col(0x2E3338));
-        hazardRing(p, static_cast<float>(cx), by, 19.0f, 19.0f);
-        for (int r = 0; r < 12; ++r) {
+        p.fillEllipse(static_cast<float>(cx), by, 20.5f, 20.5f, col(0x2E3338));
+        p.fillEllipse(static_cast<float>(cx), by, 18.0f, 18.0f, col(0x474E54));
+        p.fillEllipse(static_cast<float>(cx), by - 1, 13.0f, 13.0f, col(0x33383D));
+        for (int r = 0; r < 12; ++r) {                     // collar bolts
             const float a = r * 0.5236f;
-            p.set(cx + static_cast<int>(18.5f * std::cos(a)),
-                  static_cast<int>(by + 18.5f * std::sin(a)), col(0x7A8085));
+            p.set(cx + static_cast<int>(19.5f * std::cos(a)),
+                  static_cast<int>(by + 19.5f * std::sin(a)), col(0x6E757C));
         }
     }
 
-    // --- stern fittings (clear of the rear barbette) ------------------------
-    p.fillRect(cx - 12, yTop + 2, 5, 8, col(0x2B2F33));      // depth-charge racks
-    p.fillRect(cx + 7, yTop + 2, 5, 8, col(0x2B2F33));
-    for (int sx : {-26, 26}) p.set(cx + sx, yTop + 4, col(0x858C93));
-    p.hline(cx - 18, cx + 18, yTop + 13, col(0x4E5459));     // steering deck line
-
-    // --- funnels (starboard pair) with caps and catwalk ----------------------
-    for (int fy : {66, 88}) {
-        const float fyf = static_cast<float>(fy);
-        const float fxx = static_cast<float>(cx + 30);
-        p.fillEllipse(fxx, fyf, 7.5f, 8.5f, col(0x24282C));
-        p.fillEllipse(fxx, fyf, 6.0f, 7.0f, col(0x17191B));
-        p.fillEllipse(fxx - 2, fyf - 2, 2.5f, 2.5f, col(0x565C61));
-        p.hline(cx + 22, cx + 38, fy + 10, col(0x8A9094, 150));   // catwalk
-    }
-
-    // --- whaleboats on the starboard foredeck (clearly not guns) ------------
-    for (int by : {104, 120}) {
-        p.fillEllipse(static_cast<float>(cx + 30), static_cast<float>(by), 3.5f, 7.0f,
-                      col(0x8A7A4E));
-        p.fillEllipse(static_cast<float>(cx + 29), static_cast<float>(by - 1), 2.0f, 5.0f,
-                      col(0xA08E5C));
-        p.hline(cx + 25, cx + 35, by, col(0x66583A));         // davit
-    }
-
-    // --- AA sponsons painted at the component mount positions -----------------
+    // --- AA pedestals on the sponsons (match JSON offsets) -------------------
     for (int sx : {-1, 1}) {
-        const float ax = static_cast<float>(cx + sx * 38);
-        p.fillEllipse(ax, 79.0f, 13.0f, 12.0f, col(0x24282C));
-        p.fillEllipse(ax, 78.0f, 11.5f, 10.5f, col(0x4E5459));
+        const float ax = static_cast<float>(cx + sx * 30);
+        p.fillEllipse(ax, 85.0f, 13.0f, 12.0f, col(0x23282D));
+        p.fillEllipse(ax, 84.0f, 11.5f, 10.5f, col(0x4E555C));
     }
 
-    // --- casemate secondary guns along the belt -------------------------------
+    // --- funnel amidships with cap, platforms and catwalks -------------------
+    p.fillEllipse(static_cast<float>(cx) + 2.0f, 102.0f, 9.5f, 10.5f, col(0x0A0806, 90));
+    p.fillEllipse(static_cast<float>(cx), 100.0f, 9.0f, 10.0f, col(0x3A4046));
+    p.fillEllipse(static_cast<float>(cx), 99.0f, 7.0f, 8.0f, col(0x17191B));
+    p.fillEllipse(static_cast<float>(cx - 2), 97.0f, 2.5f, 2.5f, col(0x565C61));
+    p.hline(cx - 15, cx + 15, 106, col(0x8A9094, 140));
+    for (int sx : {-1, 1})                                 // wing platforms
+        p.fillRect(cx + (sx > 0 ? 9 : -14), 96, 5, 8, col(0x4E555C));
+
+    // --- aft catapult deck with floatplane (stern, clear of rear barbette) ---
+    p.fillRect(cx - 6, yTop + 3, 12, 18, col(0x3E444A));   // catapult track plate
+    p.vline(cx - 4, yTop + 3, yTop + 20, col(0x2C3136));
+    p.vline(cx + 4, yTop + 3, yTop + 20, col(0x2C3136));
+    {   // floatplane silhouette, wings folded-ish, pointing to starboard
+        const int px0 = cx, py0 = yTop + 11;
+        p.fillRect(px0 - 7, py0 - 1, 13, 3, col(0x9AA2A8));    // fuselage
+        p.fillRect(px0 - 2, py0 - 4, 4, 9, col(0x8A9298));     // wings
+        p.fillRect(px0 - 7, py0 - 3, 2, 2, col(0x7A8288));     // tail
+        p.set(px0 + 6, py0, col(0x2C3136));                    // prop disc
+    }
+    for (int sx : {-20, 20}) p.set(cx + sx, yTop + 4, col(0x858C93));
+
+    // --- boat deck: two whalers + crane on the starboard waist ---------------
+    for (int by : {52, 66}) {
+        p.fillEllipse(static_cast<float>(cx + 24), static_cast<float>(by), 3.0f, 6.5f,
+                      col(0x6E757C));
+        p.fillEllipse(static_cast<float>(cx + 23), static_cast<float>(by - 1), 1.8f, 4.5f,
+                      col(0x8A9298));
+        p.hline(cx + 20, cx + 28, by, col(0x33383D));          // davit
+    }
+    p.fillRect(cx - 26, 60, 4, 4, col(0x565C61));              // crane pedestal
+    p.fillRect(cx - 26, 56, 2, 8, col(0x7C838A));              // crane arm
+
+    // --- casemate secondary guns along the belt ------------------------------
     for (int dy : {-20, -10, 12, 22}) {
         const int y = H / 2 + dy - 4;
         for (int sx : {-1, 1}) {
             const int hw = static_cast<int>(halfAt(y));
             const int gx = cx + sx * (hw - 4);
             p.fillRect(gx - 1, y - 2, 3, 5, col(0x2B2F33));
-            p.set(gx + sx * 2, y, col(0x17191B));
+            p.set(gx + sx * 2, y, col(0x9AA2A8));              // lit muzzle tip
         }
     }
 
     // --- bow & stern fittings --------------------------------------------------
-    for (int sx : {-1, 1}) {
-        const int ax = cx + sx * 18;
-        p.set(ax, yBot - 24, col(0x1E2226));
-        p.set(ax + sx, yBot - 23, col(0x1E2226));
-        p.fillRect(ax - 2, yBot - 33, 5, 3, col(0x4E5459));
+    for (int sx : {-1, 1}) {                                  // anchor recesses
+        const int ax = cx + sx * 16;
+        p.fillRect(ax - 2, yBot - 36, 5, 4, col(0x33383D));
+        p.set(ax, yBot - 34, col(0x858C93));
+        for (int i = 1; i <= 5; ++i)                          // anchor chain
+            p.set(ax + sx * (1 + i / 2), yBot - 38 - i, col(0x6E757C));
     }
-    for (int sx : {-24, 24}) p.set(cx + sx, yTop + 4, col(0x858C93));
+    for (int sx : {-1, 1})                                    // breakwater strokes
+        for (int i = 0; i < 7; ++i)
+            p.set(cx + sx * (10 - i), yBot - 24 - i * 2, col(0x7C838A, 180));
+    for (int sx : {-22, 22}) p.set(cx + sx, yTop + 4, col(0x858C93));
     // Vents & hatches scatter (tertiary, low contrast).
-    for (int k = 0; k < 18; ++k) {
-        const int vx = cx - 36 + (k * 61) % 73;
+    for (int k = 0; k < 14; ++k) {
+        const int vx = cx - 28 + (k * 61) % 57;
         const int vy = yTop + 16 + (k * 97) % (static_cast<int>(L) - 32);
         if (k % 3 == 0) { p.fillRect(vx, vy, 2, 3, col(0x858C93, 200)); }
-        else if (k % 3 == 1) { p.fillRect(vx, vy, 3, 3, col(0x4E5459)); p.set(vx, vy, col(0x7C838A)); }
+        else if (k % 3 == 1) { p.fillRect(vx, vy, 3, 3, col(0x4E555C)); p.set(vx, vy, col(0x7C838A)); }
     }
     // Rust streaks.
-    for (int k = 0; k < 20; ++k) {
-        const int rx = cx - 40 + (k * 47) % 81;
+    for (int k = 0; k < 14; ++k) {
+        const int rx = cx - 32 + (k * 47) % 65;
         const int ry = yTop + 12 + (k * 83) % (static_cast<int>(L) - 24);
-        p.set(rx, ry, col(0x6E4A2C, 120));
-        p.set(rx, ry + 1, col(0x6E4A2C, 70));
+        p.set(rx, ry, col(0x6E4A2C, 90));
+        p.set(rx, ry + 1, col(0x6E4A2C, 55));
     }
 
     // --- damage tiers -----------------------------------------------------------
     auto scorch = [&](int dx, int dy, int r, bool ember) {
-        p.fillEllipse(static_cast<float>(cx + dx), static_cast<float>(H / 2 + dy),
+        // Keep blast marks on the (narrow) deck: clamp toward the centreline.
+        const int yy = H / 2 + dy;
+        const int lim = std::max(4, static_cast<int>(halfAt(yy)) - r - 2);
+        dx = std::max(-lim, std::min(lim, dx));
+        p.fillEllipse(static_cast<float>(cx + dx), static_cast<float>(yy),
                       static_cast<float>(r), static_cast<float>(r), col(0x14100C, 145));
-        p.fillEllipse(static_cast<float>(cx + dx), static_cast<float>(H / 2 + dy),
+        p.fillEllipse(static_cast<float>(cx + dx), static_cast<float>(yy),
                       r * 0.5f, r * 0.5f, col(0x0A0806, 195));
         if (ember) {
-            p.set(cx + dx, H / 2 + dy, col(0xFF8A30));
-            p.set(cx + dx + 1, H / 2 + dy, col(0xC25A18));
+            p.set(cx + dx, yy, col(0xFF8A30));
+            p.set(cx + dx + 1, yy, col(0xC25A18));
         }
         for (int q = 1; q <= 6; ++q)
             p.fillEllipse(static_cast<float>(cx + dx - q / 2),
-                          static_cast<float>(H / 2 + dy - r - q * 2),
+                          static_cast<float>(yy - r - q * 2),
                           2.0f, 2.0f, col(0x2A2A2A, 75 - q * 9));
     };
     if (damage >= 1) { scorch(24, 26, 7, false); scorch(-30, -18, 6, false); }
@@ -992,16 +1013,17 @@ PixelBuf addScorchTo(PixelBuf src, int damage) {
     return src;
 }
 
-// Main gun turret 48x48: octagonal armored face on an amber-ringed
-// barbette, twin barrels with muzzle bands, flat facets lit upper-left.
+// Main gun turret 48x48: octagonal armoured face on a steel barbette collar,
+// TRIPLE barrels with muzzle brakes protruding well past the body so the
+// guns read instantly at gameplay scale. Flat facets lit upper-left.
 PixelBuf makeBigTurret() {
     PixelBuf p(48, 48);
     const float cx = 24.0f, cy = 24.0f;
-    // Barbette ring + hazard language.
-    p.fillEllipse(cx, cy + 1, 22.0f, 22.0f, col(0x24282C));
+    // Barbette collar riding in its ring (no target markers — the silhouette
+    // itself says "gun").
+    p.fillEllipse(cx, cy + 1, 22.0f, 22.0f, col(0x23282C));
     p.fillEllipse(cx, cy, 20.5f, 20.5f, col(0x4A5056));
     p.fillEllipse(cx, cy, 18.5f, 18.5f, col(0x33383D));
-    hazardRing(p, cx, cy, 21.0f, 21.0f);
     // Octagonal turret body (scanline widths).
     const int oct[20] = {7, 12, 15, 17, 17, 17, 17, 17, 16, 15,
                          16, 17, 17, 17, 17, 17, 17, 15, 12, 7};
@@ -1009,11 +1031,11 @@ PixelBuf makeBigTurret() {
         const int y = 14 + r;
         const int hw = oct[static_cast<std::size_t>(r)];
         for (int x = -hw; x <= hw; ++x) {
-            std::uint32_t c = col(0x6E757C);
+            std::uint32_t c = col(0x666D73);
             const int dEdge = hw - std::abs(x);
-            if (dEdge <= 1) c = col(0x2A2E33);                 // dark facet edge
-            else if (x <= 0 && r <= 10) c = col(0x858C93);     // lit facets
-            else if (x >= 0 && r > 10) c = col(0x51575C);      // shaded facets
+            if (dEdge <= 1) c = col(0x1E2226);                 // dark facet edge
+            else if (x <= 0 && r <= 10) c = col(0x8F979E);     // lit facets
+            else if (x >= 0 && r > 10) c = col(0x3E4449);      // shaded facets
             p.set(static_cast<int>(cx) + x, y, c);
         }
     }
@@ -1022,17 +1044,17 @@ PixelBuf makeBigTurret() {
     p.fillEllipse(cx - 1, cy - 5, 2.5f, 2.0f, col(0x8A9094));
     p.fillRect(31, 15, 3, 3, col(0x1B1E21));                   // rangefinder pod
     // Mantlet bar across the barrel bases.
-    p.fillRect(15, 31, 18, 6, col(0x3C4247));
-    p.fillRect(15, 31, 18, 1, col(0x7C838A));
-    p.fillRect(15, 36, 18, 1, col(0x1B1E21));
-    // Twin barrels below the mantlet: bright gunmetal with a lit rail so
-    // the guns read clearly against the dark deck at gameplay scale.
-    for (int bx : {17, 27}) {
+    p.fillRect(10, 31, 28, 6, col(0x3C4247));
+    p.fillRect(10, 31, 28, 1, col(0x8A9094));
+    p.fillRect(10, 36, 28, 1, col(0x1B1E21));
+    // Triple barrels below the mantlet: bright gunmetal with a lit rail so
+    // the guns read clearly against the deck at gameplay scale.
+    for (int bx : {11, 22, 33}) {
         p.fillRect(bx + 4, 37, 2, 11, col(0x000000, 80));   // deck shadow
         p.fillRect(bx, 36, 4, 12, col(0x41474D));           // barrel body
         p.fillRect(bx, 36, 1, 12, col(0x9AA2A8));           // lit rail
         p.fillRect(bx + 3, 36, 1, 12, col(0x23272B));       // dark edge
-        p.fillRect(bx - 1, 45, 6, 2, col(0x7C838A));        // muzzle brake
+        p.fillRect(bx - 1, 44, 6, 2, col(0x7C838A));        // muzzle brake
         p.fillRect(bx - 1, 46, 6, 1, col(0x23272B));
     }
     return p;
@@ -1042,9 +1064,8 @@ PixelBuf makeBigTurret() {
 PixelBuf makeBossAA() {
     PixelBuf p(28, 28);
     const float cx = 14.0f, cy = 16.0f;
-    p.fillEllipse(cx, cy + 1, 12.5f, 11.0f, col(0x24282C));
+    p.fillEllipse(cx, cy + 1, 12.5f, 11.0f, col(0x23282C));
     p.fillEllipse(cx, cy, 11.0f, 9.5f, col(0x4E5459));
-    hazardRing(p, cx, cy, 12.0f, 10.5f);
     p.fillEllipse(cx - 1, cy - 1, 7.0f, 6.0f, col(0x6E757C));
     p.fillEllipse(cx - 2, cy - 2, 3.5f, 3.0f, col(0x858C93));
     // Gun shield (front arc toward the player).
@@ -1073,10 +1094,9 @@ PixelBuf makeBossAA() {
 PixelBuf makeBridge() {
     PixelBuf p(48, 60);
     const int cx = 24;
-    // Base pedestal + hazard ring.
-    p.fillEllipse(24.0f, 53.0f, 21.0f, 6.0f, col(0x24282C));
+    // Base pedestal.
+    p.fillEllipse(24.0f, 53.0f, 21.0f, 6.0f, col(0x23282C));
     p.fillEllipse(23.0f, 52.0f, 19.0f, 5.0f, col(0x4E5459));
-    hazardRing(p, 24.0f, 52.0f, 21.5f, 6.5f);
     p.fillRect(6, 46, 36, 8, col(0x565D63));
     p.fillRect(6, 46, 36, 1, col(0x858C93));
     p.fillRect(40, 46, 2, 8, col(0x33383D));
@@ -1302,13 +1322,12 @@ PixelBuf makeWake() {
 }
 
 // Small defensive turret 28x28 for the Sky Fortress (nose/tail/engine
-// guns): glass-domed barrel base with amber hazard ring.
+// guns): glass-domed barrel base.
 PixelBuf makeTurretSmall() {
     PixelBuf p(28, 28);
     const float cx = 14.0f, cy = 15.0f;
     p.fillEllipse(cx, cy + 1, 12.0f, 11.0f, col(0x24282C));
     p.fillEllipse(cx, cy, 10.5f, 9.5f, col(0x4E5459));
-    hazardRing(p, cx, cy, 11.5f, 10.5f);
     p.fillEllipse(cx - 1, cy - 1, 7.0f, 6.5f, col(0x666B70));
     p.fillEllipse(cx - 2, cy - 2, 4.0f, 3.5f, col(0x3A5A6E));   // glass dome
     p.set(static_cast<int>(cx) - 3, static_cast<int>(cy) - 3, col(0x9FD0E8));

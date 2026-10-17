@@ -726,7 +726,7 @@ void Application::renderTitleBackground(float time) {
         if (wake >= 0)
             renderer_.draw(wake, bx + std::sin(time * 2.0f) * 2.0f, by - 140.0f,
                            0.45f, Color::rgb(0x50687C));
-        renderer_.draw(hull, bx, by, 1.0f, Color::rgb(0x9AA4AC));
+        renderer_.draw(hull, bx, by, 1.0f, Color::rgb(0xD0D8E0));
     }
     // Decorative flyovers.
     const int en = renderer_.texture("enemy_fighter_light");
