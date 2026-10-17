@@ -132,6 +132,73 @@ void test_boss_natural_spawn() {
     CHECK(sim.bossView().active == true);
 }
 
+// Regression: formation members must never get stuck off-screen. The
+// enteredView clamp used to fight the formation controller (pinning
+// members at the edge as a group drifted past it), and the off-screen
+// despawn gate checked move.t, which never advances for formation
+// members (the controller owns their motion) - so pinned members were
+// immortal and stayed half-visible at the edge forever.
+void test_formation_edge_despawn() {
+    const char* enemiesJson = R"([
+      { "name": "side_runner", "sprite": "enemy_fighter_light",
+        "width": 28, "height": 24, "hitbox": [0, 0, 14, 12],
+        "hp": 1, "score": 100, "speed": 210, "path": "sine_side" },
+      { "name": "down_runner", "sprite": "enemy_fighter_light",
+        "width": 28, "height": 24, "hitbox": [0, 0, 14, 12],
+        "hp": 1, "score": 100, "speed": 100, "path": "straight" }
+    ])";
+    const char* weaponsJson = R"([])";
+    const char* powerupsJson = R"([])";
+    GameData data;
+    std::string err;
+    CHECK(parseWeaponsJson(weaponsJson, data.weapons, err));
+    CHECK(parsePowerupsJson(powerupsJson, data.powerups, err));
+    CHECK(parseEnemiesJson(enemiesJson, data.enemies, err));
+    const char* stageJson = R"({
+      "name": "edge test", "duration": 60, "scrollSpeed": 40,
+      "events": [
+        { "trigger": 1.0, "enemy": "side_runner", "formation": "wave_left",
+          "count": 4, "x": 414, "y": 100, "delayBetween": 0.15 },
+        { "trigger": 3.0, "enemy": "side_runner", "formation": "v_formation",
+          "count": 5, "x": 20, "y": -40, "delayBetween": 0.15, "spacing": 36 }
+      ]
+    })";
+    StageDef stage;
+    CHECK(parseStageJson(stageJson, stage, err));
+    data.stages.push_back(stage);
+    CHECK(data.linkReferences(err));
+
+    Simulation sim(data, 5);
+    sim.startStage(0, {});
+    sim.setGodMode(true);
+
+    bool stuck = false, outOfBounds = false;
+    int spawned = 0;
+    for (int f = 0; f < 60 * 45; ++f) {
+        sim.setPlayerIntent({0, 0}, false, false);
+        sim.update();
+        for (const auto& e : sim.entities()) {
+            if (!e.alive || e.kind != EKind::Enemy) continue;
+            ++spawned;
+            // Pinned at the view clamp or beyond it after entering.
+            if (e.enteredView && (e.pos.x < -30.0f || e.pos.x > 384.0f + 30.0f))
+                stuck = true;
+            // Any enemy far outside the playfield after a long life is stuck.
+            if (e.age > 6.0f && (e.pos.x < -140.0f || e.pos.x > 384.0f + 140.0f ||
+                                 e.pos.y > 512.0f + 140.0f))
+                outOfBounds = true;
+        }
+    }
+    CHECK(spawned > 0);
+    CHECK(!stuck);        // nothing pinned at the edge
+    CHECK(!outOfBounds);  // everything off-screen got despawned
+    // And at rest, no live enemies remain: both waves left the playfield.
+    int live = 0;
+    for (const auto& e : sim.entities())
+        if (e.alive && e.kind == EKind::Enemy) ++live;
+    CHECK(live == 0);
+}
+
 // Regression: compaction must not reshuffle the pool while a boss is alive.
 // Previously compactIfNeeded() could fire mid-encounter (pool > 256 with
 // half the slots free from bullet churn), moving every entity while

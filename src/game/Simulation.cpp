@@ -531,13 +531,31 @@ void Simulation::updateFormations(float dt) {
             f.anchor.x < -120.0f || f.anchor.x > kPlayW + 120.0f) {
             if (f.lead.t > 1.0f) f.escaped = true;
         }
+        // Keep members on the playfield: wide formations (V, staggered, arc)
+        // anchored near a screen edge otherwise drift half off-screen. The
+        // placement anchor slides along the edge so the formation shape
+        // stays intact. Side-entry waves (SineSide) are exempt: they are
+        // designed to come and go beyond the edges.
+        Vec2 place = f.anchor;
+        if (f.lead.pattern != MovePattern::SineSide && !f.offsets.empty() &&
+            f.anchor.x > -60.0f && f.anchor.x < kPlayW + 60.0f) {
+            float minOff = f.offsets[0].x, maxOff = f.offsets[0].x;
+            for (const Vec2& o : f.offsets) {
+                minOff = std::min(minOff, o.x);
+                maxOff = std::max(maxOff, o.x);
+            }
+            const float margin = 18.0f;  // keep sprites fully visible
+            const float lo = margin - minOff, hi = kPlayW - margin - maxOff;
+            if (lo <= hi)  // formation narrower than the playfield
+                place.x = clamp(place.x, lo, hi);
+        }
         for (int idx : f.members) {
             Entity& e = pool_[static_cast<std::size_t>(idx)];
             const Vec2& off = f.offsets.empty()
                 ? Vec2{0.0f, 0.0f}
                 : f.offsets[static_cast<std::size_t>(
                       std::min(e.formationSlot, static_cast<int>(f.offsets.size()) - 1))];
-            e.pos = f.anchor + off;
+            e.pos = place + off;
         }
     }
 }
@@ -565,14 +583,17 @@ void Simulation::updateEnemies(float dt) {
 
         // Visibility guard: once an enemy has entered the playfield it must
         // never drift fully out of view while alive (data paths could push
-        // formations past the edge, leaving invisible shooters). Enemies
-        // still entering/leaving through the sides are unaffected until
-        // they have been on screen at least once.
-        if (!e.enteredView && e.pos.x > 0.0f && e.pos.x < kPlayW &&
-            e.pos.y > 0.0f && e.pos.y < kPlayH)
-            e.enteredView = true;
-        if (e.enteredView)
-            e.pos.x = clamp(e.pos.x, -24.0f, kPlayW + 24.0f);
+        // single enemies past the edge, leaving invisible shooters).
+        // Formation members are exempt: the formation controller owns their
+        // position, its placement clamp keeps on-screen anchored groups
+        // inside the playfield, and side-entry waves must be free to leave.
+        if (e.formation < 0) {
+            if (!e.enteredView && e.pos.x > 0.0f && e.pos.x < kPlayW &&
+                e.pos.y > 0.0f && e.pos.y < kPlayH)
+                e.enteredView = true;
+            if (e.enteredView)
+                e.pos.x = clamp(e.pos.x, -24.0f, kPlayW + 24.0f);
+        }
 
         // Flash & smoke.
         e.flashTimer = std::max(0.0f, e.flashTimer - dt);
@@ -614,10 +635,14 @@ void Simulation::updateEnemies(float dt) {
             }
         }
 
-        // Despawn when far off-screen.
+        // Despawn when far off-screen. Formation members never advance
+        // their own move.t (the controller owns their motion), so gate on
+        // age for them; otherwise an escaped member is immortal.
+        const bool spawnedLongAgo =
+            e.formation >= 0 ? e.age > 0.5f : e.move.t > 0.5f;
         if (e.pos.y > kPlayH + kMargin * 2 || e.pos.y < -kMargin * 6 ||
             e.pos.x < -kMargin * 3 || e.pos.x > kPlayW + kMargin * 3) {
-            if (e.move.t > 0.5f) kill(static_cast<int>(i));  // don't kill at spawn
+            if (spawnedLongAgo) kill(static_cast<int>(i));  // don't kill at spawn
         }
     }
 
