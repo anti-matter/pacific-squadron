@@ -1021,16 +1021,20 @@ PixelBuf makeBigTurret() {
     p.fillEllipse(cx, cy - 4, 5.0f, 4.0f, col(0x51575C));
     p.fillEllipse(cx - 1, cy - 5, 2.5f, 2.0f, col(0x8A9094));
     p.fillRect(31, 15, 3, 3, col(0x1B1E21));                   // rangefinder pod
-    // Twin barrels (point down = toward player), with recoil sleeves.
-    for (int bx : {19, 27}) {
-        p.fillRect(bx, 30, 3, 17, col(0x17191B));
-        p.fillRect(bx, 30, 1, 17, col(0x565C61));              // lit edge
-        p.fillRect(bx - 1, 32, 5, 3, col(0x2B2F33));           // mantlet boot
-        p.fillRect(bx, 44, 3, 2, col(0x33383D));               // muzzle band
-    }
     // Mantlet bar across the barrel bases.
-    p.fillRect(16, 33, 16, 4, col(0x3C4247));
-    p.fillRect(16, 33, 16, 1, col(0x7C838A));
+    p.fillRect(15, 31, 18, 6, col(0x3C4247));
+    p.fillRect(15, 31, 18, 1, col(0x7C838A));
+    p.fillRect(15, 36, 18, 1, col(0x1B1E21));
+    // Twin barrels below the mantlet: bright gunmetal with a lit rail so
+    // the guns read clearly against the dark deck at gameplay scale.
+    for (int bx : {17, 27}) {
+        p.fillRect(bx + 4, 37, 2, 11, col(0x000000, 80));   // deck shadow
+        p.fillRect(bx, 36, 4, 12, col(0x41474D));           // barrel body
+        p.fillRect(bx, 36, 1, 12, col(0x9AA2A8));           // lit rail
+        p.fillRect(bx + 3, 36, 1, 12, col(0x23272B));       // dark edge
+        p.fillRect(bx - 1, 45, 6, 2, col(0x7C838A));        // muzzle brake
+        p.fillRect(bx - 1, 46, 6, 1, col(0x23272B));
+    }
     return p;
 }
 
@@ -1048,11 +1052,14 @@ PixelBuf makeBossAA() {
         for (int y = 5; y <= 9; ++y)
             if (x * x + (y - 16) * (y - 16) <= 121 && x * x + (y - 16) * (y - 16) >= 72)
                 p.set(static_cast<int>(cx) + x, y, y <= 6 ? col(0x858C93) : col(0x51575C));
-    // Twin barrels with flash guards.
-    for (int bx : {11, 16}) {
-        p.fillRect(bx, 1, 2, 15, col(0x17191B));
-        p.fillRect(bx, 1, 1, 15, col(0x565C61));
-        p.fillRect(bx - 1, 1, 4, 2, col(0x2B2F33));
+    // Twin barrels with flash guards: bright gunmetal + lit rail so the
+    // guns stay legible against the deck.
+    for (int bx : {10, 16}) {
+        p.fillRect(bx + 3, 3, 2, 13, col(0x000000, 70));   // deck shadow
+        p.fillRect(bx, 1, 3, 15, col(0x41474D));
+        p.fillRect(bx, 1, 1, 15, col(0x9AA2A8));
+        p.fillRect(bx + 2, 1, 1, 15, col(0x23272B));
+        p.fillRect(bx - 1, 1, 5, 2, col(0x6E757C));
     }
     // Seat box + ammo drum behind.
     p.fillRect(12, 17, 5, 4, col(0x3C4247));
@@ -1216,7 +1223,8 @@ PixelBuf makeGiantBomberHull(int damage) {
         p.fillRect(nx - 4, 72, 9, 4, col(0x33383D));         // cowl
         p.fillRect(nx - 3, 74, 7, 1, col(0x565C61));
         if (inner) {                                         // wing-gun muzzle
-            p.fillRect(nx - 1, 76, 3, 5, col(0x17191B));
+            p.fillRect(nx - 1, 76, 3, 5, col(0x41474D));
+            p.fillRect(nx - 1, 76, 1, 5, col(0x9AA2A8));
             p.fillRect(nx - 2, 60, 5, 3, col(0x2B2F33));     // gun pod
         }
         if (!(damage >= 2 && nx == 20)) {                    // outer-left prop lost
@@ -1305,9 +1313,10 @@ PixelBuf makeTurretSmall() {
     p.fillEllipse(cx - 2, cy - 2, 4.0f, 3.5f, col(0x3A5A6E));   // glass dome
     p.set(static_cast<int>(cx) - 3, static_cast<int>(cy) - 3, col(0x9FD0E8));
     // Twin stub barrels (down = forward when on the nose).
-    for (int bx : {11, 15}) {
-        p.fillRect(bx, 17, 2, 10, col(0x17191B));
-        p.fillRect(bx, 17, 1, 10, col(0x565C61));
+    for (int bx : {10, 16}) {
+        p.fillRect(bx, 17, 3, 10, col(0x41474D));
+        p.fillRect(bx, 17, 1, 10, col(0x9AA2A8));
+        p.fillRect(bx + 2, 17, 1, 10, col(0x23272B));
     }
     return p;
 }

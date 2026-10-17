@@ -81,11 +81,21 @@ void Simulation::kill(int i) {
     e.alive = false;
     if (e.kind == EKind::Shot) --shotCount_;
     --liveCount_;
-    freeList_.push_back(static_cast<std::uint16_t>(i));
+    // Boss hull/component slots are PINNED for the whole encounter: bosses_
+    // stores raw pool indices (armor gate, death chain). If a dead
+    // component's index were recycled by a new shot/enemy, the gate would
+    // read it as "component still alive" and make the hull invulnerable
+    // (bar stuck at the hull-only fraction). Compaction is likewise paused
+    // while a boss is alive (see compactIfNeeded).
+    if (e.kind != EKind::BossHull && e.kind != EKind::BossComponent)
+        freeList_.push_back(static_cast<std::uint16_t>(i));
 }
 
 void Simulation::compactIfNeeded() {
     // Keep the pool from growing unbounded after heavy fights.
+    // Never while a boss is active: bosses_ holds raw entity indices.
+    for (const auto& b : bosses_)
+        if (b.state < 3) return;
     if (pool_.size() > 256 && freeList_.size() * 2 > pool_.size()) {
         std::vector<Entity> dense;
         dense.reserve(pool_.size());
