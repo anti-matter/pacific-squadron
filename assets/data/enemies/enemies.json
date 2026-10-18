@@ -22,6 +22,13 @@
     "weapon": "e_burst3", "fireInterval": 3.0, "aimAtPlayer": true,
     "dropChance": 0.22, "drop": "random", "deathEffect": 1 },
 
+  { "name": "fighter_carrier", "sprite": "enemy_fighter_carrier", "width": 34, "height": 28,
+    "hitbox": [0, 0, 13, 10], "hp": 6, "score": 350, "speed": 125,
+    "path": "sine_down", "amp": 52, "freq": 1.15,
+    "weapon": "e_burst3", "fireInterval": 2.2, "aimAtPlayer": true,
+    "dropChance": 0.18, "drop": "random", "deathEffect": 1,
+    "smokeWhileDamaged": 0.5 },
+
   { "name": "bomber", "sprite": "enemy_bomber", "width": 60, "height": 44,
     "hitbox": [0, 0, 34, 22], "hp": 9, "score": 500, "speed": 42,
     "path": "straight", "angleDeg": 90,

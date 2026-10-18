@@ -82,5 +82,37 @@
       { "hpFraction": 0.60, "rateMul": 0.78, "extraWeapon": "b_radial12", "extraInterval": 3.2 },
       { "hpFraction": 0.30, "rateMul": 0.58, "extraWeapon": "b_spray5",   "extraInterval": 1.7 }
     ]
+  },
+  {
+    "name": "CARRIER KAGAMI-CLASS",
+    "hullSprite": "boss_carrier_hull",
+    "hullWidth": 140, "hullHeight": 180, "hullHp": 142, "hullScore": 6000,
+    "entryY": 150, "hoverAmp": 62, "hoverFreq": 0.06,
+    "deathEffect": 2, "defeatDrop": "powerup_p",
+    "sortieEnemy": "fighter_carrier", "sortieCount": 2, "sortieInterval": 7.0,
+    "components": [
+      { "name": "ISLAND", "sprite": "boss_carrier_island", "offsetX": 48, "offsetY": -14,
+        "width": 36, "height": 52, "hp": 30, "score": 900, "weapon": "b_dp_gun",
+        "fireInterval": 2.6, "firstFireDelay": 2.2 },
+      { "name": "AA GUN PORT AFT", "sprite": "boss_aa", "offsetX": -54, "offsetY": -52,
+        "width": 28, "height": 28, "hp": 16, "score": 300, "weapon": "b_aa_flak",
+        "fireInterval": 2.7, "firstFireDelay": 3.0 },
+      { "name": "AA GUN STBD AFT", "sprite": "boss_aa", "offsetX": 54, "offsetY": -52,
+        "width": 28, "height": 28, "hp": 16, "score": 300, "weapon": "b_aa_flak",
+        "fireInterval": 2.7, "firstFireDelay": 3.4 },
+      { "name": "AA GUN PORT FWD", "sprite": "boss_aa", "offsetX": -54, "offsetY": 54,
+        "width": 28, "height": 28, "hp": 16, "score": 300, "weapon": "b_aa_flak",
+        "fireInterval": 2.9, "firstFireDelay": 3.8 },
+      { "name": "AA GUN STBD FWD", "sprite": "boss_aa", "offsetX": 54, "offsetY": 54,
+        "width": 28, "height": 28, "hp": 16, "score": 300, "weapon": "b_aa_flak",
+        "fireInterval": 2.9, "firstFireDelay": 4.2 },
+      { "name": "BOW GUN", "sprite": "boss_destroyer_gun", "offsetX": 0, "offsetY": 74,
+        "width": 32, "height": 32, "hp": 16, "score": 450, "weapon": "b_aimed3",
+        "fireInterval": 2.0, "firstFireDelay": 2.6 }
+    ],
+    "phases": [
+      { "hpFraction": 0.60, "rateMul": 0.80, "extraWeapon": "b_radial12", "extraInterval": 3.6 },
+      { "hpFraction": 0.30, "rateMul": 0.62, "extraWeapon": "b_spray5",   "extraInterval": 1.9 }
+    ]
   }
 ]

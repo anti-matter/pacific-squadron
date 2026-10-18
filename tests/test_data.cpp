@@ -27,8 +27,8 @@ void test_shipped_data() {
     std::string err;
     CHECK(data.loadAll(assets.string(), err));
 
-    // All three stages ship and are wired to a resolvable boss.
-    CHECK(data.stages.size() >= 3);
+    // All four stages ship and are wired to a resolvable boss.
+    CHECK(data.stages.size() >= 4);
     for (const auto& s : data.stages) {
         CHECK(!s.name.empty());
         CHECK(s.bossRef >= 0 && s.bossRef < static_cast<int>(data.bosses.size()));
@@ -60,4 +60,44 @@ void test_shipped_data() {
     // The destroyer's bespoke guns exist.
     CHECK(data.findWeapon("b_dp_gun") >= 0);
     CHECK(data.findWeapon("b_spray5") >= 0);
+
+    // Stage 4: the carrier hunt.
+    const StageDef& st4 = data.stages[3];
+    CHECK(st4.name == "BREAK THE IRON WING");
+    CHECK(st4.bossTime > 0.0f && st4.bossTime < st4.duration);
+    const BossDef& carrier = data.bosses[static_cast<std::size_t>(st4.bossRef)];
+    CHECK(carrier.name == "CARRIER KAGAMI-CLASS");
+    CHECK(carrier.hullSprite == "boss_carrier_hull");
+    // Wide beam, unlike the destroyer's narrow hull.
+    CHECK(carrier.hullWidth >= 120);
+    // Island tower + four AA stations + bow gun.
+    CHECK(carrier.components.size() == 6);
+    bool hasIsland = false;
+    for (const auto& c : carrier.components)
+        if (c.sprite == "boss_carrier_island") hasIsland = true;
+    CHECK(hasIsland);
+    // Kill-difficulty budget: ~30% above the destroyer's 194 hp.
+    int carrierHp = carrier.hullHp;
+    for (const auto& c : carrier.components) carrierHp += c.hp;
+    CHECK(carrierHp == 252);
+    // ...within 1% of exactly 1.3x the destroyer budget.
+    CHECK(carrierHp * 100 >= 194 * 129 && carrierHp * 100 <= 194 * 131);
+    // The air group: the carrier launches the new elite fighter.
+    CHECK(carrier.sortieEnemy == "fighter_carrier");
+    CHECK(carrier.sortieInterval > 0.0f);
+    CHECK(carrier.sortieCount >= 2);
+    CHECK(data.findEnemy("fighter_carrier") >= 0);
+
+    // The elite fighter is harder to shoot down than every earlier aircraft:
+    // more hp than any pre-stage-4 plane, and a smaller hitbox relative to
+    // its sprite than the previous toughest (heavy_fighter).
+    const EnemyDef& elite = data.enemies[static_cast<std::size_t>(
+        data.findEnemy("fighter_carrier"))];
+    CHECK(elite.hp == 6);
+    CHECK(elite.hp >= 5);
+    const EnemyDef& heavy = data.enemies[static_cast<std::size_t>(
+        data.findEnemy("heavy_fighter"))];
+    CHECK(static_cast<float>(elite.hitW) / static_cast<float>(elite.width) <
+          static_cast<float>(heavy.hitW) / static_cast<float>(heavy.width));
+    CHECK(elite.speed > heavy.speed);
 }

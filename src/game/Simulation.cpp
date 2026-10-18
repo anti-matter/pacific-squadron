@@ -745,6 +745,8 @@ void Simulation::spawnBoss(int defRef) {
         e.fireTimer = cd.firstFireDelay;
         b.components.push_back(ci);
     }
+    // First air-group sortie lands shortly after the ship settles in.
+    b.sortieTimer = def.sortieInterval > 0.0f ? def.sortieInterval * 0.55f : 0.0f;
     bosses_.push_back(std::move(b));
     events_.push_back({SimEvent::Type::BossSpawned, def.name, defRef, {}});
 }
@@ -852,6 +854,25 @@ void Simulation::updateBosses(float dt) {
         const float phaseRate = phase > 0 && phase <= static_cast<int>(def.phases.size())
             ? def.phases[static_cast<std::size_t>(phase - 1)].rateMul
             : 1.0f;
+
+        // Air-group sorties (carrier bosses): catapult fighters off the deck
+        // while the ship fights. Intervals jitter and tighten per phase so
+        // launches never settle into a rhythm the player can lean on.
+        if (b.state == 1 && def.sortieInterval > 0.0f && !def.sortieEnemy.empty()) {
+            b.sortieTimer -= dt;
+            if (b.sortieTimer <= 0.0f) {
+                const int enemyRef = data_.findEnemy(def.sortieEnemy);
+                if (enemyRef >= 0) {
+                    for (int k = 0; k < def.sortieCount; ++k)
+                        spawnEnemy(enemyRef,
+                                   b.pos + Vec2{rng_.range(-30.0f, 30.0f),
+                                                rng_.range(-46.0f, -8.0f)},
+                                   1.0f, 1.0f, mods_.speedMul, -1, -1);
+                }
+                const float pmul = phase == 0 ? 1.0f : (phase == 1 ? 0.78f : 0.58f);
+                b.sortieTimer = def.sortieInterval * pmul * rng_.range(0.85f, 1.15f);
+            }
+        }
 
         // Component behavior.
         for (std::size_t c = 0; c < b.components.size(); ++c) {

@@ -318,6 +318,9 @@ bool parseBossesJson(const std::string& text, std::vector<BossDef>& out, std::st
         b.hoverFreq = getF(j, "hoverFreq", b.hoverFreq);
         b.deathEffect = clamp(getI(j, "deathEffect", 2), 0, 2);
         b.defeatDrop = getS(j, "defeatDrop", b.defeatDrop);
+        b.sortieEnemy = getS(j, "sortieEnemy", b.sortieEnemy);
+        b.sortieInterval = std::max(0.0f, getF(j, "sortieInterval", b.sortieInterval));
+        b.sortieCount = clamp(getI(j, "sortieCount", 2), 1, 6);
         if (j.contains("components") && j["components"].is_array()) {
             for (const auto& c : j["components"]) {
                 if (!c.is_object() || !c.contains("name") || !c["name"].is_string()) {
@@ -473,6 +476,10 @@ bool GameData::linkReferences(std::string& error) {
         }
     }
     for (auto& b : bosses) {
+        if (!b.sortieEnemy.empty() && findEnemy(b.sortieEnemy) < 0) {
+            error = "boss '" + b.name + "' sorties unknown enemy '" + b.sortieEnemy + "'";
+            return false;
+        }
         for (auto& c : b.components) {
             if (!c.weapon.empty() && findWeapon(c.weapon) < 0) {
                 error = "boss '" + b.name + "' component '" + c.name + "' references unknown weapon '" + c.weapon + "'";

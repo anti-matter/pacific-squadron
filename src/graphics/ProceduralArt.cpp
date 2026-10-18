@@ -1692,6 +1692,263 @@ PixelBuf makeDestroyerBridge() {
     return p;
 }
 
+// ---------------------------------------------------------------------------
+// Carrier KAGAMI-CLASS: flight-deck silhouette (flat-top), drawn bow-DOWN
+// like every other ship. The deck is the star: wood planking, landing
+// markings, deck-edge elevators, parked strike group and the island block
+// the component tower rides on. damage: 0 intact, 1 light, 2 heavy, 3 wreck.
+// ---------------------------------------------------------------------------
+namespace cship {
+constexpr int W = 176, H = 204;
+constexpr int yTop = 10, yBot = 194;
+constexpr float L = static_cast<float>(yBot - yTop);
+
+inline float half(float t) {
+    // 0 = stern (top, blunt transom) .. 1 = bow tip (bottom).
+    if (t < 0.05f) return 44.0f + 21.0f * std::sqrt(std::max(0.0f, t / 0.05f));
+    if (t < 0.80f) return 65.0f;                                     // straight lift side
+    if (t < 0.93f) return 65.0f - 36.0f * ((t - 0.80f) / 0.13f);     // clipped bow
+    return std::max(0.0f, 29.0f * (1.0f - (t - 0.93f) / 0.07f));
+}
+}  // namespace cship
+
+PixelBuf makeCarrierHull(int damage) {
+    using namespace cship;
+    const int cx = W / 2;
+    PixelBuf p(W, H);
+    auto halfAt = [&](int y) { return half(static_cast<float>(y - yTop) / L); };
+
+    // --- water shadow ---------------------------------------------------------
+    for (int y = yTop; y <= yBot + 4; ++y) {
+        const int hw = static_cast<int>(halfAt(std::min(y - 4, yBot))) + 3;
+        for (int x = -hw; x <= hw; ++x)
+            p.set(cx + x + 3, y + 4, col(0x050F1A, 100));
+    }
+    // --- bow wave & side foam ---------------------------------------------------
+    for (int k = 0; k < 46; ++k) {
+        const float a = static_cast<float>(k) / 45.0f;
+        const float bowY = yBot - 2.0f - 40.0f * a;
+        const float spread = 4.0f + 26.0f * a;
+        const std::uint32_t foam = col(0xE8F2FA, static_cast<std::uint8_t>(190 - 150 * a));
+        for (int sx : {-1, 1}) {
+            const int fx = cx + static_cast<int>(sx * (halfAt(static_cast<int>(bowY)) + spread));
+            p.set(fx, static_cast<int>(bowY), foam);
+            p.set(fx + sx, static_cast<int>(bowY) + 1, col(0xC8DCF0, 100));
+            if (k % 6 == 0) p.set(fx + sx * 2, static_cast<int>(bowY) - 2, col(0xFFFFFF, 150));
+        }
+    }
+    for (int k = 0; k < 12; ++k) {                     // stern wake feathering
+        const float a = static_cast<float>(k) / 11.0f;
+        const int wy = yTop - 4 + k;
+        const int off = 26 + static_cast<int>(16.0f * (1.0f - a));
+        p.set(cx - off, wy, col(0xC8DCF0, static_cast<std::uint8_t>(70 - 5 * k)));
+        p.set(cx + off, wy, col(0xC8DCF0, static_cast<std::uint8_t>(70 - 5 * k)));
+    }
+    for (int y = yTop + 8; y < yBot - 8; y += 3) {     // lift-side foam ticks
+        const int hw = static_cast<int>(halfAt(y));
+        p.set(cx - hw - 2, y, col(0xC8DCF0, 70));
+        p.set(cx + hw + 2, y + 1, col(0xC8DCF0, 70));
+    }
+
+    // --- hull / lift side (grey plating under the overhanging deck) -----------
+    for (int y = yTop; y <= yBot; ++y) {
+        const int hw = static_cast<int>(halfAt(y));
+        for (int x = -hw; x <= hw; ++x) {
+            const int dEdge = hw - std::abs(x);
+            std::uint32_t c = col(0x4A5158);
+            if (dEdge <= 1) c = col(0x22272B);
+            else if (x < 0) c = col(0x565D64);
+            p.set(cx + x, y, c);
+        }
+    }
+    // Hangar-side vent dashes along both lift sides.
+    for (int y = yTop + 14; y < yBot - 18; y += 11) {
+        const int hw = static_cast<int>(halfAt(y));
+        if (hw > 20)
+            for (int sx : {-1, 1})
+                p.fillRect(cx + sx * (hw - 3) - 1, y, 2, 4, col(0x2C3136));
+    }
+
+    // --- flight deck overhang ring ------------------------------------------------
+    for (int y = yTop + 2; y <= yBot - 2; ++y) {
+        const int hw = static_cast<int>(halfAt(y)) - 3;
+        for (int x = -hw - 1; x <= hw + 1; ++x)
+            p.set(cx + x, y, (hw + 1 - std::abs(x)) <= 0 ? col(0x1E2225) : col(0x2A2E32));
+    }
+    // --- wood flight deck ---------------------------------------------------------
+    for (int y = yTop + 3; y <= yBot - 3; ++y) {
+        const int hw = static_cast<int>(halfAt(y)) - 5;
+        for (int x = -hw; x <= hw; ++x) {
+            std::uint32_t c = col(0x574D41);
+            if ((y % 3) == 0) c = col(0x493F34);                 // plank lines
+            else if ((x + y * 2) % 23 == 0) c = col(0x61564A);   // sun-bleached seam
+            else if ((x * 7 + y) % 41 == 0) c = col(0x4E4438);
+            p.set(cx + x, y, c);
+        }
+    }
+    // Deck-edge catwalk highlight.
+    for (int y = yTop + 4; y < yBot - 4; ++y) {
+        const int hw = static_cast<int>(halfAt(y)) - 5;
+        p.set(cx - hw - 1, y, col(0x7A6F60, 160));
+        p.set(cx + hw + 1, y + 1, col(0x3A332B, 160));
+    }
+
+    // --- landing markings ---------------------------------------------------------
+    for (int y = yTop + 16; y < yBot - 26; ++y)                  // dashed centreline
+        if ((y % 14) < 7) { p.set(cx, y, col(0xD8D2C4)); p.set(cx + 1, y, col(0xB8B2A4)); }
+    for (int bx : {-14, 14})                                      // touchdown bars
+        p.fillRect(cx + bx - 1, yBot - 74, 2, 22, col(0xD8D2C4));
+    p.hline(cx - 30, cx + 30, yBot - 84, col(0xD8D2C4, 200));     // beam stop line
+    for (int k = 0; k < 7; ++k)                                   // red hazard tabs on line
+        p.fillRect(cx - 28 + k * 9, yBot - 85, 4, 2, col(0xB03A28));
+
+    // --- island deckhouse blockout (component tower rides on this) --------------
+    p.fillRect(cx + 28, H / 2 - 40, 34, 52, col(0x3E454C));
+    p.fillRect(cx + 28, H / 2 - 40, 34, 1, col(0x858C93));
+    p.fillRect(cx + 60, H / 2 - 40, 2, 52, col(0x252A2F));
+    p.fillEllipse(static_cast<float>(cx + 40), static_cast<float>(H / 2 - 24), 6.0f, 7.0f,
+                  col(0x17191B));                                 // uptake
+    p.fillEllipse(static_cast<float>(cx + 40) + 1.5f, static_cast<float>(H / 2 - 22),
+                  4.5f, 5.0f, col(0x0A0806, 120));
+    p.fillRect(cx + 30, H / 2 + 4, 10, 6, col(0x4E555C));         // chart room wing
+
+    // --- AA sponson pedestals (match JSON component offsets) -----------------------
+    for (int sx : {-1, 1})
+        for (int sy : {-1, 1}) {
+            const float ax = static_cast<float>(cx + sx * 54);
+            const float ay = static_cast<float>(H / 2 + sy * (sy < 0 ? 52 : 54));
+            p.fillEllipse(ax + 1.5f, ay + 2.5f, 12.5f, 12.0f, col(0x0A0806, 90));
+            p.fillEllipse(ax, ay, 12.5f, 12.0f, col(0x23282D));
+            p.fillEllipse(ax, ay - 1.0f, 10.5f, 10.0f, col(0x4E555C));
+        }
+    // Bow gun collar.
+    p.fillEllipse(static_cast<float>(cx) + 2.0f, static_cast<float>(H / 2 + 77), 13.0f, 12.0f,
+                  col(0x0A0806, 90));
+    p.fillEllipse(static_cast<float>(cx), static_cast<float>(H / 2 + 74), 13.0f, 12.0f,
+                  col(0x2E3338));
+    p.fillEllipse(static_cast<float>(cx), static_cast<float>(H / 2 + 73), 10.0f, 9.0f,
+                  col(0x474E54));
+
+    // --- deck-edge elevators (starboard fwd, port aft) ------------------------------
+    {
+        auto elevator = [&](int ex, int ey, int w, int h) {
+            for (int y = ey; y < ey + h; ++y)
+                for (int x = ex; x < ex + w; ++x) {
+                    std::uint32_t c = col(0x645948);
+                    if ((y % 3) == 0) c = col(0x554B3D);
+                    p.set(x, y, c);
+                }
+            p.hline(ex, ex + w - 1, ey, col(0x8A7E6C));
+            p.hline(ex, ex + w - 1, ey + h - 1, col(0x2E2820));
+            p.vline(ex, ey, ey + h - 1, col(0x2E2820));
+            p.vline(ex + w - 1, ey, ey + h - 1, col(0x1E1A15));
+        };
+        elevator(cx + 58, H / 2 + 26, 13, 26);      // starboard, overhanging edge
+        elevator(cx - 71, H / 2 - 40, 13, 26);      // port
+    }
+    // Cranes near the stern.
+    p.fillRect(cx - 24, H / 2 - 66, 2, 10, col(0x565C61));
+    p.fillRect(cx - 28, H / 2 - 66, 8, 2, col(0x7C838A));
+    p.fillRect(cx + 16, H / 2 - 66, 2, 10, col(0x565C61));
+    p.fillRect(cx + 12, H / 2 - 66, 8, 2, col(0x7C838A));
+
+    // --- parked strike group near the bow (decorative) ------------------------------
+    auto parked = [&](int px, int py, int dir) {
+        p.vline(px, py - 5, py + 5, col(0x2E343A));                    // fuselage
+        p.hline(px - 5, px + 5, py + dir * 2, col(0x33393F));          // wings
+        p.hline(px - 3, px + 3, py + 5, col(0x2E343A));                // tailplane
+        p.set(px, py - 5, col(0x4A5056));                              // nose glint
+        p.set(px + 1, py, col(0xB03A28, 200));                         // fuselage dot
+    };
+    parked(cx - 32, H / 2 + 14, 1);
+    parked(cx, H / 2 + 18, 1);
+    parked(cx + 32, H / 2 + 14, 1);
+    parked(cx - 16, H / 2 + 38, 1);
+    parked(cx + 16, H / 2 + 38, 1);
+
+    // Portholes & rust.
+    for (int k = 0; k < 14; ++k) {
+        const int py = yTop + 24 + k * 11;
+        const int hw = static_cast<int>(halfAt(py)) - 2;
+        if (hw > 10) { p.set(cx - hw, py, col(0x1E2226)); p.set(cx + hw, py, col(0x1E2226)); }
+    }
+    for (int k = 0; k < 12; ++k) {
+        const int rx = cx - 50 + (k * 41) % 101;
+        const int ry = yTop + 12 + (k * 71) % (static_cast<int>(L) - 24);
+        p.set(rx, ry, col(0x6E4A2C, 85));
+        p.set(rx, ry + 1, col(0x6E4A2C, 50));
+    }
+
+    // --- damage tiers ----------------------------------------------------------------
+    auto scorch = [&](int dx, int dy, int r, bool ember) {
+        const int yy = H / 2 + dy;
+        const int lim = std::max(4, static_cast<int>(halfAt(yy)) - r - 6);
+        dx = std::max(-lim, std::min(lim, dx));
+        p.fillEllipse(static_cast<float>(cx + dx), static_cast<float>(yy),
+                      static_cast<float>(r), static_cast<float>(r), col(0x14100C, 215));
+        p.fillEllipse(static_cast<float>(cx + dx), static_cast<float>(yy),
+                      r * 0.5f, r * 0.5f, col(0x0A0806, 255));
+        if (ember) {
+            p.set(cx + dx, yy, col(0xFF8A30));
+            p.set(cx + dx + 1, yy, col(0xC25A18));
+        }
+    };
+    if (damage >= 1) { scorch(-24, 30, 7, false); scorch(20, -34, 6, false); }
+    if (damage >= 2) {
+        scorch(-40, -10, 8, true); scorch(30, 46, 7, true); scorch(0, -58, 6, true);
+        for (int k = 0; k < 14; ++k)
+            p.set(cx - 48 + (k * 23) % 97, H / 2 - 40 + (k * 17) % 80, col(0x1E1A16, 170));
+    }
+    if (damage >= 3) {
+        scorch(-30, -64, 9, true); scorch(24, 70, 8, true); scorch(6, -6, 8, true);
+        // Starboard deck-edge breach: flight deck torn open aft.
+        for (int i = 0; i < 15; ++i) {
+            const int by = H / 2 - 24 + i;
+            const int hw = static_cast<int>(halfAt(by));
+            for (int x = hw - 13 + (i % 3); x <= hw; ++x) {
+                p.set(cx + x, by, col(0x141210));
+                if ((i + x) % 3 == 0) p.set(cx + x - 1, by, col(0x8A2A10));
+            }
+        }
+    }
+    return p;
+}
+
+// Carrier island tower 40x54: bridge windows, stubby funnel, lattice mast
+// with yardarm and a recognition disc — the command component.
+PixelBuf makeCarrierIsland() {
+    PixelBuf p(40, 54);
+    const int cx = 18;
+    // Deck pedestal shadow + base.
+    p.fillEllipse(20.0f, 49.0f, 18.0f, 5.0f, col(0x23282C));
+    p.fillEllipse(19.0f, 48.0f, 16.5f, 4.0f, col(0x4E5459));
+    // Tower block.
+    p.fillRect(8, 16, 22, 26, col(0x5C6368));
+    p.fillRect(8, 16, 22, 1, col(0x8A9094));
+    p.fillRect(28, 16, 2, 26, col(0x33383D));
+    for (int x = 10; x <= 26; x += 4) {                       // bridge windows
+        p.fillRect(x, 19, 3, 5, col(0x3A5A6E));
+        p.set(x, 19, col(0x9FD0E8));
+    }
+    // Recognition disc on the tower face.
+    p.fillRect(12, 28, 12, 9, col(0xE6E0D4));
+    p.fillEllipse(18.0f, 32.5f, 3.2f, 3.2f, col(0xC23A2A));
+    // Stub funnel aft of the tower with a smoke lip.
+    p.fillRect(26, 24, 9, 16, col(0x454C52));
+    p.fillRect(26, 24, 9, 1, col(0x767D84));
+    p.fillEllipse(30.5f, 24.0f, 4.2f, 2.4f, col(0x17191B));
+    // Lattice mast + yardarm + radar bar.
+    p.vline(cx, 2, 16, col(0x2A2E33));
+    p.vline(cx + 1, 2, 16, col(0x6E757C));
+    p.hline(cx - 8, cx + 8, 8, col(0x4E555C));
+    p.hline(cx - 5, cx + 5, 3, col(0x8A9094));
+    p.set(cx, 1, col(0xF2E8B8));                              // masthead light
+    // Bridge wing platforms.
+    p.fillRect(4, 26, 4, 3, col(0x4E555C));
+    p.set(4, 27, col(0xF2E8B8, 220));
+    return p;
+}
+
 
 // Sky Fortress GX-7 144x96: four-engine heavy bomber, drawn nose-DOWN
 // (it faces the player), full-span wings, gun blisters, prop blur discs.
@@ -1964,6 +2221,28 @@ bool generateAllArt(Renderer& r) {
         st.amberMark = true;   // elite heavy fighter
         addDown("enemy_heavy_fighter", st);
     }
+    {
+        // Carrier escort fighter: steel-blue twin with crimson nose band and
+        // bolt-on root armour — visibly tougher than anything it escorts.
+        PlaneStyle st{34, 26, col(0x55606D), col(0x707C8A), col(0x39424D), true};
+        st.redDot = true;
+        PixelBuf pf = makePlane(st, 0);
+        const int pcx = 26;
+        for (int x = -2; x <= 2; ++x) {           // crimson band under the nose
+            pf.set(pcx + x, 16, col(0xB03A28));
+            pf.set(pcx + x, 17, col(0x8C2A1C));
+        }
+        for (int sx : {-1, 1})                    // root armour plates
+            for (int d = 4; d <= 11; ++d)
+                for (int c = 1; c <= 3; ++c)
+                    pf.set(pcx + sx * d, 27 + c, d == 11 ? col(0x2C343D) : col(0x3F4956));
+        for (int sx : {-1, 1})                    // wing gun pods
+            for (int t = 0; t < 4; ++t)
+                pf.set(pcx + sx * 13, 27 + t, col(0x22272C));
+        PixelBuf p = cropToContent(pf);
+        flipY(p);
+        add("enemy_fighter_carrier", p);
+    }
     addDown("enemy_bomber", {56, 40, kEnGrey, shade(kEnGrey, 1.2f), kEnGreyDk, true});
 
     // Ground & sea.
@@ -2034,6 +2313,12 @@ bool generateAllArt(Renderer& r) {
     add("boss_destroyer_hull_flash", toFlashSilhouette(makeDestroyerHull(0)));
     add("boss_destroyer_gun", makeDestroyerGun());
     add("boss_destroyer_bridge", makeDestroyerBridge());
+    add("boss_carrier_hull", makeCarrierHull(0));
+    add("boss_carrier_hull_light", makeCarrierHull(1));
+    add("boss_carrier_hull_dmg", makeCarrierHull(2));
+    add("boss_carrier_hull_wreck", makeCarrierHull(3));
+    add("boss_carrier_hull_flash", toFlashSilhouette(makeCarrierHull(0)));
+    add("boss_carrier_island", makeCarrierIsland());
     add("wake_foam", makeWake());
     add("fire_puff", makeFirePuff());
     add("smoke_puff", makeSmokePuff());
@@ -2049,6 +2334,7 @@ void loadPngOverrides(Renderer& renderer, const std::string& assetDir) {
         "player_fighter", "player_fighter_l", "player_fighter_r",
         "enemy_fighter_light", "enemy_interceptor", "enemy_interceptor_m",
         "enemy_heavy_fighter", "enemy_bomber", "turret_aa", "tank", "bunker",
+        "enemy_fighter_carrier",
         "boat_patrol", "ship_destroyer", "bullet_player", "bullet_cannon",
         "bullet_rocket", "bullet_enemy", "shell_enemy", "flak_enemy",
         "powerup_p", "powerup_spread", "powerup_cannon", "powerup_rocket",
@@ -2066,6 +2352,8 @@ void loadPngOverrides(Renderer& renderer, const std::string& assetDir) {
         "boss_destroyer_hull_dmg", "boss_destroyer_hull_wreck",
         "boss_destroyer_hull_flash", "boss_destroyer_gun",
         "boss_destroyer_bridge",
+        "boss_carrier_hull", "boss_carrier_hull_light", "boss_carrier_hull_dmg",
+        "boss_carrier_hull_wreck", "boss_carrier_hull_flash", "boss_carrier_island",
         "wake_foam", "fire_puff", "smoke_puff",
     };
     for (const char* n : names) {

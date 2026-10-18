@@ -203,6 +203,7 @@ private:
         float stateTimer = 0.0f;
         float extraTimer = 0.0f;
         float deathChain = 0.0f;
+        float sortieTimer = 0.0f;     // air-group launches (carrier bosses)
         int phase = 0;
     };
 

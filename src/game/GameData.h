@@ -198,6 +198,11 @@ struct BossDef {
     std::vector<BossPhaseDef> phases;
     int deathEffect = 2;
     std::string defeatDrop = "powerup_p";  // drop after defeat
+    // Air group (carriers): periodically launch fighters from the deck.
+    // sortieInterval 0 (or empty sortieEnemy) disables the mechanic.
+    std::string sortieEnemy;
+    float sortieInterval = 0.0f;
+    int sortieCount = 2;
 };
 
 // ---------------------------------------------------------------------------

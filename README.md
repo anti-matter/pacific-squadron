@@ -19,7 +19,7 @@ into `assets/` to override the procedural content.
 - **Four player weapon classes** (gun / spread / cannon / rocket) with level
   progression, plus the LOOP special: an evasive aerobatic barrel that
   grants brief invincibility and clears all enemy fire on screen.
-- Two full stages with distinct terrain, wave scripts, and flagship bosses
+- Four complete stages with distinct terrain, wave scripts, and flagship bosses
   (*Battleship Yamashiro-class*, *Sky Fortress GX-7*).
 - Configurable keyboard **and** gamepad controls (persisted to disk), three
   difficulty levels, high-score table with initials, pause, options, and

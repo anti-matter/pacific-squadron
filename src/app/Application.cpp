@@ -932,7 +932,7 @@ void Application::renderHelp() {
     renderer_.text("HELP", 192.0f, 36.0f, 3, gold, true);
     renderer_.text("A 2D ARCADE SHOOTER OVER THE PACIFIC.", 192.0f, 86.0f, 1,
                    white, true);
-    renderer_.text("FLY TWO MISSIONS, DOWN THE ENEMY FLEET AND", 192.0f, 102.0f,
+    renderer_.text("FLY FOUR MISSIONS, DOWN THE ENEMY FLEET AND", 192.0f, 102.0f,
                    1, white, true);
     renderer_.text("SINK ITS ARMED FLAGSHIPS TO WIN.", 192.0f, 118.0f, 1,
                    white, true);
