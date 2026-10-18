@@ -114,6 +114,9 @@ public:
 
     // Headless smoke-testing hook (used with WWII_SMOKE env).
     void debugStart() { startGame(); }
+    // Start a normal playthrough at the given stage (0-based, clamped).
+    // Test hook for WWII_START_STAGE.
+    void debugStartAtStage(int idx);
     // Headless smoke capture: jump straight to a UI screen.
     void debugSetState(GameState s) { state_ = s; }
 

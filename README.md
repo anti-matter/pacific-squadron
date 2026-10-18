@@ -94,10 +94,13 @@ SDL_VIDEO_DRIVER=dummy ./build/pacific-squadron
 | `WWII_SMOKE_NOAUTO`  | disable autopilot (just run the title/timer)      |
 | `WWII_SMOKE_SHOT`    | path to write a PNG screenshot                    |
 | `WWII_SMOKE_SHOT_AT` | time (s) at which to capture it (default 10)      |
+| `WWII_START_STAGE`   | begin at stage *n* (1-based). With no `WWII_SMOKE` this is a normal hands-on playthrough of that stage; with `WWII_SMOKE` the autopilot starts there too |
 
 Note: run smoke durations that cross a stage's scripted `bossTime` to
 exercise the natural boss-spawn path in stage scripts (stage 1: 86 s,
-stage 2: 94 s) — e.g. `WWII_SMOKE=95` covers stage 1's boss arrival.
+stage 2: 94 s, stage 3: 102 s) — e.g. `WWII_SMOKE=95` covers stage 1's
+boss arrival, or `WWII_SMOKE=115 WWII_START_STAGE=3` jumps straight to
+stage 3 and runs through its boss fight.
 
 ## Controls (defaults, rebindable in Options)
 

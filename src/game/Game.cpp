@@ -128,6 +128,13 @@ void Game::startGame() {
     startStage();
 }
 
+void Game::debugStartAtStage(int idx) {
+    const int last = static_cast<int>(data_.stages.size()) - 1;
+    stageIndex_ = std::max(0, std::min(idx, last));
+    score_ = 0;
+    startStage();
+}
+
 void Game::startStage() {
     sim_.startStage(stageIndex_, modsFor(settings_.difficulty));
     bossDefeated_ = false;

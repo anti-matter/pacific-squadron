@@ -104,6 +104,13 @@ bool Application::init() {
     loadHighScores();
     input_.loadBindings((prefPath("input.json")).string());
 
+    // WWII_START_STAGE=<n> (1-based): begin a playthrough at stage n. In
+    // normal mode this skips the title; with WWII_SMOKE the harness starts
+    // at that stage instead of stage 1.
+    int startStageIdx = -1;
+    if (const char* lv = SDL_getenv("WWII_START_STAGE"))
+        startStageIdx = SDL_atoi(lv) - 1;
+
     // Headless smoke test hooks (see cmake smoke script).
     if (const char* s = SDL_getenv("WWII_SMOKE")) {
         smokeTime_ = SDL_atof(s);
@@ -117,13 +124,16 @@ bool Application::init() {
                 ? SDL_atof(SDL_getenv("WWII_SMOKE_SHOT_AT")) : 10.0f;
         }
         if (!SDL_getenv("WWII_SMOKE_NOAUTO")) {
-            game_->debugStart();
+            if (startStageIdx >= 0) game_->debugStartAtStage(startStageIdx);
+            else game_->debugStart();
             game_->sim().setPlayerIntent({0, 0}, true, false);
             if (SDL_getenv("WWII_SMOKE_GOD"))
                 game_->sim().setGodMode(true);
         }
         if (SDL_getenv("WWII_SMOKE_HELP"))
             game_->debugSetState(GameState::Help);
+    } else if (startStageIdx >= 0) {
+        game_->debugStartAtStage(startStageIdx);
     }
     // Debug HUD on from the environment (F3 still toggles in-game).
     if (SDL_getenv("WWII_DEBUG"))
