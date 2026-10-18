@@ -964,7 +964,7 @@ void Application::renderHelp() {
         const char* desc;
     };
     const LegendRow leftCol[] = {
-        {"powerup_p", "UPGRADE CURRENT GUN"},
+        {"powerup_p", "GUN UPGRADE"},
         {"powerup_spread", "SPREAD GUN"},
         {"powerup_rocket", "ROCKETS"},
         {"powerup_repair", "REPAIR 1 HULL"},
@@ -977,13 +977,13 @@ void Application::renderHelp() {
     constexpr float kIconX1 = 74.0f, kDescX1 = 94.0f;
     constexpr float kIconX2 = 218.0f, kDescX2 = 238.0f;
     for (int i = 0; i < 4; ++i) {
-        const float y = 330.0f + static_cast<float>(i) * 20.0f;
+        const float y = 342.0f + static_cast<float>(i) * 20.0f;
         const int tex = renderer_.texture(leftCol[i].sprite);
         if (tex >= 0) renderer_.draw(tex, kIconX1, y);
         renderer_.text(leftCol[i].desc, kDescX1, y, 1, white, false);
     }
     for (int i = 0; i < 3; ++i) {
-        const float y = 330.0f + static_cast<float>(i) * 20.0f;
+        const float y = 342.0f + static_cast<float>(i) * 20.0f;
         const int tex = renderer_.texture(rightCol[i].sprite);
         if (tex >= 0) renderer_.draw(tex, kIconX2, y);
         renderer_.text(rightCol[i].desc, kDescX2, y, 1, white, false);
