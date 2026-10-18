@@ -168,9 +168,15 @@ struct Hi {
                 int alpha = aSum * 255 / total;
                 if (alpha > 235) alpha = 255;   // snap near-solid
                 else if (alpha < 28) continue;  // drop faint dust
-                const std::uint32_t r = (static_cast<std::uint32_t>(rSum) << 24) / aSum;
-                const std::uint32_t g = (static_cast<std::uint32_t>(gSum) << 16) / aSum;
-                const std::uint32_t b = (static_cast<std::uint32_t>(bSum) << 8) / aSum;
+                // Divide BEFORE shifting: rSum can reach 255*SS*SS, and
+                // (rSum << 24) overflows 32 bits for any channel > 15
+                // (the wraparound used to green-shift every solid sprite).
+                const std::uint32_t r =
+                    static_cast<std::uint32_t>((rSum + aSum / 2) / aSum) << 24;
+                const std::uint32_t g =
+                    static_cast<std::uint32_t>((gSum + aSum / 2) / aSum) << 16;
+                const std::uint32_t b =
+                    static_cast<std::uint32_t>((bSum + aSum / 2) / aSum) << 8;
                 out.set(x, y, r + g + b + static_cast<std::uint32_t>(alpha));
             }
         }
@@ -456,14 +462,16 @@ void drawPuff(PixelBuf& sheet, float cx, float cy, float r, float p,
             // Continuous heat ramp: pale core -> gold -> orange -> deep red,
             // replacing the old four hard-edged bands.
             std::uint32_t c;
+            // mix24 takes 24-bit 0xRRGGBB inputs; coreC..lineC are 32-bit
+            // col() words, so strip the alpha byte before blending.
             if (te < coreF)
-                c = mix24(coreC, bodyC, coreF > 0.02f ? te / coreF : 1.0f);
+                c = mix24(coreC >> 8, bodyC >> 8, coreF > 0.02f ? te / coreF : 1.0f);
             else if (te < 0.62f)
-                c = mix24(bodyC, rimC, (te - coreF) / std::max(0.02f, 0.62f - coreF));
+                c = mix24(bodyC >> 8, rimC >> 8, (te - coreF) / std::max(0.02f, 0.62f - coreF));
             else if (te < 0.86f)
-                c = mix24(rimC, lineC, (te - 0.62f) / 0.24f);
+                c = mix24(rimC >> 8, lineC >> 8, (te - 0.62f) / 0.24f);
             else
-                c = mix24(lineC, 0x5A1206, (te - 0.86f) / 0.14f);
+                c = mix24(lineC >> 8, 0x5A1206u, (te - 0.86f) / 0.14f);
             const float acov = cov > 1.0f ? 1.0f : cov;
             const int a = static_cast<int>(fade * acov + 0.5f);
             if (a <= 0) continue;
