@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 
 #include <nlohmann/json.hpp>
@@ -131,6 +132,15 @@ bool Application::init() {
         }
         if (SDL_getenv("WWII_SMOKE_HELP"))
             game_->debugSetState(GameState::Help);
+        // Debug: jump straight to a named menu state (Help/Options/HighScores).
+        if (const char* st = SDL_getenv("WWII_SMOKE_STATE")) {
+            if (!std::strcmp(st, "Options"))
+                game_->debugSetState(GameState::Options);
+            else if (!std::strcmp(st, "Help"))
+                game_->debugSetState(GameState::Help);
+            else if (!std::strcmp(st, "HighScores"))
+                game_->debugSetState(GameState::HighScores);
+        }
     } else if (startStageIdx >= 0) {
         game_->debugStartAtStage(startStageIdx);
     }
@@ -904,24 +914,33 @@ void Application::renderOptions() {
     renderer_.text("OPTIONS", 192.0f, 80.0f, 3, Color::rgb(0xFFD860), true);
     const Settings& s = game_->settings();
     const char* diffNames[] = {"EASY", "NORMAL", "HARD"};
-    char rows[6][48];
-    std::snprintf(rows[0], 48, "DIFFICULTY   %s",
+    char vals[6][24];
+    std::snprintf(vals[0], 24, "%s",
                   diffNames[std::min(2, static_cast<int>(s.difficulty))]);
-    std::snprintf(rows[1], 48, "MASTER VOL   %d%%",
+    std::snprintf(vals[1], 24, "%d%%",
                   static_cast<int>(s.masterVolume * 100.0f + 0.5f));
-    std::snprintf(rows[2], 48, "MUSIC VOL    %d%%",
+    std::snprintf(vals[2], 24, "%d%%",
                   static_cast<int>(s.musicVolume * 100.0f + 0.5f));
-    std::snprintf(rows[3], 48, "SFX VOL      %d%%",
+    std::snprintf(vals[3], 24, "%d%%",
                   static_cast<int>(s.sfxVolume * 100.0f + 0.5f));
-    std::snprintf(rows[4], 48, "FULLSCREEN   %s", s.fullscreen ? "ON" : "OFF");
-    std::snprintf(rows[5], 48, "BACK");
+    std::snprintf(vals[4], 24, "%s", s.fullscreen ? "ON" : "OFF");
+    vals[5][0] = '\0';
+    const char* labels[] = {"DIFFICULTY", "MASTER VOL", "MUSIC VOL", "SFX VOL",
+                            "FULLSCREEN", "BACK"};
+    // Fixed columns (label left, value left) so every row lines up; the
+    // old single-string-per-row layout drifted as value lengths varied.
+    constexpr float kLabelX = 64.0f, kValueX = 240.0f, kSelL = 40.0f,
+                    kSelR = 344.0f;
     for (int i = 0; i < 6; ++i) {
         const bool sel = game_->menuSelection() == i;
-        // Symmetric side padding so centering is exact (see renderTitle).
-        const std::string t = (sel ? std::string("> ") : std::string("  ")) +
-                              std::string(rows[i]) + (sel ? " <" : "  ");
-        renderer_.text(t, 192.0f, 150.0f + i * 32.0f, 2,
-                       sel ? Color::rgb(0xFFD860) : Color::rgb(0xD8E0E8), true);
+        const Color c = sel ? Color::rgb(0xFFD860) : Color::rgb(0xD8E0E8);
+        const float y = 150.0f + static_cast<float>(i) * 32.0f;
+        renderer_.text(labels[i], kLabelX, y, 2, c, false);
+        if (vals[i][0]) renderer_.text(vals[i], kValueX, y, 2, c, false);
+        if (sel) {
+            renderer_.text(">", kSelL, y, 2, c, false);
+            renderer_.text("<", kSelR, y, 2, c, false);
+        }
     }
     renderer_.text("UP/DOWN SELECT   LEFT/RIGHT ADJUST", 192.0f, 420.0f, 1,
                    Color::rgb(0x9AB0C8), true);
@@ -940,14 +959,29 @@ void Application::renderHelp() {
                    white, true);
 
     renderer_.text("CONTROLS", 192.0f, 152.0f, 2, gold, true);
-    renderer_.text("WASD / ARROWS   MOVE        STICK", 192.0f, 180.0f, 1,
-                   white, true);
-    renderer_.text("SPACE           FIRE        PAD A / RB", 192.0f, 196.0f, 1,
-                   white, true);
-    renderer_.text("SHIFT / CTRL    LOOP        PAD B / LB", 192.0f, 212.0f, 1,
-                   white, true);
-    renderer_.text("ESC / P         PAUSE       PAD START", 192.0f, 228.0f, 1,
-                   white, true);
+    // Controls table: three true columns at fixed x positions (key column
+    // right-aligned, action + pad columns left-aligned) instead of
+    // space-padded center-aligned strings, whose columns drifted with the
+    // new font metrics.
+    struct ControlRow {
+        const char* key;
+        const char* act;
+        const char* pad;
+    };
+    const ControlRow rows[] = {
+        {"WASD / ARROWS", "MOVE", "STICK"},
+        {"SPACE", "FIRE", "PAD A / RB"},
+        {"SHIFT / CTRL", "LOOP", "PAD B / LB"},
+        {"ESC / P", "PAUSE", "PAD START"},
+    };
+    constexpr float kKeyEndX = 152.0f, kActX = 168.0f, kPadX = 252.0f;
+    for (int i = 0; i < 4; ++i) {
+        const float y = 180.0f + static_cast<float>(i) * 16.0f;
+        renderer_.text(rows[i].key, kKeyEndX - renderer_.textWidth(rows[i].key, 1),
+                       y, 1, white, false);
+        renderer_.text(rows[i].act, kActX, y, 1, white, false);
+        renderer_.text(rows[i].pad, kPadX, y, 1, white, false);
+    }
     renderer_.text("PICKED-UP GUNS REPLACE YOUR GUN", 192.0f, 252.0f, 1,
                    dim, true);
     renderer_.text("AND FIRE WITH SPACE. LOOP CLEARS ALL", 192.0f, 266.0f,
