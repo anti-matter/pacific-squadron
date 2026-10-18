@@ -715,21 +715,23 @@ void Application::renderWorld() {
                            pt.size, pt.size, pcol);
     }
 
-    // Pass 8: explosions.
+    // Pass 8: explosions. Texture and AnimDef are chosen together so the
+    // frame geometry always matches the sheet being sliced.
+    const AnimDef* exSplashS = findAnim("splash_small");
+    const AnimDef* exSplashL = findAnim("splash_large");
     int bossBooms = 0;
     for (const auto& ex : sim.explosions()) {
         if (ex.t < 0.0f) continue;   // fuse delay for staggered finales
-        const std::string texName = ex.splash && ex.sizeClass == 0
-            ? "splash_small"
-            : (ex.splash ? "splash_large"
-               : (ex.sizeClass == 0 ? "explosion_small"
-                  : ex.sizeClass == 1 ? "explosion_medium"
-                  : ex.sizeClass == 3 ? "explosion_xlarge"
-                  : ex.sizeClass == 4 ? "boss_explosion" : "explosion_large"));
-        const AnimDef* ad = ex.sizeClass == 0 ? exSmall
-                           : ex.sizeClass == 1 ? exMed
-                           : ex.sizeClass == 3 ? exXl
-                           : ex.sizeClass == 4 ? exBoss : exBig;
+        const char* texName = "";
+        const AnimDef* ad = nullptr;
+        if (ex.splash) {
+            if (ex.sizeClass <= 1) { texName = "splash_small"; ad = exSplashS; }
+            else                   { texName = "splash_large"; ad = exSplashL; }
+        } else if (ex.sizeClass == 0) { texName = "explosion_small";  ad = exSmall; }
+        else if (ex.sizeClass == 1)   { texName = "explosion_medium"; ad = exMed; }
+        else if (ex.sizeClass == 3)   { texName = "explosion_xlarge"; ad = exXl; }
+        else if (ex.sizeClass == 4)   { texName = "boss_explosion";   ad = exBoss; }
+        else                          { texName = "explosion_large";  ad = exBig; }
         if (ex.sizeClass == 4) {
             ++bossBooms;
             // Smoke-hook: negative WWII_SMOKE_SHOT_AT captures N seconds

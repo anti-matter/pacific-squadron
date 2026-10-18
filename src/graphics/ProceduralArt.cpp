@@ -211,55 +211,7 @@ void flipY(PixelBuf& p) {
 }
 
 // ---------------------------------------------------------------------------
-// Explosion animation sheets
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// Water splash (ship kills over water): white crown over a pale-blue disc.
-// ---------------------------------------------------------------------------
-PixelBuf makeSplashSheet(int frames, int frameSize, std::uint64_t seed) {
-    PixelBuf sheet(frameSize * frames, frameSize);
-    Rng rng(seed);
-    for (int f = 0; f < frames; ++f) {
-        const float t = static_cast<float>(f) / (frames - 1);
-        const float cx = f * frameSize + frameSize * 0.5f;
-        const float cy = frameSize * 0.5f;
-        const float r = frameSize * 0.48f * (0.25f + 0.75f * std::sqrt(t));
-        const int alpha = static_cast<int>(255.0f * (1.0f - t * t));
-        std::vector<float> lobes(24);
-        for (float& v : lobes) v = rng.range(0.80f, 1.15f);
-        for (int y = 0; y < frameSize; ++y) {
-            for (int x = 0; x < frameSize; ++x) {
-                const float dx = x + 0.5f - cx;
-                const float dy = y + 0.5f - cy;
-                const float dist = std::sqrt(dx * dx + dy * dy);
-                int ang = static_cast<int>((std::atan2(dy, dx) + 3.15f) / 6.29f * 24.0f) % 24;
-                const float edge = r * lobes[static_cast<std::size_t>(ang)];
-                if (dist > edge) continue;
-                const float tEdge = dist / std::max(0.01f, edge);
-                const std::uint32_t c =
-                    tEdge < 0.55f ? col(0xFFFFFF, 255) : col(0x9CC8E8, 230);
-                const int a = static_cast<int>((c & 0xFF) *
-                                               (1.0f - tEdge * tEdge * 0.7f) *
-                                               (alpha / 255.0f));
-                sheet.set(x, y, (c & 0xFFFFFF00u) |
-                                    static_cast<std::uint32_t>(std::min(255, a)));
-            }
-        }
-        if (f < frames - 1) {
-            for (int k = 0; k < 6; ++k) {
-                const float a = rng.range(0.0f, 6.28f);
-                const float d = r * rng.range(1.0f, 1.5f);
-                sheet.set(static_cast<int>(cx + std::cos(a) * d),
-                          static_cast<int>(cy + std::sin(a) * d * 0.7f),
-                          col(0xFFFFFF, 200));
-            }
-        }
-    }
-    return sheet;
-}
-
-// ---------------------------------------------------------------------------
-// 1942/1943-style explosions: clusters of scalloped fireball puffs.
+// 1942/1943-style explosion animation sheets.
 //
 // Reference is the CPS-era 1942/1943 kill effect: every detonation is a
 // CLUSTER of small "puffs" — cauliflower fireballs with a yellow core,
@@ -348,7 +300,8 @@ void drawPuff(PixelBuf& sheet, float cx, float cy, float r, float p,
     }
 }
 
-PixelBuf makeBoomSheet(int frames, int size, std::uint64_t seed, int tier) {
+PixelBuf makeBoomSheet(int frames, int size, std::uint64_t seed, int tier,
+                       bool water = false) {
     PixelBuf sheet(frames * size, size);
     Rng rng(seed);
     const float H = size * 0.5f;
@@ -398,19 +351,40 @@ PixelBuf makeBoomSheet(int frames, int size, std::uint64_t seed, int tier) {
                     rng.range(0.18f, 0.26f), rng.range(0.45f, 0.62f),
                     rng.range(0.33f, 0.52f));
     }
-    // Ember dots flickering around the cluster.
+    // Ember dots flickering around the cluster (white droplets over water).
     struct Emb { float ang, v0, v1; std::uint32_t seedv; };
     const int nEmber = tier <= 0 ? 2 : tier == 1 ? 5 : tier == 2 ? 9 : 14;
     std::vector<Emb> embers;
     for (int k = 0; k < nEmber; ++k)
         embers.push_back({rng.range(0.0f, 6.2832f), rng.range(0.18f, 0.35f),
                           rng.range(0.55f, 0.95f), rng.nextU32()});
+    // Water spray: flattened white crown of droplets spreading outward.
+    struct Spray { float ang, spd; };
+    std::vector<Spray> spray;
+    if (water)
+        for (int k = 0; k < 16; ++k)
+            spray.push_back({rng.range(0.0f, 6.2832f), rng.range(0.45f, 1.0f)});
 
     for (int f = 0; f < frames; ++f) {
         const float t = static_cast<float>(f) / static_cast<float>(frames - 1);
         const float cx = f * size + H;
         const float cy = H;
-        // Embers first (behind the flames).
+        // Spray crown first (behind everything).
+        if (water && t < 0.90f) {
+            const float sf = t < 0.55f ? 1.0f : 1.0f - (t - 0.55f) / 0.35f;
+            const int sa = static_cast<int>(230.0f * sf);
+            if (sa > 0) {
+                const std::uint32_t c = col(0xF4FAFF, static_cast<std::uint8_t>(sa));
+                for (const Spray& s : spray) {
+                    const float d = (0.18f + 0.85f * s.spd * (0.35f + 0.75f * t)) * H;
+                    const int px = static_cast<int>(cx + std::cos(s.ang) * d);
+                    const int py = static_cast<int>(cy + std::sin(s.ang) * d * 0.55f);
+                    sheet.blend(px, py, c);
+                    if (t < 0.40f) sheet.blend(px, py + 1, c);
+                }
+            }
+        }
+        // Embers next (behind the flames).
         for (int k = 0; k < nEmber; ++k) {
             const Emb& e = embers[static_cast<std::size_t>(k)];
             const float d = (e.v0 + (e.v1 - e.v0) * t) * H;
@@ -419,8 +393,9 @@ PixelBuf makeBoomSheet(int frames, int size, std::uint64_t seed, int tier) {
                 continue;
             const int px = static_cast<int>(cx + std::cos(e.ang) * d);
             const int py = static_cast<int>(cy + std::sin(e.ang) * d);
-            const std::uint32_t c =
-                t < 0.45f ? col(0xFFD870, 235) : col(0xF0681E, 210);
+            const std::uint32_t c = water
+                ? (t < 0.45f ? col(0xF4FAFF, 235) : col(0xC8DCF0, 200))
+                : (t < 0.45f ? col(0xFFD870, 235) : col(0xF0681E, 210));
             sheet.blend(px, py, c);
             if (t < 0.30f) sheet.blend(px + 1, py, c);
         }
@@ -1694,8 +1669,8 @@ bool generateAllArt(Renderer& r) {
     add("explosion_small", makeBoomSheet(6, 24, 0xE5A1u, 0));
     add("explosion_medium", makeBoomSheet(11, 40, 0xE5B2u, 1));
     add("explosion_large", makeBoomSheet(15, 72, 0xE5C3u, 2));
-    add("splash_small", makeSplashSheet(6, 24, 0x5D1Au));
-    add("splash_large", makeSplashSheet(6, 48, 0x5D2Bu));
+    add("splash_small", makeBoomSheet(10, 32, 0x5D1Au, 1, true));
+    add("splash_large", makeBoomSheet(14, 48, 0x5D2Bu, 2, true));
     add("muzzle_flash", makeMuzzleSheet());
     add("shadow_ell", makeShadow());
 
