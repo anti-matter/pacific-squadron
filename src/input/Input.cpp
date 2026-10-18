@@ -56,6 +56,12 @@ bool Input::init() {
 
 void Input::shutdown() {}
 
+void Input::onDeviceAdded(int instanceId) {
+    // Hot-plugged (or Bluetooth-woken) pads need opening; SDL emits no
+    // gamepad events for devices we never opened.
+    SDL_OpenGamepad(static_cast<SDL_JoystickID>(instanceId));
+}
+
 void Input::setDefaults() {
     for (int i = 0; i < kNumActions; ++i) bindings_[i] = {};
     auto key = [](const char* name) { return static_cast<int>(SDL_GetKeyFromName(name)); };
@@ -91,10 +97,15 @@ void Input::onKey(int scancodeKey, bool down) {
     auto it = std::find(v.begin(), v.end(), scancodeKey);
     if (down && it == v.end()) v.push_back(scancodeKey);
     if (!down && it != v.end()) v.erase(it);
+    if (down && std::find(keyTaps_.begin(), keyTaps_.end(), scancodeKey) == keyTaps_.end())
+        keyTaps_.push_back(scancodeKey);
 }
 
 void Input::onGamepadButton(int button, bool down) {
-    if (button >= 0 && button < 32) padButtonState_[button] = down;
+    if (button >= 0 && button < 32) {
+        padButtonState_[button] = down;
+        if (down) padTaps_[button] = true;
+    }
 }
 
 void Input::onGamepadAxis(int axis, float value) {
@@ -104,12 +115,16 @@ void Input::onGamepadAxis(int axis, float value) {
     // full-speed move (and a latched held state kills menu button edges).
     const float v = value / 32768.0f;
     constexpr float kDead = 0.25f;
-    if (axis == SDL_GAMEPAD_AXIS_LEFTX)
+    if (axis == SDL_GAMEPAD_AXIS_LEFTX) {
         padStickX = std::abs(v) < kDead ? 0.0f : v;
-    else if (axis == SDL_GAMEPAD_AXIS_LEFTY)
+        if (std::abs(padStickX) > std::abs(stickTapX_)) stickTapX_ = padStickX;
+    } else if (axis == SDL_GAMEPAD_AXIS_LEFTY) {
         padStickY = std::abs(v) < kDead ? 0.0f : v;
-    else if (axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)
+        if (std::abs(padStickY) > std::abs(stickTapY_)) stickTapY_ = padStickY;
+    } else if (axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) {
         rightTrigger_ = std::max(0.0f, v);
+        if (rightTrigger_ > 0.5f) triggerTap_ = true;
+    }
 }
 
 void Input::forgetDevices() {
@@ -117,28 +132,45 @@ void Input::forgetDevices() {
     // buttons and sticks would otherwise latch in their last state.
     padStickX = padStickY = 0.0f;
     rightTrigger_ = 0.0f;
+    stickTapX_ = stickTapY_ = 0.0f;
+    triggerTap_ = false;
     std::memset(padButtonState_, 0, sizeof(padButtonState_));
+    std::memset(padTaps_, 0, sizeof(padTaps_));
     keysDown_.clear();
+    keyTaps_.clear();
 }
 
 void Input::newFrame() {
     std::memcpy(prevHeld_, held_, sizeof(held_));
+    // An action counts as held if it is held NOW or was pressed at any point
+    // since the previous newFrame(). Level-only sampling loses press+release
+    // pairs that land inside one (possibly hitched) frame, which is what made
+    // controls feel sporadic in heavy scenes.
     for (int a = 0; a < kNumActions; ++a) {
         const Binding& b = bindings_[a];
         bool on = false;
-        for (int k : b.keys)
-            if (std::find(keysDown_.begin(), keysDown_.end(), k) != keysDown_.end())
+        for (int k : b.keys) {
+            if (std::find(keysDown_.begin(), keysDown_.end(), k) != keysDown_.end() ||
+                std::find(keyTaps_.begin(), keyTaps_.end(), k) != keyTaps_.end())
                 on = true;
+        }
         for (int bt : b.padButtons)
-            if (bt >= 0 && bt < 32 && padButtonState_[bt]) on = true;
-        // Analog helpers.
-        if (a == static_cast<int>(Action::MoveUp) && padStickY < -0.4f) on = true;
-        if (a == static_cast<int>(Action::MoveDown) && padStickY > 0.4f) on = true;
-        if (a == static_cast<int>(Action::MoveLeft) && padStickX < -0.4f) on = true;
-        if (a == static_cast<int>(Action::MoveRight) && padStickX > 0.4f) on = true;
-        if (a == static_cast<int>(Action::Special) && rightTrigger_ > 0.5f) on = true;
+            if (bt >= 0 && bt < 32 && (padButtonState_[bt] || padTaps_[bt])) on = true;
+        // Analog helpers (current level, or a flick completed this frame).
+        const float ex = std::abs(stickTapX_) > std::abs(padStickX) ? stickTapX_ : padStickX;
+        const float ey = std::abs(stickTapY_) > std::abs(padStickY) ? stickTapY_ : padStickY;
+        if (a == static_cast<int>(Action::MoveUp) && ey < -0.4f) on = true;
+        if (a == static_cast<int>(Action::MoveDown) && ey > 0.4f) on = true;
+        if (a == static_cast<int>(Action::MoveLeft) && ex < -0.4f) on = true;
+        if (a == static_cast<int>(Action::MoveRight) && ex > 0.4f) on = true;
+        if (a == static_cast<int>(Action::Special) && (rightTrigger_ > 0.5f || triggerTap_))
+            on = true;
         held_[a] = on;
     }
+    keyTaps_.clear();
+    std::memset(padTaps_, 0, sizeof(padTaps_));
+    stickTapX_ = stickTapY_ = 0.0f;
+    triggerTap_ = false;
 }
 
 bool Input::saveBindings(const std::string& path) const {

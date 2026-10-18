@@ -58,6 +58,39 @@ void test_input_gamepad_axes() {
     in.newFrame();
     CHECK(!in.held(Action::MoveDown));
 
+    // Re-center the stick so later edge checks start from rest.
+    in.onGamepadAxis(SDL_GAMEPAD_AXIS_LEFTY, 0.0f);
+    in.newFrame();
+    CHECK(!in.held(Action::MoveUp));
+
+    // A press+release pair inside one frame (the classic slow-frame drop)
+    // must still register as one held frame with a usable edge.
+    in.onKey(static_cast<int>(SDL_GetKeyFromName("Up")), true);
+    in.onKey(static_cast<int>(SDL_GetKeyFromName("Up")), false);
+    in.newFrame();
+    CHECK(in.held(Action::MoveUp));
+    CHECK(in.pressedThisFrame(Action::MoveUp));
+    in.newFrame();  // tap buffer is one frame wide
+    CHECK(!in.held(Action::MoveUp));
+
+    // Same for pad buttons: tap down+up within a frame still fires.
+    in.onGamepadButton(SDL_GAMEPAD_BUTTON_SOUTH, true);
+    in.onGamepadButton(SDL_GAMEPAD_BUTTON_SOUTH, false);
+    in.newFrame();
+    CHECK(in.pressedThisFrame(Action::Fire));
+    in.newFrame();
+    CHECK(!in.held(Action::Fire));
+
+    // A stick flick that returns to center within one frame still gives a
+    // menu edge, while the analog movement level stays at rest.
+    in.onGamepadAxis(SDL_GAMEPAD_AXIS_LEFTY, -30000.0f);
+    in.onGamepadAxis(SDL_GAMEPAD_AXIS_LEFTY, 0.0f);
+    in.newFrame();
+    CHECK(in.pressedThisFrame(Action::MoveUp));
+    CHECK(in.padStickY == 0.0f);
+    in.newFrame();
+    CHECK(!in.held(Action::MoveUp));
+
     // forgetDevices() releases everything latched (pad unplugged, focus lost).
     in.onGamepadButton(SDL_GAMEPAD_BUTTON_SOUTH, true);
     in.onGamepadAxis(SDL_GAMEPAD_AXIS_LEFTX, 30000.0f);

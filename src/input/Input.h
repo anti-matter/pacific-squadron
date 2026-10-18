@@ -19,6 +19,8 @@ class Input {
 public:
     bool init();          // opens available gamepads
     void shutdown();
+    // Open a gamepad that appeared after init (hot-plug / BT reconnect).
+    void onDeviceAdded(int instanceId);
 
     // Call once per frame before polling.
     void newFrame();
@@ -53,6 +55,14 @@ private:
     std::vector<int> keysDown_;
     bool padButtonState_[32] = {};
     float rightTrigger_ = 0.0f;
+    // Press buffers: inputs that went down (and maybe already up) between
+    // two newFrame() calls. Sampling levels alone loses quick taps whenever
+    // a frame hitches (heavy scenes), which reads as sporadic controls.
+    std::vector<int> keyTaps_;
+    bool padTaps_[32] = {};
+    float stickTapX_ = 0.0f;  // largest deflection seen this frame (signed)
+    float stickTapY_ = 0.0f;
+    bool triggerTap_ = false;
     bool held_[static_cast<int>(Action::Count)] = {};
     bool prevHeld_[static_cast<int>(Action::Count)] = {};
     Binding bindings_[static_cast<int>(Action::Count)];

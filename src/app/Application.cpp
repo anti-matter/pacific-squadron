@@ -265,9 +265,16 @@ int Application::run() {
                                      static_cast<float>(ev.gaxis.value));
                 break;
             case SDL_EVENT_GAMEPAD_REMOVED:
-            case SDL_EVENT_WINDOW_FOCUS_LOST:
                 // No final zeroing events arrive; drop all latched state so
                 // the plane never keeps flying after the pad vanishes.
+                input_.forgetDevices();
+                break;
+            case SDL_EVENT_GAMEPAD_ADDED:
+                // Open pads connected after launch (or woken from a BT
+                // suspend): SDL emits no gamepad events for unopened devices.
+                input_.onDeviceAdded(static_cast<int>(ev.gdevice.which));
+                break;
+            case SDL_EVENT_WINDOW_FOCUS_LOST:
                 input_.forgetDevices();
                 break;
             default:
