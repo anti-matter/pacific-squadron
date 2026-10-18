@@ -25,7 +25,10 @@ public:
     // Feed an SDL event (keycode / gamepad state) into the input layer.
     void onKey(int scancodeKey, bool down);
     void onGamepadButton(int button, bool down);
+    // value: raw SDL sint16 axis reading, normalized internally.
     void onGamepadAxis(int axis, float value);
+    // Clear all input state (gamepad removed, window focus lost).
+    void forgetDevices();
 
     bool held(Action a) const { return held_[static_cast<int>(a)]; }
     bool pressedThisFrame(Action a) const {

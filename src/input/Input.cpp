@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <fstream>
 #include <sstream>
 
@@ -63,6 +64,11 @@ void Input::setDefaults() {
     bindings_[static_cast<int>(Action::MoveDown)].keys = {key("S"), key("Down")};
     bindings_[static_cast<int>(Action::MoveLeft)].keys = {key("A"), key("Left")};
     bindings_[static_cast<int>(Action::MoveRight)].keys = {key("D"), key("Right")};
+    // D-pad drives movement too (menu navigation on pads without rebind UI).
+    bindings_[static_cast<int>(Action::MoveUp)].padButtons = {SDL_GAMEPAD_BUTTON_DPAD_UP};
+    bindings_[static_cast<int>(Action::MoveDown)].padButtons = {SDL_GAMEPAD_BUTTON_DPAD_DOWN};
+    bindings_[static_cast<int>(Action::MoveLeft)].padButtons = {SDL_GAMEPAD_BUTTON_DPAD_LEFT};
+    bindings_[static_cast<int>(Action::MoveRight)].padButtons = {SDL_GAMEPAD_BUTTON_DPAD_RIGHT};
     bindings_[static_cast<int>(Action::Fire)].keys = {key("Space")};
     bindings_[static_cast<int>(Action::Fire)].padButtons = {
         SDL_GAMEPAD_BUTTON_SOUTH, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER};
@@ -92,13 +98,27 @@ void Input::onGamepadButton(int button, bool down) {
 }
 
 void Input::onGamepadAxis(int axis, float value) {
+    // SDL reports axis motion as raw sint16 units (-32768..32767). Normalize
+    // BEFORE comparing against the 0..1 dead zone: raw values otherwise slip
+    // past a fractional threshold and a hair of hardware drift reads as a
+    // full-speed move (and a latched held state kills menu button edges).
+    const float v = value / 32768.0f;
     constexpr float kDead = 0.25f;
     if (axis == SDL_GAMEPAD_AXIS_LEFTX)
-        padStickX = std::abs(value) < kDead ? 0.0f : value;
+        padStickX = std::abs(v) < kDead ? 0.0f : v;
     else if (axis == SDL_GAMEPAD_AXIS_LEFTY)
-        padStickY = std::abs(value) < kDead ? 0.0f : value;
+        padStickY = std::abs(v) < kDead ? 0.0f : v;
     else if (axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)
-        rightTrigger_ = value / 32767.0f;  // SDL reports 0..32767
+        rightTrigger_ = std::max(0.0f, v);
+}
+
+void Input::forgetDevices() {
+    // Device removal / focus loss: SDL sends no final zeroing events, so
+    // buttons and sticks would otherwise latch in their last state.
+    padStickX = padStickY = 0.0f;
+    rightTrigger_ = 0.0f;
+    std::memset(padButtonState_, 0, sizeof(padButtonState_));
+    keysDown_.clear();
 }
 
 void Input::newFrame() {
@@ -171,6 +191,18 @@ bool Input::loadBindings(const std::string& path) {
     const int bKey = static_cast<int>(SDL_GetKeyFromName("B"));
     if (std::find(back.keys.begin(), back.keys.end(), bKey) == back.keys.end())
         back.keys.push_back(bKey);
+    // Same for the D-pad: old saved files have empty button lists for the
+    // move actions. Restore the D-pad so menus are navigable on a pad.
+    const int kMoveActions[] = {static_cast<int>(Action::MoveUp),
+                                static_cast<int>(Action::MoveDown),
+                                static_cast<int>(Action::MoveLeft),
+                                static_cast<int>(Action::MoveRight)};
+    const int kDpad[] = {SDL_GAMEPAD_BUTTON_DPAD_UP, SDL_GAMEPAD_BUTTON_DPAD_DOWN,
+                         SDL_GAMEPAD_BUTTON_DPAD_LEFT, SDL_GAMEPAD_BUTTON_DPAD_RIGHT};
+    for (int i = 0; i < 4; ++i) {
+        Binding& mb = bindings_[kMoveActions[i]];
+        if (mb.padButtons.empty()) mb.padButtons = {kDpad[i]};
+    }
     return true;
 }
 

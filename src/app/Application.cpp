@@ -264,6 +264,12 @@ int Application::run() {
                 input_.onGamepadAxis(static_cast<int>(ev.gaxis.axis),
                                      static_cast<float>(ev.gaxis.value));
                 break;
+            case SDL_EVENT_GAMEPAD_REMOVED:
+            case SDL_EVENT_WINDOW_FOCUS_LOST:
+                // No final zeroing events arrive; drop all latched state so
+                // the plane never keeps flying after the pad vanishes.
+                input_.forgetDevices();
+                break;
             default:
                 break;
             }

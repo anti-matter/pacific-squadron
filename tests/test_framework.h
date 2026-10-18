@@ -41,3 +41,4 @@ void test_ground_scroll_anchor();
 void test_sfx_explosions();
 void test_menu_quit();
 void test_shipped_data();
+void test_input_gamepad_axes();
