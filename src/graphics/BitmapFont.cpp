@@ -115,11 +115,14 @@ GlyphShape glyphShape(int ch) {
         case '@': g.arcs = {A(3.2f,5,2.9f,4.0f,-90,270), A(3.2f,5,1.2f,1.9f,-90,270)};
                   g.polys = {P({4.4f,3.2f,4.4f,6.1f})}; break;
         case 'A': g.polys = {P({0.5f,9,3.2f,1,5.9f,9}), P({1.55f,6.2f,4.85f,6.2f})}; break;
-        case 'B': g.polys = {P({1.1f,1,1.1f,9})};
-                  g.arcs = {A(1.1f,2.95f,2.7f,1.95f,-90,90), A(1.1f,6.05f,2.9f,1.95f,-90,90)}; break;
+        case 'B': g.polys = {P({1.1f,1,1.1f,9}), P({1.1f,1.0f,3.2f,1.0f}),
+                             P({1.1f,4.8f,3.2f,4.8f}), P({1.1f,9.0f,3.4f,9.0f})};
+                  g.arcs = {A(3.2f,2.9f,1.9f,1.9f,-90,90),
+                            A(3.4f,6.9f,2.1f,2.1f,-90,90)}; break;
         case 'C': g.arcs = {A(3.4f,5,2.9f,4.0f,56,304)}; break;
-        case 'D': g.polys = {P({1.1f,1,1.1f,9})};
-                  g.arcs = {A(1.1f,5,3.1f,4.0f,-90,90)}; break;
+        case 'D': g.polys = {P({1.1f,1,1.1f,9}), P({1.1f,1.0f,3.3f,1.0f}),
+                             P({1.1f,9.0f,3.3f,9.0f})};
+                  g.arcs = {A(3.3f,5.0f,3.0f,4.0f,-90,90)}; break;
         case 'E': g.polys = {P({5.8f,1,1.1f,1,1.1f,9,5.8f,9}), P({1.1f,5,5.0f,5})}; break;
         case 'F': g.polys = {P({5.8f,1,1.1f,1,1.1f,9}), P({1.1f,5,4.9f,5})}; break;
         case 'G': g.arcs = {A(3.4f,5,2.9f,4.0f,56,304)};
@@ -133,12 +136,14 @@ GlyphShape glyphShape(int ch) {
         case 'M': g.polys = {P({0.3f,9,0.4f,1,3.2f,5.4f,6.0f,1,6.1f,9})}; break;
         case 'N': g.polys = {P({1.1f,9,1.1f,1,5.5f,9,5.5f,1})}; break;
         case 'O': g.arcs = {A(3.2f,5,2.9f,4.0f,-90,270)}; break;
-        case 'P': g.polys = {P({1.1f,9,1.1f,1})};
-                  g.arcs = {A(1.1f,2.95f,3.1f,1.95f,-90,90)}; break;
+        case 'P': g.polys = {P({1.1f,9,1.1f,1}), P({1.1f,1.0f,3.7f,1.0f}),
+                             P({1.1f,4.6f,3.7f,4.6f})};
+                  g.arcs = {A(3.7f,2.8f,1.8f,1.8f,-90,90)}; break;
         case 'Q': g.arcs = {A(3.2f,5,2.9f,4.0f,-90,270)};
                   g.polys = {P({3.9f,6.6f,5.9f,9.4f})}; break;
-        case 'R': g.polys = {P({1.1f,9,1.1f,1}), P({2.7f,4.9f,5.7f,9})};
-                  g.arcs = {A(1.1f,2.95f,3.1f,1.95f,-90,90)}; break;
+        case 'R': g.polys = {P({1.1f,9,1.1f,1}), P({1.1f,1.0f,3.7f,1.0f}),
+                             P({1.1f,4.6f,3.7f,4.6f}), P({3.0f,4.6f,5.9f,9})};
+                  g.arcs = {A(3.7f,2.8f,1.8f,1.8f,-90,90)}; break;
         case 'S': g.arcs = {A(3.2f,3.05f,2.2f,2.05f,-38,-270), A(3.2f,6.95f,2.2f,2.05f,-90,184)}; break;
         case 'T': g.polys = {P({0.6f,1,5.8f,1}), P({3.2f,1,3.2f,9})}; break;
         case 'U': g.polys = {P({1.0f,1,1.0f,5.6f}), P({5.4f,5.6f,5.4f,1})};
