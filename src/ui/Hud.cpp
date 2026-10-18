@@ -36,13 +36,14 @@ void Hud::draw(Renderer& r, const Game& game) const {
     r.text("SCORE", 8, 4, 1, Color::rgb(0x9AB0C8));
     r.text(formatScore(game.score()), 8, 13, 2, Color::rgb(0xFFFFFF));
     std::string hi = "HI " + formatScore(game.highScore());
-    r.text(hi, kPlayW - 8, 4, 1, Color::rgb(0x9AB0C8), true);
+    r.text(hi, kPlayW - 8 - r.textWidth(hi, 1), 4, 1, Color::rgb(0x9AB0C8));
 
     // Lives as little plane icons.
     const int planeTex = r.texture("player_fighter");
     for (int i = 0; i < std::min(p.lives, 5); ++i)
         r.drawScaled(planeTex, kPlayW - 20 - i * 22, 24, 18, 18, 1.0f);
-    r.text("LIVES", kPlayW - 8, 13, 1, Color::rgb(0x9AB0C8), true);
+    r.text("LIVES", kPlayW - 8 - r.textWidth("LIVES", 1), 13, 1,
+           Color::rgb(0x9AB0C8));
 
     // Health bar (cockpit hp).
     for (int i = 0; i < p.maxHp; ++i) {
