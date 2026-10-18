@@ -60,5 +60,12 @@
     "lifetime": 6.5 },
   { "name": "b_aimed3", "pattern": "burst", "kind": "enemy_bullet", "sprite": "bullet_enemy",
     "sound": "enemy_gun", "damage": 1, "fireInterval": 1.8, "speed": 170, "count": 1,
-    "burstCount": 3, "burstDelay": 0.07, "lifetime": 5.0 }
+    "burstCount": 3, "burstDelay": 0.07, "lifetime": 5.0 },
+
+  { "name": "b_dp_gun", "pattern": "aim_spread", "kind": "enemy_shell", "sprite": "shell_enemy",
+    "sound": "enemy_gun", "damage": 1, "fireInterval": 1.6, "speed": 135, "count": 2,
+    "spreadDeg": 12, "lifetime": 6.0 },
+  { "name": "b_spray5", "pattern": "burst", "kind": "enemy_bullet", "sprite": "bullet_enemy",
+    "sound": "enemy_gun", "damage": 1, "fireInterval": 1.7, "speed": 185, "count": 1,
+    "burstCount": 5, "burstDelay": 0.08, "lifetime": 5.0, "aimJitterDeg": 6 }
 ]

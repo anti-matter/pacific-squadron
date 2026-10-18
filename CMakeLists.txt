@@ -108,6 +108,7 @@ add_executable(wwii_tests
     tests/test_levelscript.cpp
     tests/test_boss.cpp
     tests/test_ground_scroll.cpp
+    tests/test_data.cpp
     tests/test_sfx.cpp
     tests/test_menu.cpp)
 target_link_libraries(wwii_tests PRIVATE gamecore)

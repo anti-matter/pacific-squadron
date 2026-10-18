@@ -51,5 +51,36 @@
       { "hpFraction": 0.60, "rateMul": 0.72, "extraWeapon": "b_radial12", "extraInterval": 3.0 },
       { "hpFraction": 0.28, "rateMul": 0.55, "extraWeapon": "e_flak",     "extraInterval": 2.2 }
     ]
+  },
+  {
+    "name": "DESTROYER HAYABUSA-CLASS",
+    "hullSprite": "boss_destroyer_hull",
+    "hullWidth": 48, "hullHeight": 176, "hullHp": 74, "hullScore": 4200,
+    "entryY": 130, "hoverAmp": 86, "hoverFreq": 0.09,
+    "deathEffect": 2, "defeatDrop": "powerup_p",
+    "components": [
+      { "name": "BOW GUN", "sprite": "boss_destroyer_gun", "offsetX": 0, "offsetY": 58,
+        "width": 32, "height": 32, "hp": 12, "score": 400, "weapon": "b_dp_gun",
+        "fireInterval": 1.5, "firstFireDelay": 1.8 },
+      { "name": "No.2 GUN", "sprite": "boss_destroyer_gun", "offsetX": 0, "offsetY": 26,
+        "width": 32, "height": 32, "hp": 12, "score": 400, "weapon": "b_dp_gun",
+        "fireInterval": 1.7, "firstFireDelay": 2.3 },
+      { "name": "BRIDGE", "sprite": "boss_destroyer_bridge", "offsetX": 0, "offsetY": 2,
+        "width": 40, "height": 44, "hp": 16, "score": 800,
+        "fireInterval": 3.0, "firstFireDelay": 4.0 },
+      { "name": "AA GUN PORT", "sprite": "boss_aa", "offsetX": -13, "offsetY": -34,
+        "width": 28, "height": 28, "hp": 10, "score": 300, "weapon": "b_aa_flak",
+        "fireInterval": 2.8, "firstFireDelay": 3.2 },
+      { "name": "AA GUN STAR", "sprite": "boss_aa", "offsetX": 13, "offsetY": -34,
+        "width": 28, "height": 28, "hp": 10, "score": 300, "weapon": "b_aa_flak",
+        "fireInterval": 2.8, "firstFireDelay": 3.6 },
+      { "name": "STERN GUN", "sprite": "boss_destroyer_gun", "offsetX": 0, "offsetY": -66,
+        "width": 32, "height": 32, "hp": 12, "score": 400, "weapon": "b_aimed3",
+        "fireInterval": 2.2, "firstFireDelay": 2.8 }
+    ],
+    "phases": [
+      { "hpFraction": 0.60, "rateMul": 0.78, "extraWeapon": "b_radial12", "extraInterval": 3.2 },
+      { "hpFraction": 0.30, "rateMul": 0.58, "extraWeapon": "b_spray5",   "extraInterval": 1.7 }
+    ]
   }
 ]
