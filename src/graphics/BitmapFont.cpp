@@ -101,10 +101,13 @@ GlyphShape glyphShape(int ch) {
         case '4': g.polys = {P({4.5f,1,0.8f,6.4f,6.2f,6.4f}), P({4.5f,1,4.5f,9})}; break;
         case '5': g.polys = {P({5.6f,1,1.6f,1,1.45f,4.5f})};
                   g.arcs = {A(3.2f,6.8f,2.3f,2.2f,-100,122)}; break;
-        case '6': g.arcs = {A(3.2f,6.5f,2.4f,2.5f,-90,270), A(3.4f,4.4f,2.7f,3.4f,-72,180)}; break;
+        // 6/9: bowl plus an outward-sweeping tail that reaches the cap/baseline.
+        case '6': g.arcs = {A(3.2f,6.5f,2.4f,2.5f,-90,270),
+                            A(3.0f,4.6f,2.5f,3.6f,-90,-190)}; break;
         case '7': g.polys = {P({0.9f,1,6.0f,1,3.0f,9})}; break;
         case '8': g.arcs = {A(3.2f,3.0f,2.1f,2.0f,-90,270), A(3.2f,6.9f,2.3f,2.1f,-90,270)}; break;
-        case '9': g.arcs = {A(3.2f,3.5f,2.4f,2.5f,-90,270), A(3.0f,5.6f,2.7f,3.4f,-108,0)}; break;
+        case '9': g.arcs = {A(3.2f,3.5f,2.4f,2.5f,-90,270),
+                            A(3.4f,5.4f,2.5f,3.6f,90,-10)}; break;
         case ':': g.dots = {{3.2f,3.4f},{3.2f,8.4f}}; break;
         case ';': g.dots = {{3.1f,3.4f},{3.1f,8.6f}}; g.polys = {P({3.4f,8.9f,2.6f,10.4f})}; break;
         case '<': g.polys = {P({5.6f,2.3f,1.4f,4.9f,5.6f,7.5f})}; break;
