@@ -946,7 +946,8 @@ void Simulation::updateEffects(float dt) {
         it->t += dt;
         const float dur = it->sizeClass == 0 ? 0.42f
                         : it->sizeClass == 1 ? 0.62f
-                        : it->sizeClass >= 4 ? 1.05f : 0.9f;
+                        : it->sizeClass == 3 ? 1.10f
+                        : it->sizeClass >= 4 ? 1.40f : 0.9f;
         if (it->t >= dur)
             it = explosions_.erase(it);
         else

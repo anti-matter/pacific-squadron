@@ -213,61 +213,39 @@ void flipY(PixelBuf& p) {
 // ---------------------------------------------------------------------------
 // Explosion animation sheets
 // ---------------------------------------------------------------------------
-PixelBuf makeExplosionSheet(int frames, int frameSize, std::uint64_t seed,
-                            bool splash) {
+// ---------------------------------------------------------------------------
+// Water splash (ship kills over water): white crown over a pale-blue disc.
+// ---------------------------------------------------------------------------
+PixelBuf makeSplashSheet(int frames, int frameSize, std::uint64_t seed) {
     PixelBuf sheet(frameSize * frames, frameSize);
     Rng rng(seed);
     for (int f = 0; f < frames; ++f) {
         const float t = static_cast<float>(f) / (frames - 1);
         const float cx = f * frameSize + frameSize * 0.5f;
         const float cy = frameSize * 0.5f;
-        const float rMax = frameSize * 0.48f;
-        const float r = splash ? rMax * (0.25f + 0.75f * std::sqrt(t))
-                               : rMax * (0.30f + 0.70f * std::sqrt(t));
+        const float r = frameSize * 0.48f * (0.25f + 0.75f * std::sqrt(t));
         const int alpha = static_cast<int>(255.0f * (1.0f - t * t));
-        // Pre-jittered lobes so each explosion looks organic but stable.
         std::vector<float> lobes(24);
-        for (float& v : lobes) v = rng.range(0.72f, 1.18f);
+        for (float& v : lobes) v = rng.range(0.80f, 1.15f);
         for (int y = 0; y < frameSize; ++y) {
             for (int x = 0; x < frameSize; ++x) {
                 const float dx = x + 0.5f - cx;
                 const float dy = y + 0.5f - cy;
                 const float dist = std::sqrt(dx * dx + dy * dy);
-                if (dist > 1.0f) continue;
                 int ang = static_cast<int>((std::atan2(dy, dx) + 3.15f) / 6.29f * 24.0f) % 24;
                 const float edge = r * lobes[static_cast<std::size_t>(ang)];
                 if (dist > edge) continue;
                 const float tEdge = dist / std::max(0.01f, edge);
-                std::uint32_t c;
-                if (splash) {
-                    c = tEdge < 0.55f ? col(0xFFFFFF, 255) : col(0x9CC8E8, 230);
-                } else {
-                    // Hot core -> orange -> red -> smoke, with a bright rim
-                    // in the first half and soot in the second.
-                    if (t < 0.18f)
-                        c = tEdge < 0.85f ? col(0xFFFFF0) : col(0xFFD860);
-                    else if (t < 0.38f)
-                        c = tEdge < 0.40f ? col(0xFFF4C0)
-                          : tEdge < 0.72f ? col(0xFFB22E) : col(0xF0501A);
-                    else if (t < 0.65f)
-                        c = tEdge < 0.30f ? col(0xFFC23A)
-                          : tEdge < 0.62f ? col(0xE8601E) : col(0x8A2A10);
-                    else
-                        c = tEdge < 0.40f ? col(0xA8481A)
-                          : tEdge < 0.75f ? col(0x54301C) : col(0x2E2C2C);
-                    // Bright shock rim on the early frames.
-                    if (t < 0.30f && tEdge > 0.88f) c = col(0xFFE8A0);
-                }
+                const std::uint32_t c =
+                    tEdge < 0.55f ? col(0xFFFFFF, 255) : col(0x9CC8E8, 230);
                 const int a = static_cast<int>((c & 0xFF) *
                                                (1.0f - tEdge * tEdge * 0.7f) *
-                                               (alpha / 255.0f) *
-                                               (1.0f + 0.0f));
+                                               (alpha / 255.0f));
                 sheet.set(x, y, (c & 0xFFFFFF00u) |
                                     static_cast<std::uint32_t>(std::min(255, a)));
             }
         }
-        // Splashes for water variant.
-        if (splash && f < frames - 1) {
+        if (f < frames - 1) {
             for (int k = 0; k < 6; ++k) {
                 const float a = rng.range(0.0f, 6.28f);
                 const float d = r * rng.range(1.0f, 1.5f);
@@ -276,112 +254,213 @@ PixelBuf makeExplosionSheet(int frames, int frameSize, std::uint64_t seed,
                           col(0xFFFFFF, 200));
             }
         }
-        // Debris embers flung outward on the early frames.
-        if (!splash && t < 0.5f) {
-            for (int k = 0; k < 7; ++k) {
-                const float a = rng.range(0.0f, 6.28f);
-                const float d = r * rng.range(1.05f, 1.6f + t);
-                const int ex = static_cast<int>(cx + std::cos(a) * d);
-                const int ey = static_cast<int>(cy + std::sin(a) * d);
-                sheet.set(ex, ey, t < 0.25f ? col(0xFFE8A0, 230) : col(0xE86A20, 200));
-            }
+    }
+    return sheet;
+}
+
+// ---------------------------------------------------------------------------
+// 1942/1943-style explosions: clusters of scalloped fireball puffs.
+//
+// Reference is the CPS-era 1942/1943 kill effect: every detonation is a
+// CLUSTER of small "puffs" — cauliflower fireballs with a yellow core,
+// orange body and a scalloped red outline. Each puff pops in small, swells,
+// then fades as its core burns out. The cluster's puffs are born in
+// staggered waves, so bright new puffs keep erupting over cooling red ones
+// and the whole fireball churns. Flames deepen to dark red and pop away —
+// no grey smoke — while ember dots flicker around the cluster.
+//
+//   tier 0  tiny pop: one puff          (player damage tick)
+//   tier 1  small: centre + 6-puff ring flower (fighters, AA, small craft)
+//   tier 2  large: two-wave churning cluster    (bombers, ships, bunkers)
+//   tier 3  xlarge: three waves + stragglers    (boss finale secondaries)
+// ---------------------------------------------------------------------------
+
+// Blend two 0xRRGGBB colors.
+std::uint32_t mix24(std::uint32_t a, std::uint32_t b, float t) {
+    float u = t;
+    if (u < 0.0f) u = 0.0f;
+    if (u > 1.0f) u = 1.0f;
+    // NOTE: convert to int BEFORE subtracting — unsigned subtraction
+    // underflows and poisons the blend.
+    const int ar = static_cast<int>((a >> 16) & 0xFF), ag = static_cast<int>((a >> 8) & 0xFF),
+              ab = static_cast<int>(a & 0xFF);
+    const int br = static_cast<int>((b >> 16) & 0xFF), bg = static_cast<int>((b >> 8) & 0xFF),
+              bb = static_cast<int>(b & 0xFF);
+    const int r = static_cast<int>(ar + static_cast<float>(br - ar) * u);
+    const int g = static_cast<int>(ag + static_cast<float>(bg - ag) * u);
+    const int bl = static_cast<int>(ab + static_cast<float>(bb - ab) * u);
+    return col(static_cast<std::uint32_t>((r << 16) | (g << 8) | bl));
+}
+
+struct PuffDef {
+    float ang, dist, rad, born, life, spin, hue;
+    float lobe[12];  // scallop weights around the rim
+};
+
+// Draw one puff at lifetime phase p (0 = just born, 1 = gone).
+void drawPuff(PixelBuf& sheet, float cx, float cy, float r, float p,
+              const PuffDef& d) {
+    if (p < 0.0f || p >= 1.0f || r < 0.4f) return;
+    // Pop small, swell fast, then shrink away (CPS-style pop-out, keeps the
+    // flames in the red family instead of alpha-muddying over the sea).
+    const float grow = p < 0.60f ? 0.45f + 0.55f * std::sqrt(p / 0.60f)
+                                 : 1.0f - 0.80f * (p - 0.60f) / 0.40f;
+    const float rr = r * grow;
+    // The yellow core burns out during the puff's second half.
+    const float coreF = p < 0.55f ? 0.52f : 0.52f * (1.0f - (p - 0.55f) / 0.45f);
+    // Age palette (hue offsets p so neighbouring puffs differ slightly).
+    const float q = p + d.hue * 0.18f;
+    const std::uint32_t coreC = mix24(0xFFF6C0, 0xFF9028, q);
+    const std::uint32_t bodyC = mix24(0xFFB62E, 0xC23A12, q);
+    const std::uint32_t rimC  = mix24(0xF25A1E, 0x9E2812, q);
+    const std::uint32_t lineC = mix24(0xC0300E, 0x701A08, q);
+    const int fade =
+        p > 0.93f ? static_cast<int>(255.0f * (1.0f - (p - 0.93f) / 0.07f)) : 255;
+    if (fade <= 0) return;
+    const std::uint32_t fadeA = static_cast<std::uint32_t>(fade);
+    const int x0 = static_cast<int>(cx - rr - 1.5f);
+    const int x1 = static_cast<int>(cx + rr + 1.5f);
+    const int y0 = static_cast<int>(cy - rr - 1.5f);
+    const int y1 = static_cast<int>(cy + rr + 1.5f);
+    for (int y = y0; y <= y1; ++y) {
+        for (int x = x0; x <= x1; ++x) {
+            const float dx = x + 0.5f - cx;
+            const float dy = y + 0.5f - cy;
+            const float dist = std::sqrt(dx * dx + dy * dy);
+            // Scalloped (cauliflower) rim from the 12 lobe weights.
+            float ang = std::atan2(dy, dx) + d.spin;
+            ang = std::fmod(ang + 6.2832f, 6.2832f);
+            const float lw = ang * (12.0f / 6.2832f);
+            const int li = static_cast<int>(lw) % 12;
+            const float lf = lw - std::floor(lw);
+            const float lobe = d.lobe[li] * (1.0f - lf) +
+                               d.lobe[(li + 1) % 12] * lf;
+            const float edge = rr * (0.80f + 0.20f * lobe);
+            if (dist > edge) continue;
+            const float te = dist / edge;
+            std::uint32_t c;
+            if (coreF > 0.02f && te < coreF) c = coreC;
+            else if (te < 0.68f)             c = bodyC;
+            else if (te < 0.88f)             c = rimC;
+            else                             c = lineC;
+            sheet.blend(x, y, (c & 0xFFFFFF00u) | fadeA);
         }
-        // Late-frame soot ring for weight.
-        if (!splash && t > 0.62f) {
-            for (int k = 0; k < 14; ++k) {
-                const float a = k / 14.0f * 6.283f + 0.4f;
-                const float d = r * rng.range(0.82f, 1.02f);
-                sheet.set(static_cast<int>(cx + std::cos(a) * d),
-                          static_cast<int>(cy + std::sin(a) * d), col(0x262424, 150));
-            }
+    }
+}
+
+PixelBuf makeBoomSheet(int frames, int size, std::uint64_t seed, int tier) {
+    PixelBuf sheet(frames * size, size);
+    Rng rng(seed);
+    const float H = size * 0.5f;
+    std::vector<PuffDef> puffs;
+    auto addPuff = [&](float ang, float dist, float rad, float born,
+                       float life) {
+        PuffDef d;
+        d.ang = ang; d.dist = dist; d.rad = rad; d.born = born; d.life = life;
+        d.spin = rng.range(0.0f, 6.2832f);
+        d.hue = rng.range(-0.5f, 0.5f);
+        for (float& v : d.lobe) v = rng.range(0.70f, 1.15f);
+        puffs.push_back(d);
+    };
+    // Puff rosters are built once so the animation is stable across frames.
+    // All distances are fractions of the frame half-size; all times are
+    // fractions of the clip.
+    if (tier == 0) {  // tiny pop
+        addPuff(0.0f, 0.0f, 0.42f, 0.00f, 0.95f);
+    } else if (tier == 1) {  // small kill: ring flower (reference 'small')
+        addPuff(0.0f, 0.0f, 0.34f, 0.02f, 0.92f);
+        const float a0 = rng.range(0.0f, 1.05f);
+        for (int k = 0; k < 6; ++k)
+            addPuff(a0 + k * 6.2832f / 6.0f + rng.range(-0.12f, 0.12f),
+                    rng.range(0.40f, 0.52f), rng.range(0.28f, 0.34f),
+                    rng.range(0.05f, 0.16f), rng.range(0.75f, 0.95f));
+    } else {  // tier 2/3: churning multi-wave cluster (reference 'large')
+        addPuff(0.0f, 0.0f, 0.36f, 0.00f, 0.55f);
+        const float a1 = rng.range(0.0f, 1.05f);
+        for (int k = 0; k < 6; ++k)
+            addPuff(a1 + k * 6.2832f / 6.0f + rng.range(-0.15f, 0.15f),
+                    rng.range(0.30f, 0.44f), rng.range(0.26f, 0.34f),
+                    rng.range(0.04f, 0.16f), rng.range(0.52f, 0.72f));
+        const float a2 = rng.range(0.0f, 1.05f);
+        for (int k = 0; k < 8; ++k)
+            addPuff(a2 + k * 6.2832f / 8.0f + rng.range(-0.18f, 0.18f),
+                    rng.range(0.52f, 0.70f), rng.range(0.24f, 0.32f),
+                    rng.range(0.26f, 0.44f), rng.range(0.48f, 0.70f));
+        if (tier >= 3) {
+            const float a3 = rng.range(0.0f, 1.05f);
+            for (int k = 0; k < 8; ++k)
+                addPuff(a3 + k * 6.2832f / 8.0f + rng.range(-0.2f, 0.2f),
+                        rng.range(0.72f, 0.88f), rng.range(0.20f, 0.28f),
+                        rng.range(0.34f, 0.55f), rng.range(0.38f, 0.60f));
+        }
+        for (int k = 0; k < 4; ++k)  // late stragglers keep it churning
+            addPuff(rng.range(0.0f, 6.2832f), rng.range(0.55f, 0.80f),
+                    rng.range(0.18f, 0.26f), rng.range(0.45f, 0.62f),
+                    rng.range(0.33f, 0.52f));
+    }
+    // Ember dots flickering around the cluster.
+    struct Emb { float ang, v0, v1; std::uint32_t seedv; };
+    const int nEmber = tier <= 0 ? 2 : tier == 1 ? 5 : tier == 2 ? 9 : 14;
+    std::vector<Emb> embers;
+    for (int k = 0; k < nEmber; ++k)
+        embers.push_back({rng.range(0.0f, 6.2832f), rng.range(0.18f, 0.35f),
+                          rng.range(0.55f, 0.95f), rng.nextU32()});
+
+    for (int f = 0; f < frames; ++f) {
+        const float t = static_cast<float>(f) / static_cast<float>(frames - 1);
+        const float cx = f * size + H;
+        const float cy = H;
+        // Embers first (behind the flames).
+        for (int k = 0; k < nEmber; ++k) {
+            const Emb& e = embers[static_cast<std::size_t>(k)];
+            const float d = (e.v0 + (e.v1 - e.v0) * t) * H;
+            // Deterministic flicker: some frames blink off.
+            if (((e.seedv + static_cast<std::uint32_t>(f) * 7u) >> 2) % 3u == 0u)
+                continue;
+            const int px = static_cast<int>(cx + std::cos(e.ang) * d);
+            const int py = static_cast<int>(cy + std::sin(e.ang) * d);
+            const std::uint32_t c =
+                t < 0.45f ? col(0xFFD870, 235) : col(0xF0681E, 210);
+            sheet.blend(px, py, c);
+            if (t < 0.30f) sheet.blend(px + 1, py, c);
+        }
+        // Oldest puffs first: newer, brighter puffs paint over red ones.
+        for (const PuffDef& d : puffs) {
+            const float p = (t - d.born) / d.life;
+            // Rings creep gently outward while the clip runs.
+            const float drift = d.dist * (0.75f + 0.25f * t);
+            const float px = cx + std::cos(d.ang) * drift * H;
+            const float py = cy + std::sin(d.ang) * drift * H;
+            drawPuff(sheet, px, py, d.rad * H, p, d);
         }
     }
     return sheet;
 }
 
 // ---------------------------------------------------------------------------
-// Boss-death explosion: 6 frames x 128px. White detonation core + expanding
-// shockwave ring + lobed fireball + flung embers, collapsing into smoke.
+// Boss-death explosion: white detonation flash into a huge three-wave puff
+// cluster (same visual language as the ship/aircraft kills, far bigger).
 // ---------------------------------------------------------------------------
 PixelBuf makeBossExplosionSheet() {
-    const int FR = 6, S = 128;
-    PixelBuf sheet(FR * S, S);
-    Rng rng(0xB5DEA1u);
+    PixelBuf sheet = makeBoomSheet(19, 128, 0xB5DEA1u, 3);
+    const int FR = 19, S = 128;
     for (int f = 0; f < FR; ++f) {
-        const float t = static_cast<float>(f) / (FR - 1);
+        const float t = static_cast<float>(f) / static_cast<float>(FR - 1);
+        if (t > 0.10f) break;
+        // White-hot detonation core, burnt off within the first frames.
         const float cx = f * S + S * 0.5f, cy = S * 0.5f;
-        // Organic lobes, stable across frames.
-        float lobes[24];
-        {
-            Rng lr(0xB055u + static_cast<std::uint64_t>(f) * 13u);
-            for (int k = 0; k < 24; ++k) lobes[k] = lr.range(0.78f, 1.16f);
-        }
-        const float fireR = 16.0f + 46.0f * std::sqrt(t);
-        const float ringR = 12.0f + 104.0f * t;
-        const int ringA = static_cast<int>(t < 0.55f ? 235.0f * (1.0f - t / 0.55f) : 0.0f);
-        const int outA = t > 0.72f ? static_cast<int>(255.0f * (1.0f - t) / 0.28f) : 255;
-        for (int y = 0; y < S; ++y) {
-            for (int x = 0; x < S; ++x) {
+        const float r = S * (0.13f + 0.22f * (t / 0.10f));
+        const float fd = 1.0f - t / 0.10f;
+        const int a = static_cast<int>(255.0f * fd * fd);
+        for (int y = static_cast<int>(cy - r); y <= static_cast<int>(cy + r); ++y)
+            for (int x = static_cast<int>(cx - r); x <= static_cast<int>(cx + r); ++x) {
                 const float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
                 const float dist = std::sqrt(dx * dx + dy * dy);
-                int ang = static_cast<int>((std::atan2(dy, dx) + 3.15f) / 6.29f * 24.0f) % 24;
-                const float edge = fireR * lobes[static_cast<std::size_t>(ang)];
-                std::uint32_t c = 0;
-                if (dist <= edge) {
-                    const float te = dist / std::max(0.01f, edge);
-                    if (t < 0.16f)
-                        c = te < 0.82f ? col(0xFFFFF8) : col(0xFFE070);
-                    else if (t < 0.42f)
-                        c = te < 0.34f ? col(0xFFFCE0)
-                          : te < 0.62f ? col(0xFFC23A)
-                          : te < 0.86f ? col(0xF0641E) : col(0xC23018);
-                    else if (t < 0.72f)
-                        c = te < 0.22f ? col(0xFFD870)
-                          : te < 0.55f ? col(0xE8681E)
-                          : te < 0.82f ? col(0x9A3414) : col(0x4A2A1C);
-                    else
-                        c = te < 0.40f ? col(0xA8481A, 220)
-                          : te < 0.72f ? col(0x5C3420, 200) : col(0x302A28, 170);
-                    // Inner heat shimmer keeps the core alive late.
-                    if (t >= 0.42f && t < 0.72f && te < 0.16f) c = col(0xFF8A30);
-                }
-                // Shockwave ring (outside the fireball).
-                if (ringA > 0 && dist > edge) {
-                    const float rd = std::abs(dist - ringR);
-                    if (rd <= 2.5f)
-                        c = col(t < 0.3f ? 0xFFFFFF : 0xFFCFA0,
-                                static_cast<std::uint8_t>(ringA * (1.0f - rd / 3.0f)));
-                }
-                if (c != 0) {
-                    if (outA < 255)  // global late fade
-                        c = col((c >> 8) & 0xFFFFFF,
-                                static_cast<std::uint8_t>((c & 0xFF) * outA / 255));
-                    sheet.set(x + f * S, y, c);
-                }
+                if (dist > r) continue;
+                const int aa = static_cast<int>(a * (1.0f - (dist / r) * 0.4f));
+                sheet.blend(x, y, col(t < 0.07f ? 0xFFFFF0u : 0xFFF0B0u,
+                                      static_cast<std::uint8_t>(aa)));
             }
-        }
-        // Flung embers on the early frames.
-        if (t < 0.6f) {
-            for (int k = 0; k < 18; ++k) {
-                const float a = rng.range(0.0f, 6.28f);
-                const float d = fireR * rng.range(1.05f, 1.5f + t * 1.4f);
-                sheet.set(static_cast<int>(cx + std::cos(a) * d),
-                          static_cast<int>(cy + std::sin(a) * d),
-                          t < 0.3f ? col(0xFFF4C0, 240) : col(0xF07A20, 210));
-            }
-        }
-        // Late smoke clumps.
-        if (t > 0.6f) {
-            for (int k = 0; k < 16; ++k) {
-                const float a = k / 16.0f * 6.283f + 0.9f;
-                const float d = fireR * rng.range(0.6f, 1.05f);
-                const int sx = static_cast<int>(cx + std::cos(a) * d);
-                const int sy = static_cast<int>(cy + std::sin(a) * d) - (f - 3) * 5;
-                for (int q = 0; q < 4; ++q)
-                    sheet.set(sx + (q % 2), sy + (q / 2),
-                              col(0x34302E, static_cast<std::uint8_t>(120 - k * 4)));
-            }
-        }
     }
     return sheet;
 }
@@ -1612,11 +1691,11 @@ bool generateAllArt(Renderer& r) {
     add("powerup_life", makePowerupLife());
 
     // Effects.
-    add("explosion_small", makeExplosionSheet(8, 24, 0xE5A1u, false));
-    add("explosion_medium", makeExplosionSheet(8, 40, 0xE5B2u, false));
-    add("explosion_large", makeExplosionSheet(8, 64, 0xE5C3u, false));
-    add("splash_small", makeExplosionSheet(6, 24, 0x5D1Au, true));
-    add("splash_large", makeExplosionSheet(6, 48, 0x5D2Bu, true));
+    add("explosion_small", makeBoomSheet(6, 24, 0xE5A1u, 0));
+    add("explosion_medium", makeBoomSheet(11, 40, 0xE5B2u, 1));
+    add("explosion_large", makeBoomSheet(15, 72, 0xE5C3u, 2));
+    add("splash_small", makeSplashSheet(6, 24, 0x5D1Au));
+    add("splash_large", makeSplashSheet(6, 48, 0x5D2Bu));
     add("muzzle_flash", makeMuzzleSheet());
     add("shadow_ell", makeShadow());
 
@@ -1651,7 +1730,7 @@ bool generateAllArt(Renderer& r) {
     add("wake_foam", makeWake());
     add("fire_puff", makeFirePuff());
     add("smoke_puff", makeSmokePuff());
-    add("explosion_xlarge", makeExplosionSheet(8, 96, 0xE5D4u, false));
+    add("explosion_xlarge", makeBoomSheet(17, 96, 0xE5D4u, 3));
     add("boss_explosion", makeBossExplosionSheet());
 
     return true;
