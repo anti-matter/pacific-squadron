@@ -50,6 +50,10 @@ void test_shipped_data() {
         CHECK(c.weapon.empty() || data.findWeapon(c.weapon) >= 0);
     }
     CHECK(guns == 3);
+    // Total effective hp (hull + stations) — the "kill difficulty" budget.
+    int totalHp = boss.hullHp;
+    for (const auto& c : boss.components) totalHp += c.hp;
+    CHECK(totalHp == 194);
     // Stage 3's boss trigger sits inside the stage duration.
     CHECK(st3.bossTime > 0.0f && st3.bossTime < st3.duration);
 
