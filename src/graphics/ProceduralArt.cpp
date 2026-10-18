@@ -14,10 +14,8 @@ namespace {
 const std::uint32_t kDrab = col(0x5A6E3A);
 const std::uint32_t kDrabHi = col(0x748C4E);
 const std::uint32_t kDrabDk = col(0x3C4A26);
-const std::uint32_t kCanopy = col(0x6FA8D8);
 const std::uint32_t kInsigniaBlue = col(0x24407A);
 const std::uint32_t kWhite = col(0xF2F2F2);
-const std::uint32_t kBlack = col(0x101010);
 
 const std::uint32_t kEnTan = col(0x8A7A4E);
 const std::uint32_t kEnTanDk = col(0x66583A);
@@ -26,9 +24,6 @@ const std::uint32_t kEnGreenDk = col(0x38422A);
 const std::uint32_t kEnYellow = col(0xC8A83C);
 const std::uint32_t kEnGrey = col(0x5A5F63);
 const std::uint32_t kEnGreyDk = col(0x40444A);
-const std::uint32_t kRed = col(0xC23A2A);
-const std::uint32_t kNavalGrey = col(0x74797E);
-const std::uint32_t kNavalDk = col(0x51565B);
 const std::uint32_t kConcrete = col(0x8C8C80);
 const std::uint32_t kConcreteDk = col(0x6A6A60);
 
@@ -45,6 +40,187 @@ std::uint32_t shade(std::uint32_t c, float f) {
 }
 
 // ---------------------------------------------------------------------------
+// Hi — 4x supersampled raster surface.
+//
+// Sprites are built by painting vector primitives (polygons, ellipses,
+// capsules, rounded rects, strokes) into a 4x-resolution subpixel grid, then
+// baking down by averaging coverage. Interior pixels carry the exact source
+// color; only true silhouette-edge pixels receive partial alpha. This gives
+// inherently smooth contours with crisp flat color fields — the antialiasing
+// is a product of the rasterization, never a post-filter of finished art.
+// ---------------------------------------------------------------------------
+struct Hi {
+    int w = 0, h = 0;
+    static constexpr int SS = 4;  // samples per axis
+    std::vector<std::uint32_t> sub;
+
+    Hi() = default;
+    Hi(int w_, int h_) : w(w_), h(h_), sub(static_cast<std::size_t>(w_ * SS) * h_ * SS, 0) {}
+
+    void sp(int x, int y, std::uint32_t c) {
+        if (x < 0 || y < 0 || x >= w * SS || y >= h * SS) return;
+        sub[static_cast<std::size_t>(y) * w * SS + x] = c;
+    }
+
+    // --- primitives (coordinates in target pixels) -------------------------
+    void fillEllipse(float cx, float cy, float rx, float ry, std::uint32_t c) {
+        const int x0 = static_cast<int>((cx - rx) * SS) - 1, x1 = static_cast<int>((cx + rx) * SS) + 1;
+        const int y0 = static_cast<int>((cy - ry) * SS) - 1, y1 = static_cast<int>((cy + ry) * SS) + 1;
+        for (int sy = y0; sy <= y1; ++sy) {
+            const float dy = (sy + 0.5f) / SS - cy;
+            for (int sx = x0; sx <= x1; ++sx) {
+                const float dx = (sx + 0.5f) / SS - cx;
+                const float q = dx * dx / (rx * rx) + dy * dy / (ry * ry);
+                if (q <= 1.0f) sp(sx, sy, c);
+            }
+        }
+    }
+
+    void fillPoly(const std::vector<std::pair<float, float>>& pts, std::uint32_t c) {
+        if (pts.size() < 3) return;
+        float minx = 1e9f, maxx = -1e9f, miny = 1e9f, maxy = -1e9f;
+        for (auto& p : pts) {
+            minx = std::min(minx, p.first); maxx = std::max(maxx, p.first);
+            miny = std::min(miny, p.second); maxy = std::max(maxy, p.second);
+        }
+        const int x0 = static_cast<int>(minx * SS), x1 = static_cast<int>(maxx * SS) + 1;
+        const int y0 = static_cast<int>(miny * SS), y1 = static_cast<int>(maxy * SS) + 1;
+        const int n = static_cast<int>(pts.size());
+        for (int sy = y0; sy <= y1; ++sy) {
+            const float py = (sy + 0.5f) / SS;
+            for (int sx = x0; sx <= x1; ++sx) {
+                const float px = (sx + 0.5f) / SS;
+                bool in = false;  // even-odd
+                for (int i = 0, j = n - 1; i < n; j = i++) {
+                    const float yi = pts[i].second, yj = pts[j].second;
+                    const float xi = pts[i].first, xj = pts[j].first;
+                    if ((yi > py) != (yj > py)) {
+                        const float xint = xi + (py - yi) / (yj - yi) * (xj - xi);
+                        if (px < xint) in = !in;
+                    }
+                }
+                if (in) sp(sx, sy, c);
+            }
+        }
+    }
+
+    static float segDist(float x, float y, float ax, float ay, float bx, float by) {
+        const float abx = bx - ax, aby = by - ay;
+        const float len2 = abx * abx + aby * aby;
+        float t = len2 > 1e-9f ? ((x - ax) * abx + (y - ay) * aby) / len2 : 0.0f;
+        t = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
+        const float dx = x - (ax + abx * t), dy = y - (ay + aby * t);
+        return std::sqrt(dx * dx + dy * dy);
+    }
+
+    // Round-capped stroke through a polyline.
+    void stroke(const std::vector<std::pair<float, float>>& pts, float width,
+                std::uint32_t c, bool closed = false) {
+        const int n = static_cast<int>(pts.size());
+        if (n < 2 || width <= 0.0f) return;
+        const float r = width * 0.5f;
+        for (int i = 0; i + 1 < n; ++i) strokeLine(pts[i].first, pts[i].second,
+                                                   pts[i + 1].first, pts[i + 1].second, r, c);
+        if (closed) strokeLine(pts[n - 1].first, pts[n - 1].second, pts[0].first, pts[0].second, r, c);
+    }
+    void strokeLine(float ax, float ay, float bx, float by, float r, std::uint32_t c) {
+        const int x0 = static_cast<int>((std::min(ax, bx) - r) * SS), x1 = static_cast<int>((std::max(ax, bx) + r) * SS) + 1;
+        const int y0 = static_cast<int>((std::min(ay, by) - r) * SS), y1 = static_cast<int>((std::max(ay, by) + r) * SS) + 1;
+        for (int sy = y0; sy <= y1; ++sy) {
+            const float py = (sy + 0.5f) / SS;
+            for (int sx = x0; sx <= x1; ++sx) {
+                const float px = (sx + 0.5f) / SS;
+                if (segDist(px, py, ax, ay, bx, by) <= r) sp(sx, sy, c);
+            }
+        }
+    }
+
+    void fillRoundRect(float x, float y, float bw, float bh, float r, std::uint32_t c) {
+        fillPoly({{x + r, y}, {x + bw - r, y}, {x + bw, y + r}, {x + bw, y + bh - r},
+                  {x + bw - r, y + bh}, {x + r, y + bh}, {x, y + bh - r}, {x, y + r}}, c);
+        fillEllipse(x + r, y + r, r, r, c);
+        fillEllipse(x + bw - r, y + r, r, r, c);
+        fillEllipse(x + r, y + bh - r, r, r, c);
+        fillEllipse(x + bw - r, y + bh - r, r, r, c);
+    }
+
+    // Bake: average subpixel coverage. Solid interiors snap to the exact
+    // source color; only edge pixels keep fractional alpha.
+    PixelBuf bake() const {
+        PixelBuf out(w, h);
+        for (int y = 0; y < h; ++y) {
+            for (int x = 0; x < w; ++x) {
+                int aSum = 0, rSum = 0, gSum = 0, bSum = 0;
+                for (int sy = 0; sy < SS; ++sy) {
+                    for (int sx = 0; sx < SS; ++sx) {
+                        const std::uint32_t c = sub[static_cast<std::size_t>(y * SS + sy) *
+                                                        w * SS + x * SS + sx];
+                        const int a = static_cast<int>(c & 0xFF);
+                        if (!a) continue;
+                        ++aSum;
+                        rSum += static_cast<int>((c >> 24) & 0xFF);
+                        gSum += static_cast<int>((c >> 16) & 0xFF);
+                        bSum += static_cast<int>((c >> 8) & 0xFF);
+                    }
+                }
+                if (!aSum) continue;
+                const int total = SS * SS;
+                int alpha = aSum * 255 / total;
+                if (alpha > 235) alpha = 255;   // snap near-solid
+                else if (alpha < 28) continue;  // drop faint dust
+                const std::uint32_t r = (static_cast<std::uint32_t>(rSum) << 24) / aSum;
+                const std::uint32_t g = (static_cast<std::uint32_t>(gSum) << 16) / aSum;
+                const std::uint32_t b = (static_cast<std::uint32_t>(bSum) << 8) / aSum;
+                out.set(x, y, r + g + b + static_cast<std::uint32_t>(alpha));
+            }
+        }
+        return out;
+    }
+};
+
+// One-pixel outset outline around the silhouette (drawn onto transparent
+// neighbours), giving every sprite in the game the same crisp contour.
+void outlineSilhouette(PixelBuf& p, std::uint32_t ink) {
+    PixelBuf src = p;
+    const std::uint8_t inkA = static_cast<std::uint8_t>(ink & 0xFF);
+    for (int y = 0; y < p.h; ++y) {
+        for (int x = 0; x < p.w; ++x) {
+            if (src.get(x, y) & 0xFF) continue;  // only empty pixels
+            int n = 0;
+            if (src.get(x - 1, y) & 0xFF) ++n;
+            if (src.get(x + 1, y) & 0xFF) ++n;
+            if (src.get(x, y - 1) & 0xFF) ++n;
+            if (src.get(x, y + 1) & 0xFF) ++n;
+            if (!n) continue;
+            p.set(x, y, (ink & 0xFFFFFF00u) | inkA);
+        }
+    }
+}
+
+// Re-anti-alias the two vertical silhouette borders of a hull built from a
+// half-width profile: each border pixel's alpha is re-derived analytically
+// from the continuous profile curve (not filtered from neighbouring pixels),
+// so the flank contours read as smooth sweeps instead of staircases.
+template <typename Fn>
+void profileRim(PixelBuf& p, float cx, int y0, int y1, Fn halfAt) {
+    for (int y = y0; y <= y1; ++y) {
+        const float hw = halfAt(y);
+        for (const int side : {-1, 1}) {
+            const float xb = cx + side * hw;         // continuous boundary
+            const int xi = static_cast<int>(std::lround(xb));
+            if (!(p.get(xi, y) & 0xFF)) continue;    // gap/foam, not hull
+            if (p.get(xi + side, y) & 0xFF) continue;  // interior, not border
+            const float cov = (side > 0) ? (xb + 0.5f - xi) : (xi + 0.5f - xb);
+            if (cov > 0.97f) continue;
+            const std::uint32_t c = p.get(xi, y);
+            int a = static_cast<int>(cov * 255.0f + 0.5f);
+            if (a < 40) a = 40;
+            p.set(xi, y, (c & 0xFFFFFF00u) | static_cast<std::uint32_t>(a));
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Aircraft builder (drawn nose-up, mirrored for downward-facing enemies)
 // ---------------------------------------------------------------------------
 struct PlaneStyle {
@@ -58,131 +234,116 @@ struct PlaneStyle {
 
 PixelBuf makePlane(const PlaneStyle& st, int bankRows = 0) {
     const int W = 52, H = 52;
-    PixelBuf p(W, H);
-    const int cx = W / 2;
-    const int cy = H / 2;
-    const int half = st.span / 2;
-    const int bodyHalf = st.twin ? 8 : 4;
+    const float cx = 26.0f, cy = 26.0f;
+    const float half = st.span * 0.5f;
+    const float lenH = st.len * 0.5f;
+    Hi hi(W, H);
 
-    // Fuselage (nose at top).
-    for (int y = 0; y < st.len; ++y) {
-        const float t = static_cast<float>(y) / st.len;
-        int hw = static_cast<int>(bodyHalf * (1.0f - t * t * 0.45f));
-        if (y < 4) hw = std::max(1, (y + 1) / 2);
-        for (int x = -hw; x <= hw; ++x) {
-            std::uint32_t c = st.body;
-            if (x == -hw) c = st.bodyHi;
-            if (x == hw) c = st.bodyDk;
-            p.set(cx + x, cy - st.len / 2 + y, c);
-        }
+    // --- wings (painted first; the fuselage overlaps them) ----------------
+    const float tipLift = 1.2f;  // built-in sweep: tips sit slightly aft
+    for (int side = -1; side <= 1; side += 2) {
+        const float tipShift = bankRows * side;
+        const float rootLE = cy - 2.6f, rootTE = cy + 5.4f;
+        const float tipLE = cy + tipLift + tipShift;
+        const float tipTE = tipLE + std::max(2.2f, half * 0.24f);
+        hi.fillPoly({{cx, rootLE}, {cx + side * half * 0.5f, rootLE + 0.6f},
+                     {cx + side * half, tipLE}, {cx + side * half, tipTE},
+                     {cx + side * half * 0.55f, rootTE}, {cx, rootTE}},
+                    st.body);
+        // Leading-edge highlight and trailing-edge shading.
+        hi.stroke({{cx + side * 0.6f, rootLE + 0.15f},
+                   {cx + side * half * 0.5f, rootLE + 0.75f},
+                   {cx + side * (half - 0.4f), tipLE + 0.25f}},
+                  1.0f, st.bodyHi);
+        hi.stroke({{cx + side * half * 0.62f, rootTE - 0.4f},
+                   {cx + side * (half - 0.5f), tipTE - 0.3f}},
+                  0.9f, st.bodyDk);
+        // Aileron seam outboard.
+        hi.stroke({{cx + side * half * 0.72f, tipLE + 1.1f + (tipTE - tipLE) * 0.15f},
+                   {cx + side * (half - 0.7f), tipLE + 1.1f + (tipTE - tipLE) * 0.2f}},
+                  0.55f, st.bodyDk);
+        if (st.amberMark)  // elite wingtip cap
+            hi.fillPoly({{cx + side * (half - 1.6f), tipLE},
+                         {cx + side * half, tipLE}, {cx + side * half, tipTE},
+                         {cx + side * (half - 1.6f), tipTE}}, col(0xE8A832));
     }
-    // Prop spinner / nose highlight.
-    p.set(cx, cy - st.len / 2, shade(kBlack, 1.4f));
-    p.set(cx, cy - st.len / 2 + 1, kDrabDk);
+
+    // --- fuselage: tapered capsule ----------------------------------------
+    {
+        std::vector<std::pair<float, float>> pts;
+        const float hwMax = st.twin ? 3.6f : 2.6f;
+        for (int i = 0; i <= 10; ++i) {  // right side, nose -> tail
+            const float t = i / 10.0f;
+            const float hw = (t < 0.12f) ? 0.7f + hwMax * (t / 0.12f) * 0.9f
+                               : (t < 0.72f) ? hwMax
+                                             : hwMax * (1.0f - 0.55f * (t - 0.72f) / 0.28f);
+            pts.push_back({cx + hw, cy - lenH + st.len * t});
+        }
+        for (int i = 10; i >= 0; --i) {  // left side, tail -> nose
+            const float t = i / 10.0f;
+            const float hw = (t < 0.12f) ? 0.7f + hwMax * (t / 0.12f) * 0.9f
+                               : (t < 0.72f) ? hwMax
+                                             : hwMax * (1.0f - 0.55f * (t - 0.72f) / 0.28f);
+            pts.push_back({cx - hw * 0.96f, cy - lenH + st.len * t});
+        }
+        hi.fillPoly(pts, st.body);
+        // Soft top-light: bright spine left, shaded flank right.
+        hi.stroke({{cx - hwMax * 0.45f, cy - lenH + 2.0f}, {cx - hwMax * 0.55f, cy + lenH * 0.55f}},
+                  1.05f, st.bodyHi);
+        hi.stroke({{cx + hwMax * 0.62f, cy - lenH + 2.2f}, {cx + hwMax * 0.5f, cy + lenH * 0.6f}},
+                  1.05f, st.bodyDk);
+    }
+
+    // --- engine cowling + prop blur ----------------------------------------
+    const float noseY = cy - lenH;
+    hi.fillEllipse(cx, noseY + 3.1f, st.twin ? 2.4f : 2.9f, 3.4f, st.bodyDk);
+    hi.fillEllipse(cx, noseY + 2.4f, st.twin ? 1.5f : 1.9f, 2.0f, col(0x1C2126));
+    hi.fillEllipse(cx, noseY + 1.7f, 2.6f, 1.0f, col(0xC8D0D8, 90));  // prop disc
+    hi.fillEllipse(cx, noseY + 1.6f, 0.9f, 0.9f, col(0xE8EEF4));      // spinner
+    if (st.amberMark)  // elite nose band
+        hi.stroke({{cx - 2.4f, noseY + 5.4f}, {cx + 2.4f, noseY + 5.4f}}, 1.5f, col(0xE8A832));
+
+    // --- twin nacelles --------------------------------------------------------
     if (st.twin) {
-        // Engine nacelles.
+        const float nx = half * 0.5f;
         for (int side = -1; side <= 1; side += 2) {
-            const int ex = cx + side * (half / 2);
-            for (int y = -7; y <= 5; ++y)
-                for (int x = -3; x <= 3; ++x)
-                    p.set(ex + x, cy + y, std::abs(x) == 3 ? st.bodyDk : st.body);
-            p.set(ex, cy - 8, kBlack);  // prop hub
+            const float ex = cx + side * nx;
+            hi.fillRoundRect(ex - 2.3f, cy - 7.4f, 4.6f, 12.0f, 2.1f, st.body);
+            hi.fillEllipse(ex, cy - 6.2f, 1.9f, 1.9f, st.bodyDk);
+            hi.fillEllipse(ex, cy - 7.0f, 1.6f, 0.8f, col(0xC8D0D8, 90));  // prop blur
+            hi.fillEllipse(ex, cy - 7.4f, 0.7f, 0.7f, col(0x20262C));      // hub
+            hi.stroke({{ex - 1.4f, cy - 4.0f}, {ex - 1.4f, cy + 3.4f}}, 0.8f, st.bodyHi);
         }
     }
-    // Main wing: trapezoid, tips shifted vertically for banking.
-    const int wingY = cy + 1;
-    for (int wing = 0; wing < 2; ++wing) {
-        const int side = wing == 0 ? -1 : 1;
-        for (int d = 1; d <= half; ++d) {
-            const float t = static_cast<float>(d) / half;
-            const int chord = std::max(2, static_cast<int>(8.0f * (1.0f - t * 0.55f)));
-            const int tipShift = static_cast<int>(bankRows * t * side);
-            for (int c = 0; c < chord; ++c) {
-                std::uint32_t cc = st.body;
-                if (c == 0) cc = st.bodyHi;
-                if (c == chord - 1) cc = st.bodyDk;
-                if (d <= 2 && c >= 1 && c <= chord - 2) cc = st.bodyDk;  // root shadow
-                // Aileron seam outboard.
-                if (d > half * 2 / 3 && c == chord - 2) cc = st.bodyDk;
-                p.set(cx + side * d, wingY + c + tipShift, cc);
-            }
-        }
-    }
-    // Tailplane.
-    const int tailY = cy + st.len / 2 - 6;
-    for (int side = -1; side <= 1; side += 2)
-        for (int d = 1; d <= st.span / 5; ++d)
-            for (int c = 0; c < 3; ++c)
-                p.set(cx + side * d, tailY + c, c == 0 ? st.bodyHi : st.body);
-    // Rudder.
-    for (int y = 0; y < 5; ++y) p.set(cx, tailY + y, st.bodyDk);
 
-    // Cockpit.
-    if (!st.twin) {
-        for (int y = -4; y <= 1; ++y)
-            for (int x = -2; x <= 2; ++x)
-                p.set(cx + x, cy - 2 + y, (x == -2 || x == 2) ? shade(kCanopy, 0.6f) : kCanopy);
-        // Canopy glass reflection streak.
-        p.set(cx - 1, cy - 3, shade(kCanopy, 1.45f));
-        p.set(cx, cy - 2, shade(kCanopy, 1.45f));
-        p.set(cx - 1, cy - 1, shade(kCanopy, 1.2f));
-    } else {
-        for (int y = -2; y <= 1; ++y)
-            for (int x = -2; x <= 2; ++x)
-                p.set(cx + x, cy - 6 + y, kCanopy);
-        p.set(cx - 1, cy - 6, shade(kCanopy, 1.45f));
-        p.set(cx, cy - 5, shade(kCanopy, 1.45f));
+    // --- tailplane + fin -------------------------------------------------------
+    {
+        const float tailY = cy + lenH - 5.5f;
+        const float tl = st.span * 0.20f;
+        hi.fillPoly({{cx, tailY - 1.6f}, {cx + tl, tailY - 0.4f}, {cx + tl, tailY + 1.8f},
+                     {cx, tailY + 2.6f}, {cx - tl, tailY + 1.8f}, {cx - tl, tailY - 0.4f}},
+                    st.body);
+        hi.stroke({{cx - tl * 0.9f, tailY - 0.3f}, {cx + tl * 0.9f, tailY - 0.3f}}, 0.7f, st.bodyHi);
+        hi.fillPoly({{cx - 0.9f, tailY - 1.0f}, {cx + 0.9f, tailY - 1.0f},
+                     {cx + 1.3f, tailY + 4.6f}, {cx - 0.6f, tailY + 4.6f}}, st.bodyDk);
     }
 
-    // Fuselage spine highlight (light from upper-left).
-    for (int y = -st.len / 2 + 3; y < st.len / 2 - 4; ++y)
-        p.set(cx - 1, cy + y, st.bodyHi);
+    // --- cockpit ---------------------------------------------------------------
+    hi.fillEllipse(cx, cy - 0.8f, 1.9f, 3.3f, col(0x1E2A36));
+    hi.fillEllipse(cx - 0.55f, cy - 1.7f, 0.9f, 1.7f, col(0x9FD0E8, 215));  // glass gloss
+    hi.stroke({{cx - 1.9f, cy - 0.8f}, {cx + 1.9f, cy - 0.8f}}, 0.5f, col(0x141A20, 160));
 
-    // Exhaust stubs + faint burn streaks behind the engine.
-    for (int side : {-1, 1}) {
-        const int ex = cx + side * (st.twin ? half / 2 : 3);
-        const int ey = st.twin ? cy + 6 : cy + 4;
-        p.set(ex, ey, kBlack);
-        for (int q = 1; q <= 4; ++q)
-            p.set(ex + side * (q / 3), ey + q, col(0x1A1D20, 90 - q * 18));
-    }
-
-    // Prop blur arc in front of the nose (single-engine).
-    if (!st.twin) {
-        for (int x = -5; x <= 5; ++x)
-            p.set(cx + x, cy - st.len / 2 - 2 + (std::abs(x) > 3 ? 1 : 0),
-                  col(0xC8D4DC, 55));
-    }
-
-    // Markings.
+    // --- markings ---------------------------------------------------------------
     if (st.redDot) {
-        for (int wing = 0; wing < 2; ++wing) {
-            const int side = wing == 0 ? -1 : 1;
-            const int mx = cx + side * (half * 2 / 3);
-            p.fillEllipse(static_cast<float>(mx), static_cast<float>(wingY + 3), 3.5f, 3.5f, kRed);
-            // White sun-disc halo for silhouette punch.
-            p.set(mx - 4, wingY + 3, kWhite);
-            p.set(mx + 4, wingY + 3, kWhite);
-            p.set(mx, wingY - 1, kWhite);
-            p.set(mx, wingY + 7, kWhite);
-        }
-        // Red tail band.
-        for (int x = -3; x <= 3; ++x)
-            p.set(cx + x, tailY + 4, kRed);
-    }
-    // Elite accent: amber nose band + wingtip caps (matches the boss
-    // hazard-ring language so tough targets read instantly).
-    if (st.amberMark) {
-        const std::uint32_t amber = col(0xC8A83C);
-        for (int x = -3; x <= 3; ++x) p.set(cx + x, cy - st.len / 2 + 4, amber);
         for (int side = -1; side <= 1; side += 2) {
-            const int tipShift = static_cast<int>(bankRows * side);
-            for (int d = half - 1; d <= half; ++d)
-                for (int c = 0; c < 3; ++c)
-                    if (p.get(cx + side * d, wingY + c + tipShift))
-                        p.set(cx + side * d, wingY + c + tipShift, amber);
+            const float mx = cx + side * half * 0.62f, my = cy + 2.1f + tipLift * 0.62f;
+            hi.fillEllipse(mx, my, 1.9f, 1.9f, col(0xE8E4DC));
+            hi.fillEllipse(mx, my, 1.35f, 1.35f, col(0xC23A2A));
         }
     }
+
+    PixelBuf p = hi.bake();
+    outlineSilhouette(p, col(0x0A0E12, 165));
     return p;
 }
 
@@ -269,7 +430,6 @@ void drawPuff(PixelBuf& sheet, float cx, float cy, float r, float p,
     const int fade =
         p > 0.93f ? static_cast<int>(255.0f * (1.0f - (p - 0.93f) / 0.07f)) : 255;
     if (fade <= 0) return;
-    const std::uint32_t fadeA = static_cast<std::uint32_t>(fade);
     const int x0 = static_cast<int>(cx - rr - 1.5f);
     const int x1 = static_cast<int>(cx + rr + 1.5f);
     const int y0 = static_cast<int>(cy - rr - 1.5f);
@@ -288,14 +448,26 @@ void drawPuff(PixelBuf& sheet, float cx, float cy, float r, float p,
             const float lobe = d.lobe[li] * (1.0f - lf) +
                                d.lobe[(li + 1) % 12] * lf;
             const float edge = rr * (0.80f + 0.20f * lobe);
-            if (dist > edge) continue;
+            // Soft 1px coverage ramp on the scalloped rim (rasterization
+            // edge AA, not a post-filter): kills the stair-stepped contour.
+            const float cov = (edge - dist) / 1.15f;
+            if (cov <= 0.0f) continue;
             const float te = dist / edge;
+            // Continuous heat ramp: pale core -> gold -> orange -> deep red,
+            // replacing the old four hard-edged bands.
             std::uint32_t c;
-            if (coreF > 0.02f && te < coreF) c = coreC;
-            else if (te < 0.68f)             c = bodyC;
-            else if (te < 0.88f)             c = rimC;
-            else                             c = lineC;
-            sheet.blend(x, y, (c & 0xFFFFFF00u) | fadeA);
+            if (te < coreF)
+                c = mix24(coreC, bodyC, coreF > 0.02f ? te / coreF : 1.0f);
+            else if (te < 0.62f)
+                c = mix24(bodyC, rimC, (te - coreF) / std::max(0.02f, 0.62f - coreF));
+            else if (te < 0.86f)
+                c = mix24(rimC, lineC, (te - 0.62f) / 0.24f);
+            else
+                c = mix24(lineC, 0x5A1206, (te - 0.86f) / 0.14f);
+            const float acov = cov > 1.0f ? 1.0f : cov;
+            const int a = static_cast<int>(fade * acov + 0.5f);
+            if (a <= 0) continue;
+            sheet.blend(x, y, (c & 0xFFFFFF00u) | static_cast<std::uint32_t>(a));
         }
     }
 }
@@ -473,99 +645,141 @@ PixelBuf makeMuzzleSheet() {
 // Ground / sea units
 // ---------------------------------------------------------------------------
 PixelBuf makeAATurret() {
-    PixelBuf p(32, 32);
+    Hi hi(32, 32);
     const float cx = 16.0f;
-    // Sandbag ring outer perimeter.
-    p.fillEllipse(cx, 21, 15.0f, 12.0f, col(0x5C4C30));
-    p.fillEllipse(cx, 20, 14.0f, 11.0f, col(0x7A6844));
-    for (int k = 0; k < 10; ++k) {   // individual bags
+    // Sandbag ring: solid base ring with individual bags on the rim.
+    hi.fillEllipse(cx, 21, 15.0f, 12.0f, col(0x54452C));
+    hi.fillEllipse(cx, 20, 14.0f, 11.0f, col(0x746240));
+    for (int k = 0; k < 10; ++k) {
         const float a = k * 0.6283f + 0.3f;
-        const float bx = cx + 13.5f * std::cos(a);
-        const float by = 20.0f + 10.5f * std::sin(a);
-        p.fillEllipse(bx, by, 2.6f, 2.0f, (k % 2) ? col(0x8A7A52) : col(0x6A5A3C));
+        const float bx = cx + 13.2f * std::cos(a);
+        const float by = 20.0f + 10.3f * std::sin(a);
+        hi.fillEllipse(bx, by, 2.9f, 2.3f, (k % 2) ? col(0x8A7A52) : col(0x685838));
+        hi.fillEllipse(bx - 0.6f, by - 0.7f, 1.5f, 1.0f,
+                       (k % 2) ? col(0x9C8C62) : col(0x7A6A48));   // bag sheen
     }
     // Amber hazard dashes (armored-target language shared with bosses).
     for (int k = 0; k < 16; ++k) {
         if (k % 2) continue;
         const float a = k * 0.3927f + 0.15f;
-        p.set(static_cast<int>(cx + 14.5f * std::cos(a)),
-              static_cast<int>(20.5f + 11.5f * std::sin(a)), col(0xC8A83C));
+        hi.fillEllipse(cx + 14.4f * std::cos(a), 20.4f + 11.4f * std::sin(a),
+                       0.9f, 0.7f, col(0xC8A83C));
     }
-    // Concrete gun platform inside.
-    p.fillEllipse(cx, 19, 10.0f, 8.0f, col(0x5C5C52));
-    p.fillEllipse(cx, 18, 9.0f, 7.0f, col(0x8C8C80));
-    p.fillEllipse(cx - 2, 16, 5.0f, 3.5f, col(0x9C9C90));   // lit top
-    p.fillEllipse(cx, 20, 4.0f, 3.0f, col(0x6A6A60));       // mount base
-    // Armored gun shield facing the player.
-    for (int x = -7; x <= 7; ++x) {
-        const int h = 5 - (std::abs(x) > 5 ? 1 : 0);
-        p.fillRect(static_cast<int>(cx) + x - 1, 9, 1, h, x <= 0 ? col(0x8A9094) : col(0x4E5459));
-    }
+    // Concrete gun platform.
+    hi.fillEllipse(cx, 19, 10.2f, 8.2f, col(0x585850));
+    hi.fillEllipse(cx, 18, 9.0f, 7.0f, col(0x8C8C80));
+    hi.fillEllipse(cx - 2, 15.6f, 5.2f, 3.4f, col(0x9E9E92));      // lit top
+    hi.fillEllipse(cx, 20, 4.2f, 3.2f, col(0x666660));             // mount base
+    // Armored gun shield with bevel + sight slit.
+    hi.fillRoundRect(cx - 7.5f, 8.5f, 15.0f, 6.5f, 1.6f, col(0x6A7076));
+    hi.fillRoundRect(cx - 6.6f, 9.2f, 13.2f, 2.4f, 1.0f, col(0x8A9094));
+    hi.stroke({{cx - 4.0f, 12.6f}, {cx + 4.0f, 12.6f}}, 1.1f, col(0x181C20));
     // Twin AA barrels with flash hiders.
-    for (int bx : {13, 18}) {
-        p.fillRect(bx, 1, 2, 14, kBlack);
-        p.fillRect(bx, 1, 1, 14, shade(kBlack, 2.2f));
-        p.fillRect(bx - 1, 1, 4, 2, col(0x2B2F33));
+    for (const float bx : {12.8f, 17.6f}) {
+        hi.stroke({{bx, 2.0f}, {bx, 13.5f}}, 1.9f, col(0x14181C));
+        hi.stroke({{bx - 0.5f, 2.6f}, {bx - 0.5f, 12.6f}}, 0.55f, col(0x565C62));
+        hi.fillRoundRect(bx - 1.3f, 1.2f, 2.6f, 2.4f, 0.7f, col(0x2B2F33));
     }
     // Ready-rack box and ladder.
-    p.fillRect(22, 20, 5, 4, col(0x4A4A40));
-    p.fillRect(22, 20, 5, 1, col(0x7A7A6C));
-    p.hline(8, 10, 26, col(0x3A3A32));
-    p.hline(8, 10, 29, col(0x3A3A32));
+    hi.fillRoundRect(21.5f, 19.5f, 5.5f, 4.5f, 0.8f, col(0x4A4A40));
+    hi.stroke({{22.2f, 20.4f}, {26.2f, 20.4f}}, 0.7f, col(0x7A7A6C));
+    hi.stroke({{7.6f, 26.5f}, {10.4f, 26.5f}}, 0.8f, col(0x3A3A32));
+    hi.stroke({{7.6f, 29.0f}, {10.4f, 29.0f}}, 0.8f, col(0x3A3A32));
+    PixelBuf p = hi.bake();
+    outlineSilhouette(p, col(0x120E08, 150));
     return p;
 }
 
 PixelBuf makeTank() {
-    PixelBuf p(40, 28);
-    // Hull (facing down the screen).
-    p.fillRect(6, 4, 28, 22, kEnGreenDk);
-    p.fillRect(8, 6, 24, 18, kEnGreen);
-    // Tracks.
-    for (int y = 4; y < 26; y += 2) {
-        p.fillRect(4, y, 4, 1, kBlack);
-        p.fillRect(32, y, 4, 1, kBlack);
+    Hi hi(40, 28);
+    const float cx = 20.0f;
+    // Tracks: capsules with wheel hubs.
+    for (const float tx : {6.4f, 33.6f}) {
+        hi.fillRoundRect(tx - 3.4f, 3.0f, 6.8f, 22.0f, 3.2f, col(0x1A1D20));
+        hi.fillRoundRect(tx - 2.6f, 3.8f, 5.2f, 20.4f, 2.6f, col(0x2C3036));
+        for (int k = 0; k < 5; ++k)
+            hi.fillEllipse(tx, 6.5f + k * 3.6f, 1.5f, 1.5f, col(0x4A5056));
+        hi.stroke({{tx - 2.9f, 5.0f}, {tx - 2.9f, 23.0f}}, 0.6f, col(0x3E444A));
     }
-    // Turret + barrel pointing down.
-    p.fillEllipse(20.0f, 12.0f, 7.0f, 6.0f, shade(kEnGreen, 1.15f));
-    p.fillRect(19, 14, 2, 13, kBlack);
-    p.fillRect(18, 25, 4, 3, kEnGreenDk);
+    // Hull: rounded slab with front glacis bevel.
+    hi.fillRoundRect(9.5f, 4.0f, 21.0f, 21.0f, 3.4f, col(0x36402A));
+    hi.fillRoundRect(10.6f, 5.2f, 18.8f, 17.6f, 2.8f, col(0x4E5A38));
+    hi.fillRoundRect(11.8f, 6.2f, 8.0f, 7.0f, 2.0f, col(0x5E6C44));   // lit deck
+    hi.stroke({{11.0f, 21.5f}, {29.0f, 21.5f}}, 0.8f, col(0x38422A)); // hull seam
+    // Turret + mantlet + barrel pointing down at the player.
+    hi.fillEllipse(cx, 12.0f, 7.6f, 6.8f, col(0x38422A));
+    hi.fillEllipse(cx - 1.2f, 10.8f, 5.2f, 4.4f, col(0x5C6A42));      // crown light
+    hi.fillRoundRect(cx - 2.4f, 15.0f, 4.8f, 3.6f, 1.2f, col(0x46523A));
+    hi.stroke({{cx, 16.5f}, {cx, 26.5f}}, 2.1f, col(0x14181C));
+    hi.stroke({{cx - 0.55f, 17.5f}, {cx - 0.55f, 25.5f}}, 0.55f, col(0x4E545A));
+    hi.fillRoundRect(cx - 1.6f, 25.4f, 3.2f, 2.2f, 0.6f, col(0x38422A));  // muzzle brake
+    PixelBuf p = hi.bake();
+    outlineSilhouette(p, col(0x101408, 150));
     return p;
 }
 
 PixelBuf makeBunker() {
-    PixelBuf p(32, 32);
-    p.fillEllipse(16, 18, 13, 11, kConcreteDk);
-    p.fillEllipse(16, 16, 12, 10, kConcrete);
-    p.fillEllipse(13, 13, 5, 3, shade(kConcrete, 1.18f));
-    p.fillRect(8, 16, 16, 3, kBlack);  // embrasure
-    p.fillRect(6, 26, 20, 2, shade(kConcrete, 0.7f));
+    Hi hi(32, 32);
+    // Earth berm + concrete dome.
+    hi.fillEllipse(16, 20, 14.5f, 11.5f, col(0x4A4436));
+    hi.fillEllipse(16, 18, 12.6f, 10.6f, col(0x6A6A60));
+    hi.fillEllipse(16, 16.4f, 11.4f, 9.4f, col(0x8C8C80));
+    hi.fillEllipse(12.4f, 12.8f, 5.4f, 3.4f, col(0x9E9E90));          // lit crown
+    // Embrasure: dark slot with inner shadow + stub gun.
+    hi.fillRoundRect(7.5f, 15.5f, 17.0f, 4.2f, 1.6f, col(0x0E1012));
+    hi.fillRoundRect(8.4f, 16.2f, 15.2f, 1.4f, 0.6f, col(0x2A2E32));  // lintel shade
+    hi.stroke({{16.0f, 16.6f}, {16.0f, 19.4f}}, 1.5f, col(0x3A4046));
+    hi.stroke({{15.6f, 17.0f}, {15.6f, 19.0f}}, 0.5f, col(0x7A8086));
+    // Cracked concrete seams + base slab.
+    hi.stroke({{6.0f, 24.0f}, {9.5f, 26.5f}}, 0.5f, col(0x6E6E64, 200));
+    hi.stroke({{25.0f, 23.0f}, {22.0f, 26.0f}}, 0.5f, col(0x6E6E64, 200));
+    hi.fillRoundRect(5.0f, 26.0f, 22.0f, 3.2f, 1.2f, col(0x565650));
+    PixelBuf p = hi.bake();
+    outlineSilhouette(p, col(0x121008, 150));
     return p;
 }
 
 PixelBuf makeShip(int w, int h, bool destroyer) {
-    PixelBuf p(w, h);
-    // Hull: pointed bow at bottom (ships sail toward the player... they face
-    // down for the boss battleship; patrol boats face up). Draw facing down.
-    for (int y = 0; y < h; ++y) {
-        const float t = static_cast<float>(y) / h;
-        const int half = static_cast<int>((w / 2 - 2) * (t > 0.75f ? (1.0f - (t - 0.75f) * 3.2f) : 1.0f));
-        if (half <= 0) continue;
-        for (int x = w / 2 - half; x <= w / 2 + half; ++x) {
-            std::uint32_t c = kNavalGrey;
-            if (y < 4 || x == w / 2 - half || x == w / 2 + half) c = kNavalDk;
-            p.set(x, y, c);
-        }
-    }
-    // Deck structures.
-    p.fillRect(w / 2 - 6, h / 2 - 8, 12, 16, shade(kNavalGrey, 1.2f));
-    p.fillRect(w / 2 - 4, h / 2 - 6, 8, 10, kNavalDk);
-    // Gun turrets.
-    auto turret = [&](int tx, int ty) {
-        p.fillEllipse(static_cast<float>(tx), static_cast<float>(ty), 3.5f, 3.5f, kNavalDk);
-        p.fillRect(tx - 1, ty + 2, 2, 5, kBlack);
+    Hi hi(w, h);
+    const float cx = w * 0.5f;
+    // AA hull profile: straight lift sides, fine clipped bow at the bottom.
+    auto halfAt = [&](float t) {
+        return (w * 0.5f - 2.0f) *
+               (t > 0.72f ? std::max(0.05f, 1.0f - (t - 0.72f) * 3.4f) : 1.0f);
     };
-    turret(w / 2, h - 8);
-    if (destroyer) { turret(w / 2, 10); turret(w / 2 - 10, h / 2); turret(w / 2 + 10, h / 2); }
+    std::vector<std::pair<float, float>> hull;
+    for (int i = 0; i <= 14; ++i) hull.push_back({cx - halfAt(i / 14.0f) + 0.4f, 1.0f + (h - 2) * i / 14.0f});
+    for (int i = 14; i >= 0; --i) hull.push_back({cx + halfAt(i / 14.0f), 1.0f + (h - 2) * i / 14.0f});
+    hi.fillPoly(hull, col(0x565D64));
+    // Belt shading + deck inset.
+    std::vector<std::pair<float, float>> deck;
+    for (int i = 0; i <= 12; ++i) {
+        const float t = 0.08f + 0.86f * i / 12.0f;
+        deck.push_back({cx - halfAt(t) + 3.0f, 1.0f + (h - 2) * t});
+    }
+    for (int i = 12; i >= 0; --i) {
+        const float t = 0.08f + 0.86f * i / 12.0f;
+        deck.push_back({cx + halfAt(t) - 3.4f, 1.0f + (h - 2) * t});
+    }
+    hi.fillPoly(deck, col(0x6A7178));
+    hi.stroke({{cx - halfAt(0.5f) + 1.2f, 3.0f}, {cx - halfAt(0.5f) + 1.2f, h - 6.0f}},
+              1.2f, col(0x7C848B));                                  // lit flank
+    hi.stroke({{cx + halfAt(0.5f) - 1.2f, 3.0f}, {cx + halfAt(0.5f) - 1.2f, h - 6.0f}},
+              1.2f, col(0x3A4046));                                  // shaded flank
+    // Deck structures: bridge block with windows.
+    hi.fillRoundRect(cx - 6.5f, h * 0.5f - 8.0f, 13.0f, 16.0f, 1.8f, col(0x7E858C));
+    hi.fillRoundRect(cx - 4.5f, h * 0.5f - 6.0f, 9.0f, 10.0f, 1.2f, col(0x41474D));
+    hi.fillRoundRect(cx - 3.6f, h * 0.5f - 5.2f, 7.2f, 2.0f, 0.6f, col(0x3A5A6E));
+    // Gun turrets (barrels face the player).
+    auto turret = [&](float tx, float ty) {
+        hi.fillEllipse(tx, ty, 3.8f, 3.8f, col(0x33383D));
+        hi.fillEllipse(tx - 0.5f, ty - 0.5f, 2.4f, 2.4f, col(0x5E656C));
+        hi.stroke({{tx, ty + 1.5f}, {tx, ty + 6.5f}}, 1.5f, col(0x14181C));
+    };
+    turret(cx, h - 9.0f);
+    if (destroyer) { turret(cx, 9.0f); turret(cx - 10.0f, h * 0.5f); turret(cx + 10.0f, h * 0.5f); }
+    PixelBuf p = hi.bake();
+    outlineSilhouette(p, col(0x10141A, 150));
     return p;
 }
 
@@ -597,6 +811,8 @@ PixelBuf makePowerupUpgrade() {
     p.vline(9, 12, 17, col(0xE8C060));
     p.vline(13, 12, 17, col(0x8A6420));
     p.fillRect(9, 17, 5, 1, col(0x6E4E18));                        // base rim
+    outlineSilhouette(p, col(0x141018, 160));  // shared crisp contour language
+
     return p;
 }
 
@@ -626,6 +842,8 @@ PixelBuf makePowerupSpread() {
     p.fillEllipse(11.0f, 17.0f, 4.5f, 4.0f, col(0x1A1A1A));
     p.fillEllipse(11.0f, 16.5f, 3.5f, 3.0f, col(0x7C838A));
     p.fillEllipse(11.0f, 16.0f, 2.0f, 1.8f, col(0xC868B8));
+    outlineSilhouette(p, col(0x141018, 160));  // shared crisp contour language
+
     return p;
 }
 
@@ -642,6 +860,8 @@ PixelBuf makePowerupCannon() {
     p.fillRect(6, 13, 10, 1, col(0x7A4E1C));                       // band seam
     p.fillRect(8, 14, 6, 3, col(0x565C61));                        // tapered base
     p.vline(15, 8, 13, col(0x2A2E33));                             // dark edge
+    outlineSilhouette(p, col(0x141018, 160));  // shared crisp contour language
+
     return p;
 }
 
@@ -673,6 +893,8 @@ PixelBuf makePowerupRocket() {
     p.fillRect(9, 18, 4, 2, col(0xFFB028));
     p.set(10, 20, col(0xF06820, 220)); p.set(11, 20, col(0xF06820, 220));
     p.set(11, 21, col(0xF06820, 120));
+    outlineSilhouette(p, col(0x141018, 160));  // shared crisp contour language
+
     return p;
 }
 
@@ -697,6 +919,8 @@ PixelBuf makePowerupBomb() {
             p.set(11 + x, 15 + i, x <= 0 ? col(0x4A6AA8) : col(0x2E4468));
     }
     p.set(11, 19, col(0x14181E));                                  // fuse tip
+    outlineSilhouette(p, col(0x141018, 160));  // shared crisp contour language
+
     return p;
 }
 
@@ -722,6 +946,8 @@ PixelBuf makePowerupRepair() {
     // Latches on the seam.
     p.fillRect(7, 9, 1, 2, col(0x60605A));
     p.fillRect(15, 9, 1, 2, col(0x60605A));
+    outlineSilhouette(p, col(0x141018, 160));  // shared crisp contour language
+
     return p;
 }
 
@@ -746,103 +972,135 @@ PixelBuf makePowerupLife() {
     p.fillRect(6, 15, 10, 2, col(0xD8B040));
     p.fillRect(6, 15, 10, 1, col(0x8A6420));
     p.fillRect(10, 17, 2, 1, col(0xB88E28));
+    outlineSilhouette(p, col(0x141018, 160));  // shared crisp contour language
+
     return p;
 }
 
 PixelBuf makeBulletPlayer() {
-    PixelBuf p(4, 10);
-    p.fillRect(1, 0, 2, 6, col(0xFFE870));
-    p.fillRect(1, 0, 2, 3, kWhite);
-    p.fillRect(1, 6, 2, 4, col(0xFFB028, 160));
-    return p;
+    Hi hi(4, 10);
+    hi.fillEllipse(2.0f, 4.6f, 1.7f, 4.6f, col(0xFFB028, 110));   // warm glow
+    hi.fillEllipse(2.0f, 3.8f, 0.95f, 3.6f, col(0xFFE870));       // tracer body
+    hi.fillEllipse(2.0f, 2.9f, 0.6f, 2.3f, col(0xFFFFF0));        // hot core
+    return hi.bake();
 }
 PixelBuf makeBulletCannon() {
-    PixelBuf p(7, 13);
-    p.fillEllipse(3.5f, 4.0f, 3.0f, 4.0f, col(0xFF9830));
-    p.fillEllipse(3.5f, 3.0f, 1.6f, 2.2f, kWhite);
-    p.fillRect(2, 8, 3, 4, col(0xE85A20, 170));
-    return p;
+    Hi hi(7, 13);
+    hi.fillEllipse(3.5f, 5.0f, 3.2f, 4.8f, col(0xE85A20, 120));   // ember glow
+    hi.fillEllipse(3.5f, 4.2f, 2.1f, 4.0f, col(0xFF9830));        // shell fire
+    hi.fillEllipse(3.5f, 3.0f, 1.0f, 2.4f, col(0xFFF4D8));        // white core
+    return hi.bake();
 }
 PixelBuf makeBulletRocket() {
-    PixelBuf p(6, 14);
-    p.fillRect(2, 0, 2, 8, col(0xCCCCC8));
-    p.fillRect(2, 0, 2, 2, kRed);
-    p.set(1, 7, kDrabDk); p.set(4, 7, kDrabDk);
-    p.fillRect(2, 9, 2, 3, col(0xFFC860, 200));
-    p.fillRect(2, 12, 2, 2, col(0xFF7020, 120));
-    return p;
+    Hi hi(6, 14);
+    hi.fillEllipse(3.0f, 11.0f, 1.5f, 3.0f, col(0xFF7020, 130));  // exhaust plume
+    hi.fillEllipse(3.0f, 10.0f, 0.9f, 2.0f, col(0xFFE8A0, 220));  // flame core
+    hi.fillPoly({{1.0f, 8.2f}, {3.0f, 7.0f}, {5.0f, 8.2f}, {5.0f, 9.6f},
+                 {3.0f, 8.8f}, {1.0f, 9.6f}}, col(0x8A2A2A));     // fins
+    hi.fillRoundRect(2.0f, 1.0f, 2.0f, 8.0f, 0.9f, col(0xD8DCE0)); // body
+    hi.fillEllipse(3.0f, 1.6f, 1.0f, 1.5f, col(0xE05040));        // nose
+    hi.stroke({{2.3f, 2.6f}, {2.3f, 7.6f}}, 0.6f, col(0xF6F8FA)); // lit edge
+    return hi.bake();
 }
 PixelBuf makeBulletEnemy() {
-    PixelBuf p(5, 5);
-    p.fillEllipse(2.5f, 2.5f, 2.5f, 2.5f, col(0xE8482A));
-    p.fillEllipse(2.5f, 2.5f, 1.2f, 1.2f, col(0xFFE0B0));
-    return p;
+    Hi hi(5, 5);
+    hi.fillEllipse(2.5f, 2.5f, 2.5f, 2.5f, col(0xE8482A, 110));   // glow halo
+    hi.fillEllipse(2.5f, 2.5f, 1.45f, 1.45f, col(0xFF7A40));
+    hi.fillEllipse(2.3f, 2.2f, 0.7f, 0.7f, col(0xFFE8C8));        // hot spot
+    return hi.bake();
 }
 PixelBuf makeShellEnemy() {
-    PixelBuf p(8, 8);
-    p.fillEllipse(4, 4, 3.8f, 3.8f, col(0x2A2A30));
-    p.fillEllipse(4, 4, 2.2f, 2.2f, col(0xB85A20));
-    p.fillEllipse(3.4f, 3.4f, 1.0f, 1.0f, col(0xFFE8A0));
-    return p;
+    Hi hi(8, 8);
+    hi.fillEllipse(4, 4, 3.9f, 3.9f, col(0x2A2A30));
+    hi.fillEllipse(4, 4, 2.6f, 2.6f, col(0xB85A20));
+    hi.fillEllipse(3.3f, 3.3f, 1.15f, 1.15f, col(0xFFE8A0));
+    return hi.bake();
 }
 PixelBuf makeFlak() {
-    PixelBuf p(8, 8);
-    p.fillEllipse(4, 4, 3.6f, 3.6f, col(0x505050, 220));
-    p.fillEllipse(3.2f, 3.2f, 1.8f, 1.8f, col(0x909090, 240));
-    return p;
+    Hi hi(8, 8);
+    hi.fillEllipse(4.0f, 4.2f, 3.7f, 3.5f, col(0x505050, 150));   // smoke body
+    hi.fillEllipse(3.1f, 3.2f, 2.1f, 1.9f, col(0x9C9C9C, 190));   // lit puff
+    hi.fillEllipse(2.5f, 2.6f, 0.9f, 0.8f, col(0xD8D8D4, 210));
+    return hi.bake();
 }
 
 PixelBuf makeShadow() {
-    PixelBuf p(20, 12);
-    p.fillEllipse(10, 6, 9, 5, col(0x000000, 70));
-    return p;
+    Hi hi(20, 12);
+    hi.fillEllipse(10, 6, 9, 5, col(0x000000, 70));
+    hi.fillEllipse(10, 6, 6, 3, col(0x000000, 50));
+    return hi.bake();
 }
 
 // ---------------------------------------------------------------------------
 // Tiles
 // ---------------------------------------------------------------------------
+// Seamless value noise on a 32px lattice (wraps exactly at tile borders).
+float tileNoise(int x, int y, std::uint64_t seed) {
+    auto h = [&](int ix, int iy) {
+        std::uint64_t v = seed + static_cast<std::uint64_t>(ix & 31) * 374761393ull +
+                          static_cast<std::uint64_t>(iy & 31) * 668265263ull;
+        v = (v ^ (v >> 13)) * 1274126177ull;
+        v ^= v >> 16;
+        return static_cast<float>(v & 0xFFFF) / 65535.0f;
+    };
+    const float fx = x / 8.0f, fy = y / 8.0f;   // 8px cells -> period 32
+    const int x0 = static_cast<int>(std::floor(fx)) & 3, y0 = static_cast<int>(std::floor(fy)) & 3;
+    const int x1 = (x0 + 1) & 3, y1 = (y0 + 1) & 3;
+    const float tx = fx - std::floor(fx), ty = fy - std::floor(fy);
+    const float sx = tx * tx * (3.0f - 2.0f * tx), sy = ty * ty * (3.0f - 2.0f * ty);
+    const float a = h(x0, y0) * (1 - sx) + h(x1, y0) * sx;
+    const float b = h(x0, y1) * (1 - sx) + h(x1, y1) * sx;
+    return a * (1 - sy) + b * sy;
+}
+
+// Blend a tile colour brighter/darker by n (-1..1).
+std::uint32_t shadeBy(std::uint32_t c, float n) {
+    const float f = 1.0f + n;
+    return shade(c, f);
+}
+
 PixelBuf makeOceanTile(int variant) {
-    // Two-scale wave texture: long darker swells, short bright ripples, and
-    // sparse specular sparkle. All features wrap modulo 32 so the tile
-    // stays seamless.
+    // Two-scale wave texture over a smooth low-frequency depth field, so the
+    // tiled sea never reads as flat repeating wallpaper. All features wrap
+    // modulo 32 to keep the tile seamless.
     PixelBuf p(32, 32);
     Rng rng(0x0CE4Au + variant * 77);
     auto wset = [&](int x, int y, std::uint32_t c) {
         p.set(((x % 32) + 32) % 32, ((y % 32) + 32) % 32, c);
     };
-    p.fill(col(0x173C6C));
-    // Large soft colour patches (depth variation).
-    for (int i = 0; i < 3; ++i) {
-        const int px0 = rng.rangeInt(0, 31), py0 = rng.rangeInt(0, 31);
-        const int rx = rng.rangeInt(5, 9), ry = rng.rangeInt(4, 7);
-        for (int y = -ry; y <= ry; ++y)
-            for (int x = -rx; x <= rx; ++x)
-                if ((x * x) / (rx * rx) + (y * y) / (ry * ry) <= 1)
-                    wset(px0 + x, py0 + y, col(0x1E4676));
+    // Base + seamless depth shading: two sine sweeps + lattice noise.
+    const float ph = variant * 1.7f;
+    for (int y = 0; y < 32; ++y) {
+        for (int x = 0; x < 32; ++x) {
+            const float w1 = std::sin((x * 0.3927f) + (y * 0.1963f) + ph) * 0.5f + 0.5f;
+            const float n = tileNoise(x + variant * 13, y, 0x5EA0u + variant);
+            const float v = (w1 * 0.35f + n * 0.65f - 0.5f) * 0.22f;
+            p.set(x, y, shadeBy(col(0x173C6C), v));
+        }
     }
-    // Long swell lines with bright crests.
+    // Long swell lines with soft crests and troughs.
     const int swells = 2 + (variant % 2);
     for (int i = 0; i < swells; ++i) {
-        const int x = rng.rangeInt(0, 24), y = rng.rangeInt(0, 30);
+        const int x = rng.rangeInt(0, 24), y0 = rng.rangeInt(0, 30);
         const int len = rng.rangeInt(12, 20);
         for (int q = 0; q < len; ++q) {
-            const int yy = y + (q / 4) % 2;
-            wset(x + q, yy, col(0x26508A));
-            wset(x + q, yy - 1, col(0x3C6CA4));
+            const int yy = y0 + (q / 4) % 2;
+            wset(x + q, yy, col(0x2A568F));
+            wset(x + q, yy - 1, col(0x41729F));
+            wset(x + q, yy + 2, col(0x113260));
         }
-        for (int q = 2; q < len - 2; ++q) wset(x + q, y + 2, col(0x10305A));
     }
     // Short ripple dashes.
     for (int i = 0; i < 6; ++i) {
         const int x = rng.rangeInt(0, 28), y = rng.rangeInt(0, 31);
-        wset(x, y, col(0x2C5890));
-        wset(x + 1, y, col(0x2C5890));
-        wset(x + 2, y - 1, col(0x2C5890));
+        wset(x, y, col(0x2E5A92));
+        wset(x + 1, y, col(0x2E5A92));
+        wset(x + 2, y - 1, col(0x2E5A92));
     }
-    // Scattered texture pixels.
-    for (int i = 0; i < 26; ++i)
+    // Fine speckle kept subtle (noise field already carries the mid-tones).
+    for (int i = 0; i < 14; ++i)
         wset(rng.rangeInt(0, 31), rng.rangeInt(0, 31),
-             rng.chance(0.5f) ? col(0x204A80) : col(0x123462));
+             rng.chance(0.5f) ? col(0x1F487E) : col(0x123462));
     // Specular sparkles.
     const int sparkles = 2 + variant * 2;
     for (int i = 0; i < sparkles; ++i)
@@ -853,29 +1111,37 @@ PixelBuf makeOceanTile(int variant) {
 
 PixelBuf makeSandTile(int variant) {
     PixelBuf p(32, 32);
-    p.fill(col(0xC2A868));
+    for (int y = 0; y < 32; ++y)
+        for (int x = 0; x < 32; ++x) {
+            const float n = tileNoise(x + variant * 7, y + variant * 11, 0xBEEF01u);
+            const float m = tileNoise(x * 2 + variant, y * 2, 0xBEEF02u);
+            p.set(x, y, shadeBy(col(0xC2A868), (n - 0.5f) * 0.18f + (m - 0.5f) * 0.07f));
+        }
     Rng rng(0x5ABDu + variant);
-    for (int i = 0; i < 70; ++i) {
-        const int x = rng.rangeInt(0, 31), y = rng.rangeInt(0, 31);
-        p.set(x, y, rng.chance(0.5f) ? col(0xD0B878) : col(0xA88E50));
-    }
+    for (int i = 0; i < 26; ++i)   // sparse grit
+        p.set(rng.rangeInt(0, 31), rng.rangeInt(0, 31),
+              rng.chance(0.5f) ? col(0xD4BC80) : col(0xA88E50));
     return p;
 }
 
 PixelBuf makeJungleTile(int variant) {
     PixelBuf p(32, 32);
-    p.fill(col(0x2E4A20));
+    for (int y = 0; y < 32; ++y)
+        for (int x = 0; x < 32; ++x) {
+            const float n = tileNoise(x + variant * 5, y, 0xD0D001u);
+            p.set(x, y, shadeBy(col(0x2E4A20), (n - 0.5f) * 0.24f));
+        }
     Rng rng(0x1DFFu + variant * 101);
-    for (int i = 0; i < 60; ++i)
-        p.set(rng.rangeInt(0, 31), rng.rangeInt(0, 31), col(0x385A28));
-    // Tree canopies.
+    // Tree canopies with grounded shadow rims and layered crowns.
     const int trees = 2 + (variant % 2);
     for (int t = 0; t < trees; ++t) {
         const int tx = rng.rangeInt(6, 26), ty = rng.rangeInt(6, 26);
         const float r = rng.range(4.0f, 6.5f);
+        p.fillEllipse(static_cast<float>(tx) + 1, static_cast<float>(ty) + 1.5f, r, r * 0.8f,
+                      col(0x14260C, 200));                       // cast shadow
         p.fillEllipse(static_cast<float>(tx), static_cast<float>(ty), r, r, col(0x1E3814));
-        p.fillEllipse(static_cast<float>(tx - 1), static_cast<float>(ty - 1), r * 0.7f, r * 0.7f, col(0x2A4A1C));
-        p.fillEllipse(static_cast<float>(tx - 2), static_cast<float>(ty - 2), r * 0.35f, r * 0.35f, col(0x466A2E));
+        p.fillEllipse(static_cast<float>(tx - 1), static_cast<float>(ty - 1), r * 0.7f, r * 0.7f, col(0x2C4E1E));
+        p.fillEllipse(static_cast<float>(tx - 2), static_cast<float>(ty - 2), r * 0.35f, r * 0.35f, col(0x4A7031));
     }
     return p;
 }
@@ -924,14 +1190,43 @@ PixelBuf makeRoadTile(bool vertical) {
 }
 
 PixelBuf makeAirfieldTile() {
+    // Apron concrete: seamless slab panels with subtle tone drift, so the
+    // airfield reads as one poured surface instead of a grey checkerboard.
     PixelBuf p(32, 32);
-    p.fill(col(0x84847E));
-    Rng rng(0xAF1);
-    for (int i = 0; i < 40; ++i)
-        p.set(rng.rangeInt(0, 31), rng.rangeInt(0, 31), col(0x787872));
-    p.hline(0, 31, 0, col(0x6A6A64));
-    p.vline(0, 0, 31, col(0x6A6A64));
-    p.fillRect(4, 14, 24, 4, kWhite);   // runway stripe
+    for (int y = 0; y < 32; ++y)
+        for (int x = 0; x < 32; ++x) {
+            const float n = tileNoise(x, y, 0xAF1u) - 0.5f;
+            p.set(x, y, shadeBy(col(0x84847E), n * 0.10f));
+        }
+    // Slab seams every 16px with a lit lower lip.
+    for (int s = 0; s < 32; s += 16) {
+        for (int q = 0; q < 32; ++q) {
+            p.set(q, s, col(0x6E6E68));
+            p.set(s, q, col(0x6E6E68));
+            p.set(q, (s + 1) & 31, col(0x90908A, 160));
+        }
+    }
+    Rng rng(0xAF2);
+    for (int i = 0; i < 8; ++i)  // oil stains / patch spewl
+        p.fillEllipse(static_cast<float>(rng.rangeInt(2, 29)),
+                      static_cast<float>(rng.rangeInt(2, 29)),
+                      rng.range(0.8f, 1.8f), rng.range(0.6f, 1.2f), col(0x767670, 120));
+    return p;
+}
+
+PixelBuf makeRunwayTile() {
+    // The airfield's centre lanes: dark asphalt with one continuous
+    // centreline dash per tile (drawn only on the runway columns).
+    PixelBuf p(32, 32);
+    for (int y = 0; y < 32; ++y)
+        for (int x = 0; x < 32; ++x) {
+            const float n = tileNoise(x, y, 0xAF3u) - 0.5f;
+            p.set(x, y, shadeBy(col(0x54565A), n * 0.10f));
+        }
+    p.vline(1, 1, 31, col(0x484A4E));    // lane seams at the tile edge pair
+    p.vline(30, 1, 31, col(0x484A4E));
+    p.fillRect(14, 6, 4, 20, col(0xE8E8E2));  // centreline dash
+    p.fillRect(14, 6, 1, 20, col(0xD8D8D2));
     return p;
 }
 
@@ -941,10 +1236,17 @@ PixelBuf makeFortressTile() {
     for (int y = 0; y < 32; y += 8) {
         const int off = (y / 8) % 2 == 0 ? 0 : 8;
         for (int x = -8; x < 32; x += 16) {
-            p.fillRect(x + off + 1, y + 1, 14, 6, shade(kConcrete, 0.95f));
-            p.fillRect(x + off + 1, y + 1, 14, 1, shade(kConcrete, 1.15f));
+            // Per-brick tone drift keeps the wall from reading as a grid.
+            const float n = tileNoise(x + off + 8, y, 0xF02u) - 0.5f;
+            p.fillRect(x + off + 1, y + 1, 14, 6, shade(kConcrete, 0.95f + n * 0.10f));
+            p.fillRect(x + off + 1, y + 1, 14, 1, shade(kConcrete, 1.15f + n * 0.08f));
+            p.fillRect(x + off + 1, y + 6, 14, 1, shade(kConcreteDk, 1.08f));  // soft mortar
         }
     }
+    for (int i = 0; i < 10; ++i)  // sparse weathering speckle
+        p.set(static_cast<int>(tileNoise(i * 3, i * 7, 0xF03u) * 31.0f),
+              static_cast<int>(tileNoise(i * 5, i * 2, 0xF04u) * 31.0f),
+              col(0x5E5E56, 140));
     return p;
 }
 
@@ -1205,6 +1507,11 @@ PixelBuf makeBattleshipHull(int damage) {
         for (int i = 0; i < 16; ++i)
             p.set(cx - 14 + i + (i % 3), yTop + 108 + (i % 4) - 2, col(0x241C14, 200));
     }
+    // Smooth flank contours against the sea: rim coverage from the
+    // analytic hull profile, not from pixels.
+    profileRim(p, static_cast<float>(cx), yTop + 1, yBot - 1,
+               [&](int yy) { return halfAt(yy); });
+
     return p;
 }
 
@@ -1279,6 +1586,8 @@ PixelBuf makeBigTurret() {
         p.fillRect(bx - 1, 44, 6, 2, col(0x7C838A));        // muzzle brake
         p.fillRect(bx - 1, 46, 6, 1, col(0x23272B));
     }
+    outlineSilhouette(p, col(0x0E1216, 150));  // shared crisp contour language
+
     return p;
 }
 
@@ -1307,6 +1616,8 @@ PixelBuf makeBossAA() {
     // Seat box + ammo drum behind.
     p.fillRect(12, 17, 5, 4, col(0x3C4247));
     p.fillEllipse(20.0f, 18.0f, 2.5f, 2.5f, col(0x2B2F33));
+    outlineSilhouette(p, col(0x0E1216, 150));  // shared crisp contour language
+
     return p;
 }
 
@@ -1365,6 +1676,8 @@ PixelBuf makeBridge() {
     p.vline(cx - 1, 12, 54, col(0x6E757C));
     p.hline(cx - 8, cx + 8, 14, col(0x4E5459));
     p.fillRect(cx + 1, 10, 6, 3, col(0xC23A2A));
+    outlineSilhouette(p, col(0x0E1216, 150));  // shared crisp contour language
+
     return p;
 }
 
@@ -1611,6 +1924,11 @@ PixelBuf makeDestroyerHull(int damage) {
             }
         }
     }
+    // Smooth flank contours against the sea: rim coverage from the
+    // analytic hull profile, not from pixels.
+    profileRim(p, static_cast<float>(cx), yTop + 1, yBot - 1,
+               [&](int yy) { return halfAt(yy); });
+
     return p;
 }
 
@@ -1653,6 +1971,8 @@ PixelBuf makeDestroyerGun() {
         p.fillRect(bx - 1, 29, 6, 2, col(0x7C838A));        // muzzle brake
         p.fillRect(bx - 1, 31, 6, 1, col(0x23272B));
     }
+    outlineSilhouette(p, col(0x0E1216, 150));  // shared crisp contour language
+
     return p;
 }
 
@@ -1689,6 +2009,8 @@ PixelBuf makeDestroyerBridge() {
     p.vline(cx, 6, 36, col(0x2A2E33));
     p.vline(cx - 1, 6, 36, col(0x6E757C));
     p.fillRect(cx + 1, 8, 5, 3, col(0xC23A2A));
+    outlineSilhouette(p, col(0x0E1216, 150));  // shared crisp contour language
+
     return p;
 }
 
@@ -1911,6 +2233,11 @@ PixelBuf makeCarrierHull(int damage) {
             }
         }
     }
+    // Smooth flank contours against the sea: rim coverage from the
+    // analytic hull profile, not from pixels.
+    profileRim(p, static_cast<float>(cx), yTop + 1, yBot - 1,
+               [&](int yy) { return halfAt(yy); });
+
     return p;
 }
 
@@ -1946,6 +2273,8 @@ PixelBuf makeCarrierIsland() {
     // Bridge wing platforms.
     p.fillRect(4, 26, 4, 3, col(0x4E555C));
     p.set(4, 27, col(0xF2E8B8, 220));
+    outlineSilhouette(p, col(0x0E1216, 150));  // shared crisp contour language
+
     return p;
 }
 
@@ -2141,6 +2470,8 @@ PixelBuf makeTurretSmall() {
         p.fillRect(bx, 17, 1, 10, col(0x9AA2A8));
         p.fillRect(bx + 2, 17, 1, 10, col(0x23272B));
     }
+    outlineSilhouette(p, col(0x0E1216, 150));  // shared crisp contour language
+
     return p;
 }
 
@@ -2290,6 +2621,7 @@ bool generateAllArt(Renderer& r) {
     add("tile_road_v", makeRoadTile(true));
     add("tile_road_h", makeRoadTile(false));
     add("tile_airfield", makeAirfieldTile());
+    add("tile_runway", makeRunwayTile());
     add("tile_fortress", makeFortressTile());
     add("tile_island_edge", makeGrassEdgeTile());
 

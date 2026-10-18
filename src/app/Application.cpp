@@ -12,7 +12,6 @@
 #include "audio/ProceduralSfx.h"
 #include "core/MathUtil.h"
 #include "core/Rng.h"
-#include "graphics/BitmapFont.h"
 #include "graphics/ProceduralArt.h"
 
 namespace ww {
@@ -89,8 +88,8 @@ bool Application::init() {
         return false;
     }
 
-    // Art & fonts.
-    buildFontAtlas(renderer_);
+    // Art. (Text needs no atlas setup: the native-resolution overlay bakes
+    // stroke-font atlases on demand at the exact display scale.)
     generateAllArt(renderer_);
     loadPngOverrides(renderer_, assetDir_);
 
@@ -446,7 +445,7 @@ void Application::renderTerrain(const StageDef* stage, float scrollY,
     const int cols = 12;
     const int wavePhase = static_cast<int>(time * 1.4f);
     // Tile choice for a plain (non-shore) terrain kind.
-    auto tileForKind = [&](TerrainKind kind, std::uint32_t h) -> const char* {
+    auto tileForKind = [&](TerrainKind kind, std::uint32_t h, int col) -> const char* {
         switch (kind) {
         case TerrainKind::Ocean:    return oceanFor(h + static_cast<std::uint32_t>(wavePhase));
         case TerrainKind::Island:   return (h % 5 == 0) ? "tile_sand"
@@ -454,7 +453,11 @@ void Application::renderTerrain(const StageDef* stage, float scrollY,
         case TerrainKind::Jungle:   return (h % 2 == 0) ? "tile_jungle_a" : "tile_jungle_b";
         case TerrainKind::Road:     return (h % 6 < 3) ? "tile_road_v"
                                          : (h % 3 == 0) ? "tile_sand" : "tile_jungle_a";
-        case TerrainKind::Airfield: return (h % 3 == 0) ? "tile_sand" : "tile_airfield";
+        // Airfield: two centre lanes are real runway (continuous centreline
+        // dashes); the rest is poured apron concrete with sand weathering.
+        case TerrainKind::Airfield: return (col == 5 || col == 6)
+                                         ? "tile_runway"
+                                         : (h % 5 == 0) ? "tile_sand" : "tile_airfield";
         case TerrainKind::Fortress: return (h % 7 == 0) ? "tile_sand" : "tile_fortress";
         case TerrainKind::Shore:    return "tile_sand";  // handled below
         }
@@ -508,19 +511,19 @@ void Application::renderTerrain(const StageDef* stage, float scrollY,
                     // Approaching land: water at the bottom of the screen.
                     if (dLower < kTile) texName = "tile_shore_in";
                     else if (dLower < 2.0f * kTile) texName = "tile_sand";
-                    else texName = tileForKind(nextK, h);
+                    else texName = tileForKind(nextK, h, i);
                 } else if (!prevSea && nextSea) {
                     // Leaving land: water appears at the top of the screen.
                     if (dUpper < kTile) texName = "tile_shore";
                     else if (dUpper < 2.0f * kTile) texName = "tile_sand";
-                    else texName = tileForKind(prevK, h);
+                    else texName = tileForKind(prevK, h, i);
                 } else {
                     // Land-to-land (or sea-to-sea) shore band: a dry sand
                     // strip, no waterline.
                     texName = "tile_sand";
                 }
             } else {
-                texName = tileForKind(kind, h);
+                texName = tileForKind(kind, h, i);
             }
             const int tid = renderer_.texture(texName);
             renderer_.drawRegion(tid, 0, 0, 32, 32,
@@ -814,11 +817,10 @@ void Application::renderTitle() {
     dimOverlay();
     const Color gold = Color::rgb(0xFFD860);
     const Color white = Color::rgb(0xF0F4F8);
-    renderer_.text("PACIFIC", 192.0f, 96.0f, 4, Color::rgb(0x102030), true);
-    renderer_.text("PACIFIC", 190.0f, 94.0f, 4, gold, true);
-    renderer_.text("SQUADRON", 192.0f, 130.0f, 4, Color::rgb(0x102030), true);
-    renderer_.text("SQUADRON", 190.0f, 128.0f, 4, white, true);
-    renderer_.text("A WORLD WAR II ARCADE SHOOTER", 192.0f, 168.0f, 1,
+    // The text renderer carries its own drop shadow now: one draw each.
+    renderer_.text("PACIFIC", 192.0f, 88.0f, 4, gold, true);
+    renderer_.text("SQUADRON", 192.0f, 128.0f, 4, white, true);
+    renderer_.text("A WORLD WAR II ARCADE SHOOTER", 192.0f, 172.0f, 1,
                    Color::rgb(0x9AB0C8), true);
 
     const char* items[] = {"START MISSION", "HIGH SCORES", "HELP", "OPTIONS",
@@ -829,13 +831,13 @@ void Application::renderTitle() {
         // shift unselected items right.
         const std::string s = (sel ? "> " : "  ") + std::string(items[i]) +
                               (sel ? " <" : "  ");
-        renderer_.text(s, 192.0f, 300.0f + i * 26.0f, 2,
+        renderer_.text(s, 192.0f, 296.0f + i * 28.0f, 2,
                        sel ? gold : white, true);
     }
     if (std::fmod(t * 2.0f, 1.0f) < 0.6f)
-        renderer_.text("WASD / ARROWS MOVE   SPACE FIRE   SHIFT LOOP   ESC PAUSE",
-                       192.0f, 470.0f, 1, Color::rgb(0x7A90A8), true);
-    renderer_.text("GAMEPAD SUPPORTED", 192.0f, 486.0f, 1,
+        renderer_.text("WASD/ARROWS MOVE   SPACE FIRE   SHIFT LOOP",
+                       192.0f, 466.0f, 1, Color::rgb(0x7A90A8), true);
+    renderer_.text("ESC PAUSE   GAMEPAD SUPPORTED", 192.0f, 482.0f, 1,
                    Color::rgb(0x50687E), true);
 }
 

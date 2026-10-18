@@ -9,7 +9,8 @@
 #include <cmath>
 
 #include "core/MathUtil.h"
-#include "graphics/Font5x7.h"
+#include "graphics/BitmapFont.h"
+
 
 namespace ww {
 
@@ -153,7 +154,31 @@ void Renderer::beginFrame(const Color& clear) {
 }
 
 void Renderer::endFrame() {
-    // Screenshot of the logical canvas (headless smoke verification).
+    SDL_SetRenderTarget(sdl_, nullptr);
+    SDL_GetWindowSizeInPixels(window_, &winW_, &winH_);
+    SDL_SetRenderDrawColor(sdl_, 0, 0, 0, 255);
+    SDL_RenderClear(sdl_);
+
+    // Scale policy: snap to an integer multiple when the window is close to
+    // one (perfectly uniform pixels at the natural 1x/2x/3x/4x sizes).
+    // For awkward window sizes, fill the window with nearest-neighbour
+    // fractional scaling - still crisp, just uneven pixel doubling.
+    const float fit = std::min(static_cast<float>(winW_) / kCanvasW,
+                               static_cast<float>(winH_) / kCanvasH);
+    float scale = std::round(fit);
+    if (std::abs(fit - scale) > 0.12f) scale = fit;
+    if (scale < 1.0f) scale = fit;
+    const float dw = std::floor(kCanvasW * scale);
+    const float dh = std::floor(kCanvasH * scale);
+    const SDL_FRect dst{std::floor((winW_ - dw) * 0.5f),
+                        std::floor((winH_ - dh) * 0.5f), dw, dh};
+    SDL_RenderTexture(sdl_, canvas_, nullptr, &dst);
+
+    // Native-resolution text overlay: glyphs are rasterized at true display
+    // pixel size, so text never inherits the canvas' blocky upscaling.
+    renderTextOverlay(dst.x, dst.y, scale);
+
+    // Screenshot of the composited frame (canvas + crisp text overlay).
     if (!screenshotPath_.empty()) {
         SDL_Surface* surf = SDL_RenderReadPixels(sdl_, nullptr);
         if (surf) {
@@ -185,25 +210,6 @@ void Renderer::endFrame() {
         }
         screenshotPath_.clear();
     }
-    SDL_SetRenderTarget(sdl_, nullptr);
-    SDL_GetWindowSizeInPixels(window_, &winW_, &winH_);
-    SDL_SetRenderDrawColor(sdl_, 0, 0, 0, 255);
-    SDL_RenderClear(sdl_);
-
-    // Scale policy: snap to an integer multiple when the window is close to
-    // one (perfectly uniform pixels at the natural 1x/2x/3x/4x sizes).
-    // For awkward window sizes, fill the window with nearest-neighbour
-    // fractional scaling - still crisp, just uneven pixel doubling.
-    const float fit = std::min(static_cast<float>(winW_) / kCanvasW,
-                               static_cast<float>(winH_) / kCanvasH);
-    float scale = std::round(fit);
-    if (std::abs(fit - scale) > 0.12f) scale = fit;
-    if (scale < 1.0f) scale = fit;
-    const float dw = std::floor(kCanvasW * scale);
-    const float dh = std::floor(kCanvasH * scale);
-    const SDL_FRect dst{std::floor((winW_ - dw) * 0.5f),
-                        std::floor((winH_ - dh) * 0.5f), dw, dh};
-    SDL_RenderTexture(sdl_, canvas_, nullptr, &dst);
     SDL_RenderPresent(sdl_);
 }
 
@@ -278,34 +284,84 @@ void Renderer::outlineRect(float x, float y, float w, float h, const Color& c) {
 }
 
 // ---------------------------------------------------------------------------
-// Text: glyph atlas produced from Font5x7. Each glyph occupies a 6x8 cell in
-// a single row atlas.
+// Text: queued during the frame and drawn in endFrame() as a native-resolution
+// overlay. The stroke font (BitmapFont.cpp) is baked once per display scale,
+// so every glyph is rasterized at its exact on-screen pixel size: smooth
+// curves and hairline-consistent strokes at any window size, no canvas
+// upscaling involved. Each string gets a soft offset drop shadow for legibility.
 // ---------------------------------------------------------------------------
-void Renderer::initFontAtlas(int fontTexId) { fontTex_ = fontTexId; }
+namespace {
+constexpr int kTextCellW = 7;
+constexpr int kTextCellH = 11;
+constexpr int kTextAdvance = 8;
+}  // namespace
 
 int Renderer::textWidth(const std::string& str, int scale) const {
-    return static_cast<int>(str.size()) * kGlyphAdvance * scale - scale;
+    return static_cast<int>(str.size()) * kTextAdvance * scale - scale;
 }
 
 void Renderer::text(const std::string& str, float x, float y, int scale,
                     const Color& c, bool center) {
-    if (fontTex_ < 0) return;
-    const int w = textWidth(str, scale);
-    float px = center ? std::round(x - w * 0.5f) : std::round(x);
-    const float py = std::round(y);
-    SDL_Texture* t = textures_[static_cast<std::size_t>(fontTex_)];
-    SDL_SetTextureColorMod(t, c.r, c.g, c.b);
-    SDL_SetTextureAlphaMod(t, c.a);
-    for (char ch : str) {
-        if (ch >= 32 && ch <= 126) {
-            const int gx = (ch - 32) * 6;
-            const SDL_FRect src{static_cast<float>(gx), 0.0f, 5.0f, 7.0f};
-            const SDL_FRect dst{px, py, static_cast<float>(5 * scale),
-                                static_cast<float>(7 * scale)};
-            SDL_RenderTexture(sdl_, t, &src, &dst);
+    textQueue_.push_back({str, x, y, scale, c, center});
+}
+
+void Renderer::renderTextOverlay(float ox, float oy, float wscale) {
+    if (textQueue_.empty()) return;
+    for (const TextEntry& q : textQueue_) {
+        // Bake/cache one atlas per physical glyph scale (quantized to 1/16px
+        // steps so window resizes do not re-bake every frame).
+        const int key = static_cast<int>(std::lround(q.scale * wscale * 16.0f));
+        if (key < 4) continue;  // sub-pixel: nothing meaningful to draw
+        auto it = fontTexByScale_.find(key);
+        if (it == fontTexByScale_.end()) {
+            const int id = buildFontAtlas(*this, key / 16.0f);
+            it = fontTexByScale_.emplace(key, id).first;
         }
-        px += static_cast<float>(kGlyphAdvance * scale);
+        if (it->second < 0) continue;
+        SDL_Texture* t = textures_[static_cast<std::size_t>(it->second)];
+
+        const float S = key / 16.0f;                // atlas pixels per base px
+        const float cellW = kTextCellW * S, cellH = kTextCellH * S;
+        const float adv = kTextAdvance * wscale * q.scale;
+        const float wLogical = static_cast<float>(textWidth(q.str, q.scale));
+        const float startX =
+            ox + (q.center ? q.x - wLogical * 0.5f : q.x) * wscale;
+        const float baseY = oy + q.y * wscale;
+        const float off = std::max(1.0f, std::round(S * 0.75f));
+        const int atlasCellW = static_cast<int>(std::lround(kTextCellW * S));
+
+        // Pass 1: drop shadow.
+        SDL_SetTextureColorMod(t, 0, 0, 0);
+        SDL_SetTextureAlphaMod(t, static_cast<Uint8>(q.c.a * 6 / 10));
+        {
+            float px = startX;
+            for (char ch : q.str) {
+                if (ch >= 32 && ch <= 126) {
+                    const SDL_FRect src{static_cast<float>((ch - 32) * atlasCellW),
+                                        0.0f, cellW, cellH};
+                    const SDL_FRect dst{px + off, baseY + off, cellW, cellH};
+                    SDL_RenderTexture(sdl_, t, &src, &dst);
+                }
+                px += adv;
+            }
+        }
+        // Pass 2: the glyphs themselves.
+        SDL_SetTextureColorMod(t, q.c.r, q.c.g, q.c.b);
+        SDL_SetTextureAlphaMod(t, q.c.a);
+        {
+            float px = startX;
+            for (char ch : q.str) {
+                if (ch >= 32 && ch <= 126) {
+                    const SDL_FRect src{static_cast<float>((ch - 32) * atlasCellW),
+                                        0.0f, cellW, cellH};
+                    const SDL_FRect dst{px, baseY, cellW, cellH};
+                    SDL_RenderTexture(sdl_, t, &src, &dst);
+                }
+                px += adv;
+            }
+        }
     }
+    textQueue_.clear();
 }
 
 void Renderer::setFullscreen(bool fs) {

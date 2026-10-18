@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "graphics/Font5x7.h"
+
 #include "graphics/Renderer.h"
 
 namespace ww {
@@ -71,11 +71,6 @@ struct PixelBuf {
         for (int y = 0; y < src.h; ++y)
             for (int x = 0; x < src.w; ++x)
                 if (src.get(x, y) & 0xFF) set(dx + x, dy + y, src.get(x, y));
-    }
-    void glyph(char c, int x, int y, std::uint32_t color) {
-        for (int j = 0; j < 7; ++j)
-            for (int i = 0; i < 5; ++i)
-                if (font5x7Pixel(c, i, j)) set(x + i, y + j, color);
     }
     void mirrorX() {
         for (int y = 0; y < h; ++y)

@@ -30,47 +30,47 @@ void Hud::draw(Renderer& r, const Game& game) const {
     const auto& sim = game.sim();
     const auto p = sim.player();
 
-    // Top strip background.
-    r.fillRect(0, 0, kPlayW, 34, Color{0, 0, 0, 120});
+    // Top strip background (taller to breathe with the 11px arcade font).
+    r.fillRect(0, 0, kPlayW, 44, Color{0, 0, 0, 120});
+    const Color dim = Color::rgb(0x9AB0C8);
 
-    r.text("SCORE", 8, 4, 1, Color::rgb(0x9AB0C8));
-    r.text(formatScore(game.score()), 8, 13, 2, Color::rgb(0xFFFFFF));
-    std::string hi = "HI " + formatScore(game.highScore());
-    r.text(hi, kPlayW - 8 - r.textWidth(hi, 1), 4, 1, Color::rgb(0x9AB0C8));
-
-    // Lives as little plane icons.
-    const int planeTex = r.texture("player_fighter");
-    for (int i = 0; i < std::min(p.lives, 5); ++i)
-        r.drawScaled(planeTex, kPlayW - 20 - i * 22, 24, 18, 18, 1.0f);
-    r.text("LIVES", kPlayW - 8 - r.textWidth("LIVES", 1), 13, 1,
-           Color::rgb(0x9AB0C8));
-
-    // Health bar (cockpit hp).
+    // --- left column: score, hp, weapon ---------------------------------
+    r.text("SCORE", 8, 2, 1, dim);
+    r.text(formatScore(game.score()), 8, 12, 2, Color::rgb(0xFFFFFF));
     for (int i = 0; i < p.maxHp; ++i) {
         const Color c = i < p.hp ? Color::rgb(0x54D254) : Color::rgb(0x3A3A3A);
-        r.fillRect(8 + i * 12, 28, 9, 4, c);
+        r.fillRect(8 + i * 11, 36, 9, 4, c);
     }
-
-    // Weapon + level.
     std::string wl = std::string(weaponLabel(p.weapon)) + " L" +
                      std::to_string(p.weaponLevel);
-    r.text(wl, 60, 28, 1, Color::rgb(0xF0D060));
+    r.text(wl, 8 + p.maxHp * 11 + 6, 33, 1, Color::rgb(0xF0D060));
 
-    // Loop charges (the evasive loop special; internally "bombs").
-    r.text("LOOP", 130, 28, 1, Color::rgb(0x70A8F0));
-    for (int i = 0; i < p.bombs && i < 4; ++i)
-        r.draw(r.texture("powerup_bomb"), 168 + i * 14, 31, 1.0f,
+    // --- center column: loop (evasive special) charges -------------------
+    r.text("LOOP", 192, 2, 1, Color::rgb(0x70A8F0), true);
+    const int nb = std::min(p.bombs, 4);
+    for (int i = 0; i < nb; ++i)
+        r.draw(r.texture("powerup_bomb"),
+               192.0f + (i - (nb - 1) * 0.5f) * 16.0f, 21, 1.0f,
                Color::rgb(0xFFFFFF), false, 0.0f);
+
+    // --- right column: hi score, lives ------------------------------------
+    std::string hi = "HI " + formatScore(game.highScore());
+    r.text(hi, kPlayW - 8 - r.textWidth(hi, 1), 2, 1, dim);
+    const int planeTex = r.texture("player_fighter");
+    for (int i = 0; i < std::min(p.lives, 5); ++i)
+        r.drawScaled(planeTex, kPlayW - 14 - i * 19, 17, 16, 16, 1.0f);
+    r.text("LIVES", kPlayW - 8 - r.textWidth("LIVES", 1), 29, 1, dim);
 
     // Boss health bar.
     const auto boss = sim.bossView();
     if (boss.active) {
         const float bw = kPlayW - 64;
-        r.fillRect(32, 40, bw, 7, Color{20, 20, 20, 220});
+        r.fillRect(32, 48, bw, 7, Color{20, 20, 20, 220});
+        r.outlineRect(32, 48, bw, 7, Color{90, 90, 100, 200});
         const Color bc = boss.hpFraction > 0.35f ? Color::rgb(0xE04040)
                                                  : Color::rgb(0xFF8020);
-        r.fillRect(33, 41, (bw - 2) * clamp(boss.hpFraction, 0.0f, 1.0f), 5, bc);
-        r.text(boss.name, kPlayW * 0.5f, 50, 1, Color::rgb(0xFFC0C0), true);
+        r.fillRect(33, 49, (bw - 2) * clamp(boss.hpFraction, 0.0f, 1.0f), 5, bc);
+        r.text(boss.name, kPlayW * 0.5f, 58, 1, Color::rgb(0xFFC0C0), true);
     }
 }
 

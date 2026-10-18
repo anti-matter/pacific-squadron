@@ -22,7 +22,11 @@ struct Color {
 
 // SDL rendering wrapper. All drawing happens on a 384x512 logical canvas
 // (nearest-neighbour) that is letterboxed with integer scaling onto the
-// window. Gameplay code never talks to SDL directly.
+// window. Text is queued during the frame and drawn as a separate overlay
+// AFTER the canvas is composited: the stroke font is baked at true display
+// pixel size, so menu/HUD glyphs are crisp and smooth at any window scale
+// instead of being nearest-upscaled blocks. Gameplay code never talks to
+// SDL directly.
 class Renderer {
 public:
     bool init(const std::string& title, bool fullscreen);
@@ -57,8 +61,7 @@ public:
     void fillRect(float x, float y, float w, float h, const Color& c);
     void outlineRect(float x, float y, float w, float h, const Color& c);
 
-    // ---- text (uses the baked BitmapFont atlas) ------------------------
-    void initFontAtlas(int fontTexId);
+    // ---- text (queued; rendered at native resolution in endFrame) ------
     void text(const std::string& str, float x, float y, int scale,
               const Color& c, bool center = false);
     int textWidth(const std::string& str, int scale) const;
@@ -68,13 +71,23 @@ public:
     bool isFullscreen() const { return fullscreen_; }
 
 private:
+    struct TextEntry {
+        std::string str;
+        float x, y;
+        int scale;
+        Color c;
+        bool center;
+    };
+    void renderTextOverlay(float ox, float oy, float wscale);
+
     SDL_Window* window_ = nullptr;
     SDL_Renderer* sdl_ = nullptr;
     SDL_Texture* canvas_ = nullptr;
     std::vector<SDL_Texture*> textures_;
     std::vector<int> texW_, texH_;
     std::unordered_map<std::string, int> texByName_;
-    int fontTex_ = -1;
+    std::vector<TextEntry> textQueue_;
+    std::unordered_map<int, int> fontTexByScale_;  // px*16 -> font atlas id
     bool fullscreen_ = false;
     int winW_ = 1152, winH_ = 1536;
     std::string screenshotPath_;

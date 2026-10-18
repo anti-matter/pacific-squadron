@@ -4,8 +4,10 @@
 
 namespace ww {
 
-// Bakes the 5x7 font into a one-row glyph atlas and registers it with the
-// renderer.
-void buildFontAtlas(Renderer& renderer);
+// Bakes the arcade stroke font into a one-row glyph atlas rasterized at the
+// given pixel scale (1.0 = 7x11 cells, 3.0 = 21x33 cells, ...). Returns the
+// texture id. The overlay text path bakes one atlas per display scale so
+// glyphs are pixel-exact at their final on-screen size.
+int buildFontAtlas(Renderer& renderer, float px = 1.0f);
 
 }  // namespace ww
