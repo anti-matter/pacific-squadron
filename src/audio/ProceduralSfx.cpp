@@ -86,7 +86,10 @@ void addBoom(std::vector<float>& b, const BoomLayer& L, Rng& rng,
     for (int i = 0; i < n; ++i) {
         const float tt = static_cast<float>(i) / static_cast<float>(n);
         const float v = rng.nextFloat() * 2.0f - 1.0f;
-        const float k = L.lpStart + (L.lpEnd - L.lpStart) * tt;   // 1 = white
+        const float kRaw = L.lpStart + (L.lpEnd - L.lpStart) * tt;  // 1 = white
+        // The one-pole recursion y += k(v-y) is only stable for 0 < k <= 1;
+        // above that |1-k| > 1 and the filter diverges. Clamp as a guard.
+        const float k = kRaw > 1.0f ? 1.0f : kRaw;
         y += k * (v - y);
         float env = (L.rise > 0.0f && tt < L.rise) ? tt / L.rise : 1.0f;
         env *= std::pow(1.0f - tt, L.decayPow);
@@ -113,6 +116,15 @@ void addDebris(std::vector<float>& b, float t0, float window, int count,
         addBoom(b, {g0, rng.range(0.004f, 0.014f), gAmp, 0.0f,
                     rng.range(2.0f, 5.0f), rng.range(0.45f, 0.9f), 0.2f}, rng);
     }
+}
+
+// Tanh soft saturation. Fuses stacked noise layers into one physical event:
+// the loudest moments compress and grit (like overdriven air), quiet tails
+// pass through. Maps [-1,1] -> [-1,1] so normalization stays predictable.
+void saturate(std::vector<float>& b, float drive) {
+    if (drive <= 1.0f) return;
+    const float norm = 1.0f / std::tanh(drive);
+    for (float& s : b) s = std::tanh(s * drive) * norm;
 }
 
 // --- explosion classes ------------------------------------------------------
@@ -149,18 +161,83 @@ void buildLarge(std::vector<float>& b, Rng& rng) {   // ~1.0 s
     addDebris(b, 0.12f, 0.85f, rng.rangeInt(10, 16), 0.45f, rng);
 }
 
-void buildBoss(std::vector<float>& b, Rng& rng) {    // ~2.0-2.4 s
-    addCrack(b, 0.0f, 1.0f, rng);
-    addBoom(b, {0.001f, 0.40f, 1.0f, 0.0f, 1.8f, 0.55f, 0.10f}, rng);
-    addBoom(b, {0.0f, 0.14f, 1.0f, 0.0f, 3.0f, 0.05f, 0.015f}, rng);      // LF impact
-    addBoom(b, {0.17f, rng.range(0.30f, 0.38f), 0.60f, 0.005f, 1.9f,
-                rng.range(0.30f, 0.45f), 0.08f}, rng);                    // secondary 1
-    addBoom(b, {0.40f, rng.range(0.26f, 0.34f), 0.50f, 0.005f, 1.9f,
-                rng.range(0.25f, 0.40f), 0.07f}, rng);                    // secondary 2
-    addBoom(b, {0.03f, rng.range(1.60f, 2.00f), 0.60f, 0.05f, 1.25f, 0.045f, 0.012f},
-            rng, 0.40f, rng.range(4.0f, 8.0f));                           // long rumble
-    addBoom(b, {0.62f, 0.20f, 0.35f, 0.01f, 2.2f, 0.12f, 0.04f}, rng);    // secondary 3
-    addDebris(b, 0.20f, 1.70f, rng.rangeInt(16, 24), 0.50f, rng);
+// Boss destruction: ONE catastrophic event (~4.4 s), not a string of hits.
+//
+//   0.00 s  concussion slap (near-white pressure wave, instant attack)
+//   0.00 s  main blast body: three overlapping soft-attack noise bodies,
+//           bright collapsing to dull, saturating into one enormous event
+//   0.15 s  deep pressure-wave rumble: two very-low, very-long noise layers
+//           that RISE into the blast and smear underneath everything
+//   0.2-2.4 s  irregular internal secondary detonations (Poisson spacing,
+//           three spectral characters, per-event randomized envelope)
+//   0.9-3.8 s  crackling debris tail, thinning out
+//   3-4.4 s  the lowest rumble decays to silence
+//
+// Percussion-avoidance rules baked in: no layer has an instant attack
+// except the concussion and the sharp crack secondaries (which are quiet
+// and rare), the low end is long-smeared noise (never a short resonant
+// burst), secondary timings are drawn from wide irregular ranges, and the
+// whole buffer is saturated so the layers weld into one body.
+void buildBoss(std::vector<float>& b, Rng& rng) {
+    // --- main blast -------------------------------------------------------
+    addBoom(b, {0.0f, 0.030f, 1.00f, 0.0f, 2.4f, 1.0f, 0.65f}, rng);  // concussion
+    addBoom(b, {0.000f, rng.range(0.50f, 0.62f), 1.00f, 0.012f, 1.85f,
+                rng.range(0.55f, 0.68f), 0.085f}, rng);               // chest body
+    addBoom(b, {0.008f, rng.range(0.85f, 1.05f), 0.62f, 0.030f, 1.50f,
+                rng.range(0.30f, 0.42f), 0.055f}, rng);               // mid body
+    addBoom(b, {0.020f, rng.range(1.30f, 1.60f), 0.48f, 0.060f, 1.30f,
+                rng.range(0.17f, 0.26f), 0.035f}, rng);               // deep body
+    // --- pressure-wave rumble (soft rise: rolls in, never "hits") ----------
+    addBoom(b, {0.0f, rng.range(3.0f, 3.5f), 0.55f, 0.12f, 1.10f,
+                rng.range(0.050f, 0.065f), 0.010f}, rng);
+    addBoom(b, {0.20f, rng.range(3.8f, 4.4f), 0.38f, 0.30f, 1.00f,
+                rng.range(0.030f, 0.042f), 0.006f}, rng);
+    // --- internal secondary detonations (irregular, heterogeneous) ---------
+    float t = rng.range(0.22f, 0.50f);
+    while (t < 2.35f) {
+        const int kind = rng.rangeInt(0, 2);
+        if (kind == 0) {  // dull internal WHUMP: muffled, soft attack
+            addBoom(b, {t, rng.range(0.18f, 0.36f), rng.range(0.28f, 0.48f),
+                        rng.range(0.012f, 0.050f), rng.range(1.6f, 2.4f),
+                        rng.range(0.09f, 0.18f), rng.range(0.020f, 0.045f)}, rng);
+        } else if (kind == 1) {  // sharp internal CRACK: bright, very short
+            addBoom(b, {t, rng.range(0.020f, 0.050f), rng.range(0.16f, 0.34f),
+                        0.0f, rng.range(2.6f, 4.0f),
+                        rng.range(0.90f, 1.0f), rng.range(0.5f, 0.9f)}, rng);
+        } else {  // deep MUFFLED BLAST behind the hull plates
+            addBoom(b, {t, rng.range(0.45f, 0.85f), rng.range(0.22f, 0.38f),
+                        rng.range(0.008f, 0.030f), rng.range(1.8f, 2.6f),
+                        rng.range(0.18f, 0.32f), rng.range(0.040f, 0.090f)}, rng);
+        }
+        if (rng.chance(0.45f))  // some secondations throw sparks of debris
+            addDebris(b, t + 0.02f, rng.range(0.20f, 0.50f), rng.rangeInt(3, 7),
+                      0.30f, rng);
+        t += rng.range(0.15f, 0.65f);  // strongly irregular spacing
+    }
+    // --- crackling debris tail ---------------------------------------------
+    addDebris(b, 0.90f, 2.90f, rng.rangeInt(20, 32), 0.38f, rng);
+    // --- weld everything into one physical event ----------------------------
+    saturate(b, 2.1f);
+}
+
+// Continuous breakup bed (~2.9 s) for the boss's death roll: low rumble +
+// irregular crackle with NO percussive attacks (every layer rises softly and
+// decays long). Replaces the old fixed-interval chain of full boom hits.
+void buildBreakup(std::vector<float>& b, Rng& rng) {
+    addBoom(b, {0.0f, 2.9f, 0.55f, 0.20f, 1.05f,
+                rng.range(0.050f, 0.065f), 0.012f}, rng);
+    addBoom(b, {0.3f, 2.6f, 0.40f, 0.35f, 1.00f,
+                rng.range(0.030f, 0.045f), 0.008f}, rng);
+    addBoom(b, {0.1f, rng.range(1.2f, 1.8f), 0.30f, 0.15f, 1.4f,
+                rng.range(0.16f, 0.26f), 0.05f}, rng);
+    // Poisson-ish crackle bursts: soft grain clusters at uneven times.
+    float t = rng.range(0.05f, 0.30f);
+    while (t < 2.6f) {
+        addDebris(b, t, rng.range(0.15f, 0.40f), rng.rangeInt(2, 6),
+                  rng.range(0.15f, 0.35f), rng);
+        t += rng.range(0.25f, 0.80f);
+    }
+    saturate(b, 1.4f);
 }
 
 // Synthesize `n` variants per class from independent seeds so repeated
@@ -252,6 +329,8 @@ void generateAllSfx(std::unordered_map<std::string, SoundBuffer>& out) {
         const auto vv = static_cast<std::uint64_t>(v);
         out["explosion_boss_" + std::to_string(v)] =
             makeBoomVariant(buildBoss, 0xB0550u + vv * 15731u, 0.95f);
+        out["boss_breakup_" + std::to_string(v)] =
+            makeBoomVariant(buildBreakup, 0xB9E4u + vv * 4421u, 0.50f);
     }
     // Legacy names keep working (older code paths / data references).
     out["explosion"] = out["explosion_medium_1"];

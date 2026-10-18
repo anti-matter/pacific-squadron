@@ -368,6 +368,7 @@ void Application::playGameSound(const std::string& name, Vec2 pos) {
         {"explosion_medium", 3, 0.95f},
         {"explosion_large", 3, 1.00f},
         {"explosion_boss", 2, 1.00f},
+        {"boss_breakup", 2, 0.60f},  // continuous rumble bed under the finale
     };
     for (const BoomClass& k : kBooms) {
         if (name == k.base) {

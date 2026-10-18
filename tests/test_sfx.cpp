@@ -57,6 +57,37 @@ float tonalityOf(const SoundBuffer& s) {
     return best;
 }
 
+// Longest run of near-silence (10 ms blocks below 0.1% of the loudest
+// block) before `until` seconds. One continuous catastrophe has none; a
+// string of discrete drum-like hits is defined by the gaps between hits.
+float longestSilenceOf(const SoundBuffer& s, float until) {
+    const auto& x = s.samples;
+    const auto sr = static_cast<std::size_t>(s.sampleRate);
+    const std::size_t lim = std::min(x.size(), static_cast<std::size_t>(until) * sr);
+    const std::size_t blk = sr / 100;  // 10 ms
+    if (lim < blk * 2) return 0.0f;
+    double peakE = 0.0;
+    for (std::size_t i = 0; i + blk <= lim; i += blk) {
+        double e = 0.0;
+        for (std::size_t j = 0; j < blk; ++j)
+            e += static_cast<double>(x[i + j]) * static_cast<double>(x[i + j]);
+        peakE = std::max(peakE, e);
+    }
+    float run = 0.0f, best = 0.0f;
+    for (std::size_t i = 0; i + blk <= lim; i += blk) {
+        double e = 0.0;
+        for (std::size_t j = 0; j < blk; ++j)
+            e += static_cast<double>(x[i + j]) * static_cast<double>(x[i + j]);
+        if (e < peakE * 0.001)
+            run += 0.01f;
+        else {
+            best = std::max(best, run);
+            run = 0.0f;
+        }
+    }
+    return std::max(best, run);
+}
+
 }  // namespace
 
 void test_sfx_explosions() {
@@ -93,10 +124,22 @@ void test_sfx_explosions() {
         CHECK(durOf(md) > durOf(sm));
         CHECK(durOf(lg) > durOf(md));
     }
+    // Boss finale: ONE catastrophic detonation of 3-5 s whose body never
+    // falls silent (no gaps => no discrete hits / drum roll).
     for (int v = 1; v <= 2; ++v) {
         const auto& bs = sfx["explosion_boss_" + std::to_string(v)];
-        CHECK(durOf(bs) > 1.5f && durOf(bs) < 3.0f);
+        CHECK(durOf(bs) > 3.2f && durOf(bs) < 5.0f);
         CHECK(peakOf(bs) <= 0.96f && rmsOf(bs) > 0.015f);
+        CHECK(longestSilenceOf(bs, 2.6f) < 0.13f);
+    }
+    // Death-roll bed: continuous rumble+crackle, quieter than the blasts,
+    // also gap-free while it runs.
+    for (int v = 1; v <= 2; ++v) {
+        const std::string n = "boss_breakup_" + std::to_string(v);
+        CHECK(sfx.count(n) == 1 && !sfx[n].samples.empty());
+        CHECK(durOf(sfx[n]) > 2.2f && durOf(sfx[n]) < 3.4f);
+        CHECK(peakOf(sfx[n]) <= 0.70f && rmsOf(sfx[n]) > 0.010f);
+        CHECK(longestSilenceOf(sfx[n], 2.2f) < 0.15f);
     }
 
     // Variants differ (not the same buffer under different names).
