@@ -76,11 +76,31 @@ bool Application::init() {
         SDL_free(const_cast<char*>(pref));
     }
 
+#ifdef NDEBUG
+    auto phase = [](const char*) {};
+#else
+    const Uint64 t0 = SDL_GetTicks();
+    Uint64 tPrev = t0;
+    // Startup phase report: if a machine loads slowly, the log names the
+    // phase (device probe, art, synth, ...) without needing a profiler.
+    auto phase = [&tPrev](const char* what) {
+        const Uint64 now = SDL_GetTicks();
+        SDL_Log("[startup] %-22s %6.1f s", what, (now - tPrev) / 1000.0);
+        tPrev = now;
+    };
+#endif
+
     if (!renderer_.init("Pacific Squadron — a WWII arcade shooter", false))
         return false;
-    input_.init();
-    if (!audio_.init())
-        SDL_Log("Audio unavailable; continuing silently.");
+    phase("renderer init");
+
+    // Splash first: as soon as a window exists, make it visible. Everything
+    // below can take seconds on slower machines (gamepad and audio device
+    // probes, art baking, music synthesis) and the player must never stare
+    // at an unopened window while that happens. Vsync stays off until the
+    // loop starts so splash progress presents never block on a refresh.
+    renderer_.setVSync(false);
+    showSplash(0.02f, "STARTING UP");
 
     // Data.
     std::string err;
@@ -88,21 +108,48 @@ bool Application::init() {
         SDL_Log("Data load error: %s", err.c_str());
         return false;
     }
-
-    // Art. (Text needs no atlas setup: the native-resolution overlay bakes
-    // stroke-font atlases on demand at the exact display scale.)
-    generateAllArt(renderer_);
-    loadPngOverrides(renderer_, assetDir_);
-
-    // Audio buffers.
-    std::unordered_map<std::string, SoundBuffer> sfx;
-    generateAllSfx(sfx);
-    for (auto& [name, buf] : sfx) audio_.registerBuffer(name, std::move(buf));
-
     game_ = std::make_unique<Game>(data_);
     loadSettings();
     loadHighScores();
+    if (game_->settings().fullscreen) renderer_.setFullscreen(true);
+    phase("data load");
+    showSplash(0.10f, "CHARTING THE PACIFIC");
+
+    input_.init();
     input_.loadBindings((prefPath("input.json")).string());
+    phase("input init");
+
+    // Art. (Text needs no atlas setup: the native-resolution overlay bakes
+    // stroke-font atlases on demand at the exact display scale.) The disk
+    // cache uploads the pre-baked texture set on later launches, skipping
+    // the rasterizer entirely; WWII_NOCACHE=1 forces a rebuild.
+    std::string artCache, sfxCache;
+    if (!SDL_getenv("WWII_NOCACHE")) {
+        artCache = (std::filesystem::path(prefDir_) / "art_cache.bin").string();
+        sfxCache = (std::filesystem::path(prefDir_) / "sfx_cache.bin").string();
+    }
+    generateAllArt(renderer_, artCache, [this](float p) {
+        showSplash(0.12f + 0.60f * p, "ASSEMBLING THE SQUADRON");
+    });
+    loadPngOverrides(renderer_, assetDir_);
+    phase("art");
+
+    // Audio buffers: synthesized once, then cached like the art. The audio
+    // device itself opens last of the heavy probes, and stays silent until
+    // the first real frame is presented (see windowShown_).
+    std::unordered_map<std::string, SoundBuffer> sfx;
+    generateAllSfx(sfx, sfxCache, [this](float p) {
+        showSplash(0.74f + 0.20f * p, "TUNING THE ENGINES");
+    });
+    phase("sfx synth");
+    if (!audio_.init())
+        SDL_Log("Audio unavailable; continuing silently.");
+    for (auto& [name, buf] : sfx) audio_.registerBuffer(name, std::move(buf));
+    phase("audio init");
+#ifndef NDEBUG
+    SDL_Log("[startup] TOTAL since renderer   %6.1f s",
+            (SDL_GetTicks() - t0) / 1000.0);
+#endif
 
     // WWII_START_STAGE=<n> (1-based): begin a playthrough at stage n. In
     // normal mode this skips the title; with WWII_SMOKE the harness starts
@@ -151,7 +198,9 @@ bool Application::init() {
     audio_.setMasterVolume(game_->settings().masterVolume);
     audio_.setMusicVolume(game_->settings().musicVolume);
     audio_.setSfxVolume(game_->settings().sfxVolume);
-    renderer_.setFullscreen(game_->settings().fullscreen);
+
+    showSplash(1.0f, "READY");
+    renderer_.setVSync(true);
 
     running_ = true;
     return true;
@@ -218,6 +267,47 @@ void Application::saveHighScores() {
         j.push_back({{"initials", e.initials}, {"score", e.score}});
     std::ofstream out(prefPath("highscores.json"), std::ios::binary);
     if (out) out << j.dump(2) << "\n";
+}
+
+// ---------------------------------------------------------------------------
+// Loading splash
+//
+// Drawn with the game's own palette, stroke font and pixel language: night
+// sea with tile-tone glints, the title stack, the player fighter once its
+// texture exists, and a progress bar whose label names the current phase
+// (also a live diagnostic: the last label shown pinpoints a slow probe).
+// ---------------------------------------------------------------------------
+void Application::showSplash(float progress, const char* label) {
+    renderer_.beginFrame(Color::rgb(0x06101C));  // night sea, as in-game
+
+    // Static glints: sparse dashes in the ocean tiles' dark tone.
+    for (int row = 0; row < 25; ++row) {
+        const float y = 14.0f + static_cast<float>(row) * 20.0f;
+        for (int col = 0; col < 7; ++col) {
+            const float x = std::fmod(static_cast<float>(col) * 53.0f +
+                                          static_cast<float>(row) * 31.0f,
+                                      372.0f);
+            renderer_.fillRect(x, y, 6.0f, 1.0f, Color::rgb(0x0E2438));
+        }
+    }
+
+    renderer_.text("PACIFIC", 192.0f, 150.0f, 4, Color::rgb(0xFFD860), true);
+    renderer_.text("SQUADRON", 192.0f, 190.0f, 4, Color::rgb(0xF0F4F8), true);
+    renderer_.text("A WORLD WAR II ARCADE SHOOTER", 192.0f, 232.0f, 1,
+                   Color::rgb(0x9AB0C8), true);
+
+    // The player's fighter appears as soon as the art pass has created it.
+    const int plane = renderer_.texture("player_fighter");
+    if (plane >= 0) renderer_.draw(plane, 192.0f, 286.0f);
+
+    constexpr float kBarW = 232.0f;
+    const float bx = 192.0f - kBarW * 0.5f, by = 340.0f;
+    renderer_.outlineRect(bx, by, kBarW, 12.0f, Color::rgb(0x3A5068));
+    const float w = (kBarW - 4.0f) * clamp(progress, 0.0f, 1.0f);
+    if (w >= 1.0f)
+        renderer_.fillRect(bx + 2.0f, by + 2.0f, w, 8.0f, Color::rgb(0xFFD860));
+    renderer_.text(label, 192.0f, 366.0f, 1, Color::rgb(0x7A90A8), true);
+    renderer_.endFrame();
 }
 
 // ---------------------------------------------------------------------------
@@ -333,6 +423,9 @@ int Application::run() {
         audio_.pump();
 
         renderFrame(fps_);
+        // First real frame is on screen: audio is allowed to make sound now
+        // (updateMusic/playGameSound stay gated until this flips).
+        windowShown_ = true;
         // Explicit frame pacing: some compositors (notably Xwayland) do not
         // block in Present even with vsync enabled, which would otherwise
         // leave the loop spinning near 100% CPU. On hosts where vsync does
@@ -371,6 +464,7 @@ GameInput Application::buildGameInput() const {
 // x position, so repeated detonations never sound copy-pasted. Everything
 // else plays by name as before.
 void Application::playGameSound(const std::string& name, Vec2 pos) {
+    if (!windowShown_) return;  // no sound from behind an unopened window
     struct BoomClass { const char* base; int variants; float volume; };
     static constexpr BoomClass kBooms[] = {
         {"explosion_small", 3, 0.85f},
@@ -420,6 +514,7 @@ void Application::consumeGameEvents() {
 }
 
 void Application::updateMusic() {
+    if (!windowShown_) return;  // no sound from behind an unopened window
     if (!audio_.available()) return;
     std::string want;
     switch (game_->state()) {

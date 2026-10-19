@@ -69,6 +69,10 @@ public:
     // ---- window --------------------------------------------------------
     void setFullscreen(bool fs);
     bool isFullscreen() const { return fullscreen_; }
+    // Vsync is disabled while the loading splash presents progress updates
+    // (each present would otherwise block for a refresh), and re-enabled
+    // once the first real frame is up.
+    void setVSync(bool on);
 
 private:
     struct TextEntry {

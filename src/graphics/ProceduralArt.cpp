@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 
 #include "core/Rng.h"
 
@@ -2557,10 +2558,112 @@ PixelBuf makeSmokePuff() {
 }  // namespace
 
 // ---------------------------------------------------------------------------
-bool generateAllArt(Renderer& r) {
+// Generated-art disk cache.
+//
+// Baking every sprite from vector code is deterministic but costs real time
+// (and far more in unoptimised debug builds), so the finished textures are
+// dumped once to a compact binary blob and simply uploaded on later
+// launches. Bump kArtCacheVersion whenever generated art changes; any
+// parse hiccup falls back to a full regeneration, and callers disable the
+// cache entirely by passing an empty path.
+// ---------------------------------------------------------------------------
+namespace {
+
+constexpr std::uint32_t kArtCacheMagic = 0x50534152u;  // "PSAR"
+constexpr std::uint32_t kArtCacheVersion = 1u;
+
+void wr32(std::ostream& o, std::uint32_t v) {
+    o.write(reinterpret_cast<const char*>(&v), 4);
+}
+bool rd32(std::istream& i, std::uint32_t& v) {
+    char b[4];
+    if (!i.read(b, 4)) return false;
+    v = static_cast<std::uint32_t>(static_cast<std::uint8_t>(b[0])) |
+        (static_cast<std::uint32_t>(static_cast<std::uint8_t>(b[1])) << 8) |
+        (static_cast<std::uint32_t>(static_cast<std::uint8_t>(b[2])) << 16) |
+        (static_cast<std::uint32_t>(static_cast<std::uint8_t>(b[3])) << 24);
+    return true;
+}
+
+bool loadArtCache(Renderer& r, const std::string& path,
+                  const std::function<void(float)>& progress) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+    std::uint32_t magic = 0, version = 0, endian = 0, count = 0;
+    if (!rd32(in, magic) || !rd32(in, version) || !rd32(in, endian) ||
+        !rd32(in, count))
+        return false;
+    if (magic != kArtCacheMagic || version != kArtCacheVersion ||
+        endian != 0x01020304u || count == 0 || count > 4096)
+        return false;
+    std::vector<std::uint8_t> px;
+    for (std::uint32_t i = 0; i < count; ++i) {
+        std::uint32_t nLen = 0, w = 0, h = 0;
+        if (!rd32(in, nLen) || nLen == 0 || nLen > 128) return false;
+        std::string name(nLen, '\0');
+        if (!in.read(&name[0], nLen)) return false;
+        if (!rd32(in, w) || !rd32(in, h) || w == 0 || h == 0 ||
+            static_cast<std::uint64_t>(w) * h > 16u * 1024u * 1024u)
+            return false;
+        px.resize(static_cast<std::size_t>(w) * h * 4);
+        if (!in.read(reinterpret_cast<char*>(px.data()),
+                     static_cast<std::streamsize>(px.size())))
+            return false;
+        r.createTextureFromPixels(name, px.data(), static_cast<int>(w),
+                                  static_cast<int>(h));
+        if (progress && (i % 24) == 0)
+            progress(static_cast<float>(i) / static_cast<float>(count));
+    }
+    return true;
+}
+
+void saveArtCache(
+    const std::string& path,
+    const std::vector<std::pair<std::string, PixelBuf>>& items) {
+    if (items.empty()) return;
+    const std::filesystem::path p(path);
+    std::error_code ec;
+    if (p.has_parent_path()) std::filesystem::create_directories(p.parent_path(), ec);
+    const std::filesystem::path tmp = path + ".tmp";
+    std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+    if (!out) return;
+    wr32(out, kArtCacheMagic);
+    wr32(out, kArtCacheVersion);
+    wr32(out, 0x01020304u);  // endian probe, validated on load
+    wr32(out, static_cast<std::uint32_t>(items.size()));
+    for (const auto& [name, buf] : items) {
+        wr32(out, static_cast<std::uint32_t>(name.size()));
+        out.write(name.data(), name.size());
+        wr32(out, static_cast<std::uint32_t>(buf.w));
+        wr32(out, static_cast<std::uint32_t>(buf.h));
+        out.write(reinterpret_cast<const char*>(buf.bytes()),
+                  static_cast<std::streamsize>(buf.px.size() * 4));
+    }
+    if (!out.good()) {
+        out.close();
+        std::filesystem::remove(tmp, ec);
+        return;
+    }
+    out.close();
+    std::filesystem::rename(tmp, p, ec);  // atomic: torn files never parse
+}
+
+}  // namespace
+
+// ---------------------------------------------------------------------------
+bool generateAllArt(Renderer& r, const std::string& cachePath,
+                    const std::function<void(float)>& progress) {
+    std::vector<std::pair<std::string, PixelBuf>> captured;
+    const bool wantCache = !cachePath.empty();
+    if (wantCache && loadArtCache(r, cachePath, progress)) {
+        if (progress) progress(1.0f);
+        return true;
+    }
     auto add = [&](const std::string& name, const PixelBuf& p) {
         r.createTextureFromPixels(name, p.bytes(), p.w, p.h);
+        if (wantCache) captured.emplace_back(name, p);
     };
+    auto step = [&progress](float p) { if (progress) progress(p); };
 
     // Player: level + banked frames.
     {
@@ -2580,6 +2683,7 @@ bool generateAllArt(Renderer& r) {
         right.mirrorX();
         add("player_fighter_r", right);
     }
+    step(0.06f);
 
     // Enemies (drawn nose-down: generate nose-up then flip).
     auto addDown = [&](const std::string& name, PlaneStyle st, int bank = 0) {
@@ -2624,6 +2728,7 @@ bool generateAllArt(Renderer& r) {
         add("enemy_fighter_carrier", p);
     }
     addDown("enemy_bomber", {56, 40, kEnGrey, shade(kEnGrey, 1.2f), kEnGreyDk, true});
+    step(0.22f);
 
     // Ground & sea.
     add("turret_aa", makeAATurret());
@@ -2631,6 +2736,7 @@ bool generateAllArt(Renderer& r) {
     add("bunker", makeBunker());
     add("boat_patrol", []() { auto p = makeShip(44, 20, false); flipY(p); return p; }());
     add("ship_destroyer", makeShip(64, 30, true));
+    step(0.32f);
 
     // Projectiles.
     add("bullet_player", makeBulletPlayer());
@@ -2639,6 +2745,7 @@ bool generateAllArt(Renderer& r) {
     add("bullet_enemy", makeBulletEnemy());
     add("shell_enemy", makeShellEnemy());
     add("flak_enemy", makeFlak());
+    step(0.42f);
 
     // Power-ups.
     add("powerup_p", makePowerupUpgrade());
@@ -2648,6 +2755,7 @@ bool generateAllArt(Renderer& r) {
     add("powerup_bomb", makePowerupBomb());
     add("powerup_repair", makePowerupRepair());
     add("powerup_life", makePowerupLife());
+    step(0.50f);
 
     // Effects.
     add("explosion_small", makeBoomSheet(6, 24, 0xE5A1u, 0));
@@ -2657,6 +2765,7 @@ bool generateAllArt(Renderer& r) {
     add("splash_large", makeBoomSheet(14, 48, 0x5D2Bu, 2, true));
     add("muzzle_flash", makeMuzzleSheet());
     add("shadow_ell", makeShadow());
+    step(0.60f);
 
     // Tiles.
     add("tile_ocean_a", makeOceanTile(0));
@@ -2673,6 +2782,7 @@ bool generateAllArt(Renderer& r) {
     add("tile_runway", makeRunwayTile());
     add("tile_fortress", makeFortressTile());
     add("tile_island_edge", makeGrassEdgeTile());
+    step(0.72f);
 
     // Boss parts.
     add("boss_battleship_hull", makeBattleshipHull(0));
@@ -2683,6 +2793,7 @@ bool generateAllArt(Renderer& r) {
     add("boss_big_turret", makeBigTurret());
     add("boss_aa", makeBossAA());
     add("boss_bridge", makeBridge());
+    step(0.82f);
     add("boss_bomber_hull", makeGiantBomberHull(0));
     add("boss_bomber_hull_dmg", makeGiantBomberHull(2));
     add("boss_bomber_hull_flash", toFlashSilhouette(makeGiantBomberHull(0)));
@@ -2694,6 +2805,7 @@ bool generateAllArt(Renderer& r) {
     add("boss_destroyer_hull_flash", toFlashSilhouette(makeDestroyerHull(0)));
     add("boss_destroyer_gun", makeDestroyerGun());
     add("boss_destroyer_bridge", makeDestroyerBridge());
+    step(0.90f);
     add("boss_carrier_hull", makeCarrierHull(0));
     add("boss_carrier_hull_light", makeCarrierHull(1));
     add("boss_carrier_hull_dmg", makeCarrierHull(2));
@@ -2705,7 +2817,9 @@ bool generateAllArt(Renderer& r) {
     add("smoke_puff", makeSmokePuff());
     add("explosion_xlarge", makeBoomSheet(17, 96, 0xE5D4u, 3));
     add("boss_explosion", makeBossExplosionSheet());
+    step(1.0f);
 
+    if (wantCache) saveArtCache(cachePath, captured);
     return true;
 }
 

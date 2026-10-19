@@ -379,4 +379,8 @@ void Renderer::setFullscreen(bool fs) {
     SDL_GetWindowSizeInPixels(window_, &winW_, &winH_);
 }
 
+void Renderer::setVSync(bool on) {
+    SDL_SetRenderVSync(sdl_, on ? 1 : 0);
+}
+
 }  // namespace ww

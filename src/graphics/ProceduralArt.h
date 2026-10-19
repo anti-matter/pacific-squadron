@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -84,7 +85,13 @@ struct PixelBuf {
 };
 
 // Generates and registers every game texture (original placeholder art).
-bool generateAllArt(Renderer& renderer);
+// If `cachePath` is non-empty, a previously dumped result is loaded from it
+// first (skipping all rasterization); otherwise the finished set is written
+// there for the next launch. `progress`, when given, receives 0..1 as work
+// advances so the loader can animate a splash screen.
+bool generateAllArt(Renderer& renderer,
+                    const std::string& cachePath = "",
+                    const std::function<void(float)>& progress = {});
 
 // Optional PNG overrides: assets/sprites/<name>.png replace generated ones.
 void loadPngOverrides(Renderer& renderer, const std::string& assetDir);

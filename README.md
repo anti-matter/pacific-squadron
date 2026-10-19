@@ -137,6 +137,32 @@ diagonals), 10 px hitbox, gun interval 0.14–0.10 s, bullet speed
 380–560 px/s, stage scroll 60 px/s, enemy bullets 80–170 px/s (always
 slower than the player so dodging is intentional).
 
+## Startup & loading
+
+A splash screen (title stack, progress bar with phase labels) is
+presented as soon as the window exists; every heavy step — gamepad and
+audio device probes, procedural art baking, music synthesis — runs behind
+it. Game audio (music and SFX) stays silent until the first real frame
+has been presented, so nothing is ever heard from behind an unopened
+window.
+
+All art and audio are generated deterministically, then dumped to
+`art_cache.bin` / `sfx_cache.bin` in the preferences directory on the
+first run; later launches upload straight from the caches, which makes
+the generated content cost nearly nothing at startup.
+
+- `WWII_NOCACHE=1` ignores both caches and regenerates from source (the
+  caches are then rewritten).
+- The caches are version-stamped: when procedural art changes, bump
+  `kArtCacheVersion` in `src/graphics/ProceduralArt.cpp`; when synth code
+  or tracks change, bump `kSfxCacheVersion` in `src/audio/ProceduralSfx.cpp`.
+  Damaged or truncated cache files fall back to a full regeneration on
+  their own.
+- Debug builds log `[startup]` phase timings to the console; if a machine
+  loads slowly, the log names the phase. Release builds
+  (`-DCMAKE_BUILD_TYPE=Release`) run the remaining generation several
+  times faster.
+
 ## Developer tools
 
 - **F3** toggles the debug overlay (FPS/frame time, entity/enemy/projectile
@@ -147,6 +173,8 @@ slower than the player so dodging is intentional).
 - `WWII_KEYLOG=1` logs received key events and periodic FPS/frame counts to
   the console (input/perf triage).
 - `WWII_SMOKE*` headless smoke hooks (table above).
+- `WWII_NOCACHE=1` bypasses the generated art/audio disk caches (see
+  Startup & loading).
 
 ## Architecture
 

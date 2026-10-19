@@ -1,6 +1,8 @@
 #include "graphics/BitmapFont.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <vector>
 
 namespace ww {
@@ -173,53 +175,104 @@ GlyphShape glyphShape(int ch) {
     return g;
 }
 
-// Minimum distance from (x,y) to segment ab.
-float segDist(float x, float y, const Pt& a, const Pt& b) {
-    const float abx = b.x - a.x, aby = b.y - a.y;
-    const float len2 = abx * abx + aby * aby;
-    float t = len2 > 1e-9f ? ((x - a.x) * abx + (y - a.y) * aby) / len2 : 0.0f;
-    t = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
-    const float dx = x - (a.x + abx * t), dy = y - (a.y + aby * t);
-    return std::sqrt(dx * dx + dy * dy);
-}
-
 // Rasterize one glyph into coverage values for a cell of
 // (kCellW*sc) x (kCellH*sc) atlas pixels. Samples are mapped back into the
 // glyph's base coordinate space, so shapes are resolution-independent.
+//
+// Hot path notes: the bake cost is dominated by samples that miss the
+// strokes, so every segment carries a precomputed bounding box and the
+// inside test compares squared distances (no sqrt). Pixels outside every
+// segment/dot bbox reject on a handful of float compares, and the cell's
+// rows/columns outside the union of all bboxes are skipped entirely.
 void rasterGlyph(int ch, float sc, int ss, float* cov) {
     GlyphShape g = glyphShape(ch);
-    std::vector<std::vector<Pt>> strokes;
-    for (auto& p : g.polys) strokes.push_back(p);
-    for (auto& a : g.arcs) strokes.push_back(flatten(a));
+
+    struct Seg {
+        float ax, ay, abx, aby, len2;
+        float minx, maxx, miny, maxy;
+    };
+    struct Dot {
+        float x, y, r2;
+        float minx, maxx, miny, maxy;
+    };
+    std::vector<Seg> segs;
+    std::vector<Dot> dots;
+    const float r = kPen * 0.5f;
+
+    auto addPts = [&](const std::vector<Pt>& s) {
+        for (std::size_t i = 0; i + 1 < s.size(); ++i) {
+            const Pt& a = s[i];
+            const Pt& b = s[i + 1];
+            const float abx = b.x - a.x, aby = b.y - a.y;
+            segs.push_back({a.x, a.y, abx, aby, abx * abx + aby * aby,
+                            std::min(a.x, b.x) - r, std::max(a.x, b.x) + r,
+                            std::min(a.y, b.y) - r, std::max(a.y, b.y) + r});
+        }
+    };
+    for (const auto& p : g.polys) addPts(p);
+    for (const auto& a : g.arcs) addPts(flatten(a));
+    for (const Pt& d : g.dots)
+        dots.push_back({d.x, d.y, g.dotR * g.dotR, d.x - g.dotR, d.x + g.dotR,
+                        d.y - g.dotR, d.y + g.dotR});
 
     const int cw = static_cast<int>(std::lround(kCellW * sc));
     const int chh = static_cast<int>(std::lround(kCellH * sc));
+    std::memset(cov, 0, static_cast<std::size_t>(cw) * chh * sizeof(float));
+    if (segs.empty() && dots.empty()) return;  // space: all zero
+
+    // Union of all bboxes, in cell-fraction coordinates, for the row/col
+    // skip range.
+    float ux0 = 1e9f, ux1 = -1e9f, uy0 = 1e9f, uy1 = -1e9f;
+    for (const Seg& s : segs) {
+        ux0 = std::min(ux0, s.minx); ux1 = std::max(ux1, s.maxx);
+        uy0 = std::min(uy0, s.miny); uy1 = std::max(uy1, s.maxy);
+    }
+    for (const Dot& d : dots) {
+        ux0 = std::min(ux0, d.minx); ux1 = std::max(ux1, d.maxx);
+        uy0 = std::min(uy0, d.miny); uy1 = std::max(uy1, d.maxy);
+    }
+    const int px0 = std::max(0, static_cast<int>(std::floor(ux0 * sc)));
+    const int px1 = std::min(cw - 1, static_cast<int>(std::ceil(ux1 * sc)));
+    const int py0 = std::max(0, static_cast<int>(std::floor(uy0 * sc)));
+    const int py1 = std::min(chh - 1, static_cast<int>(std::ceil(uy1 * sc)));
+
     const float inv = 1.0f / sc;
-    const float r = kPen * 0.5f;
-    for (int py = 0; py < chh; ++py) {
-        for (int px = 0; px < cw; ++px) {
+    const float r2 = r * r;
+    for (int py = py0; py <= py1; ++py) {
+        float* row = cov + static_cast<std::size_t>(py) * cw;
+        for (int px = px0; px <= px1; ++px) {
             int hits = 0;
             for (int sy = 0; sy < ss; ++sy) {
                 const float y = (py + (sy + 0.5f) / ss) * inv;
                 for (int sx = 0; sx < ss; ++sx) {
                     const float x = (px + (sx + 0.5f) / ss) * inv;
                     bool in = false;
-                    for (const auto& s : strokes) {
-                        for (std::size_t i = 0; i + 1 < s.size(); ++i) {
-                            if (segDist(x, y, s[i], s[i + 1]) <= r) { in = true; break; }
-                        }
-                        if (in) break;
+                    for (const Seg& s : segs) {
+                        if (x < s.minx || x > s.maxx || y < s.miny ||
+                            y > s.maxy)
+                            continue;
+                        float t = s.len2 > 1e-9f
+                                      ? ((x - s.ax) * s.abx + (y - s.ay) * s.aby) /
+                                            s.len2
+                                      : 0.0f;
+                        t = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
+                        const float dx = x - (s.ax + s.abx * t),
+                                   dy = y - (s.ay + s.aby * t);
+                        if (dx * dx + dy * dy <= r2) { in = true; break; }
                     }
                     if (!in) {
-                        for (const Pt& d : g.dots) {
+                        for (const Dot& d : dots) {
+                            if (x < d.minx || x > d.maxx || y < d.miny ||
+                                y > d.maxy)
+                                continue;
                             const float dx = x - d.x, dy = y - d.y;
-                            if (dx * dx + dy * dy <= g.dotR * g.dotR) { in = true; break; }
+                            if (dx * dx + dy * dy <= d.r2) { in = true; break; }
                         }
                     }
                     if (in) ++hits;
                 }
             }
-            cov[py * cw + px] = static_cast<float>(hits) / static_cast<float>(ss * ss);
+            row[px] = static_cast<float>(hits) / static_cast<float>(ss * ss);
         }
     }
 }

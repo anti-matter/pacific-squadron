@@ -54,6 +54,10 @@ private:
     void loadHighScores();
     void saveHighScores();
     std::filesystem::path prefPath(const char* file) const;
+    // Loading splash: presented between window creation and the first game
+    // frame so slow probes/bakes never look like a hung launch. Draws with
+    // the game's own font/palette and shows phase-labelled progress.
+    void showSplash(float progress, const char* label);
 
     Renderer renderer_;
     Input input_;
@@ -65,6 +69,9 @@ private:
     std::string assetDir_;
     std::string prefDir_;
     bool running_ = false;
+    // Audio stays silent until the first real frame has been presented, so
+    // the player never hears the title theme from behind an unopened window.
+    bool windowShown_ = false;
     float acc_ = 0.0f;
     float fps_ = 60.0f;
     std::string currentMusic_;

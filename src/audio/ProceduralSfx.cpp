@@ -2,6 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
 
 #include "core/Rng.h"
 
@@ -297,7 +300,140 @@ SoundBuffer renderMusic(const MusicTrack& tr) {
 
 }  // namespace
 
-void generateAllSfx(std::unordered_map<std::string, SoundBuffer>& out) {
+// ---------------------------------------------------------------------------
+// Synthesized-audio disk cache. Same idea as the generated-art cache: the
+// synth is deterministic but costs real time, so dump the finished buffers
+// once and upload from the blob on later launches. Byte-identical entries
+// (the title theme is the stage-1 render; legacy aliases repeat booms) are
+// stored once and referenced by alias. Bump kSfxCacheVersion whenever the
+// synth code or the tracks change.
+// ---------------------------------------------------------------------------
+namespace {
+
+constexpr std::uint32_t kSfxCacheMagic = 0x50535358u;  // "PSSX"
+constexpr std::uint32_t kSfxCacheVersion = 1u;
+
+void sfxWr32(std::ostream& o, std::uint32_t v) {
+    o.write(reinterpret_cast<const char*>(&v), 4);
+}
+bool sfxRd32(std::istream& i, std::uint32_t& v) {
+    char b[4];
+    if (!i.read(b, 4)) return false;
+    v = static_cast<std::uint32_t>(static_cast<std::uint8_t>(b[0])) |
+        (static_cast<std::uint32_t>(static_cast<std::uint8_t>(b[1])) << 8) |
+        (static_cast<std::uint32_t>(static_cast<std::uint8_t>(b[2])) << 16) |
+        (static_cast<std::uint32_t>(static_cast<std::uint8_t>(b[3])) << 24);
+    return true;
+}
+
+bool loadSfxCache(std::unordered_map<std::string, SoundBuffer>& out,
+                  const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+    std::uint32_t magic = 0, version = 0, endian = 0, count = 0;
+    if (!sfxRd32(in, magic) || !sfxRd32(in, version) || !sfxRd32(in, endian) ||
+        !sfxRd32(in, count))
+        return false;
+    if (magic != kSfxCacheMagic || version != kSfxCacheVersion ||
+        endian != 0x01020304u || count == 0 || count > 4096)
+        return false;
+    std::unordered_map<std::string, SoundBuffer> loaded;
+    for (std::uint32_t i = 0; i < count; ++i) {
+        std::uint32_t nLen = 0, kind = 0;
+        if (!sfxRd32(in, nLen) || nLen == 0 || nLen > 128) return false;
+        std::string name(nLen, '\0');
+        if (!in.read(&name[0], nLen)) return false;
+        if (!sfxRd32(in, kind)) return false;
+        if (kind == 0) {  // full sample data
+            SoundBuffer buf;
+            std::uint32_t frames = 0;
+            if (!sfxRd32(in, buf.channels) || !sfxRd32(in, buf.sampleRate) ||
+                !sfxRd32(in, frames) || buf.channels == 0 ||
+                buf.channels > 8 || frames == 0 || frames > 100u * 1000u * 1000u)
+                return false;
+            buf.samples.resize(static_cast<std::size_t>(frames) * buf.channels);
+            if (!in.read(reinterpret_cast<char*>(buf.samples.data()),
+                         static_cast<std::streamsize>(buf.samples.size() *
+                                                      sizeof(float))))
+                return false;
+            loaded.emplace(std::move(name), std::move(buf));
+        } else {  // alias to an earlier entry
+            std::uint32_t tLen = 0;
+            if (!sfxRd32(in, tLen) || tLen == 0 || tLen > 128) return false;
+            std::string target(tLen, '\0');
+            if (!in.read(&target[0], tLen)) return false;
+            auto it = loaded.find(target);
+            if (it == loaded.end()) return false;
+            loaded.emplace(std::move(name), it->second);
+        }
+    }
+    out = std::move(loaded);
+    return true;
+}
+
+void saveSfxCache(const std::unordered_map<std::string, SoundBuffer>& out,
+                  const std::string& path) {
+    if (out.empty()) return;
+    const std::filesystem::path p(path);
+    std::error_code ec;
+    if (p.has_parent_path()) std::filesystem::create_directories(p.parent_path(), ec);
+    const std::filesystem::path tmp = path + ".tmp";
+    std::ofstream o(tmp, std::ios::binary | std::ios::trunc);
+    if (!o) return;
+    sfxWr32(o, kSfxCacheMagic);
+    sfxWr32(o, kSfxCacheVersion);
+    sfxWr32(o, 0x01020304u);
+    sfxWr32(o, static_cast<std::uint32_t>(out.size()));
+    std::vector<std::pair<std::string, const SoundBuffer*>> saved;
+    for (const auto& [name, buf] : out) {
+        sfxWr32(o, static_cast<std::uint32_t>(name.size()));
+        o.write(name.data(), static_cast<std::streamsize>(name.size()));
+        const SoundBuffer* dup = nullptr;
+        for (const auto& [sname, sbuf] : saved) {
+            if (sbuf->samples.size() == buf.samples.size() &&
+                (buf.samples.empty() ||
+                 std::memcmp(sbuf->samples.data(), buf.samples.data(),
+                             buf.samples.size() * sizeof(float)) == 0)) {
+                dup = sbuf;  // entry stored once; this one names the original
+                sfxWr32(o, 1u);
+                sfxWr32(o, static_cast<std::uint32_t>(sname.size()));
+                o.write(sname.data(), static_cast<std::streamsize>(sname.size()));
+                break;
+            }
+        }
+        if (!dup) {
+            sfxWr32(o, 0u);
+            sfxWr32(o, buf.channels);
+            sfxWr32(o, buf.sampleRate);
+            sfxWr32(o, static_cast<std::uint32_t>(
+                           buf.samples.size() / buf.channels));
+            if (!buf.samples.empty())
+                o.write(reinterpret_cast<const char*>(buf.samples.data()),
+                        static_cast<std::streamsize>(buf.samples.size() *
+                                                     sizeof(float)));
+            saved.emplace_back(name, &buf);
+        }
+    }
+    if (!o.good()) {
+        o.close();
+        std::filesystem::remove(tmp, ec);
+        return;
+    }
+    o.close();
+    std::filesystem::rename(tmp, p, ec);
+}
+
+}  // namespace
+
+void generateAllSfx(std::unordered_map<std::string, SoundBuffer>& out,
+                    const std::string& cachePath,
+                    const std::function<void(float)>& progress) {
+    auto step = [&progress](float p) { if (progress) progress(p); };
+    const bool wantCache = !cachePath.empty();
+    if (wantCache && loadSfxCache(out, cachePath)) {
+        step(1.0f);
+        return;
+    }
     Rng rng(0xA0D10u);
 
     { std::vector<float> b;
@@ -335,6 +471,7 @@ void generateAllSfx(std::unordered_map<std::string, SoundBuffer>& out) {
     // Legacy names keep working (older code paths / data references).
     out["explosion"] = out["explosion_medium_1"];
     out["explosion_large"] = out["explosion_large_1"];
+    step(0.45f);
 
     { std::vector<float> b;
       addSweep(b, 0, 0.28f, 320, 70, 0.4f, 10, true, 0.7f);
@@ -386,6 +523,7 @@ void generateAllSfx(std::unordered_map<std::string, SoundBuffer>& out) {
 
     out["formation_bonus"] = out["menu_confirm"];
     out["splash"] = out["player_damage"];
+    step(0.60f);
 
     // ---- music -------------------------------------------------------------
     // Stage 1: steady patrol march (A minor).
@@ -418,6 +556,7 @@ void generateAllSfx(std::unordered_map<std::string, SoundBuffer>& out) {
             if (s == 14) t1.hat[static_cast<std::size_t>(bar * 16 + s)] = 2;
         }
     out["music_stage1"] = renderMusic(t1);
+    step(0.80f);
 
     // Stage 2: driving battle theme (D minor, faster).
     MusicTrack t2;
@@ -452,6 +591,9 @@ void generateAllSfx(std::unordered_map<std::string, SoundBuffer>& out) {
 
     // Title screen theme: reuse a slowed stage-1 feel.
     out["music_title"] = out["music_stage1"];
+    step(1.0f);
+
+    if (wantCache) saveSfxCache(out, cachePath);
 }
 
 }  // namespace ww
