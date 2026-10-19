@@ -175,6 +175,9 @@ the generated content cost nearly nothing at startup.
 - `WWII_SMOKE*` headless smoke hooks (table above).
 - `WWII_NOCACHE=1` bypasses the generated art/audio disk caches (see
   Startup & loading).
+- `WWII_DUMP_SPRITES=<dir>` (debug builds, art-regeneration runs) writes the
+  generated player fighter frames and the propeller overlay to `<dir>` as
+  PNGs for offline inspection.
 
 ## Architecture
 

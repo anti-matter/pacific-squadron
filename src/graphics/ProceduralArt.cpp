@@ -4,6 +4,11 @@
 #include <filesystem>
 #include <fstream>
 
+#ifndef NDEBUG
+#include <SDL3/SDL.h>
+#include "stb_image_write.h"
+#endif
+
 #include "core/Rng.h"
 
 namespace ww {
@@ -817,8 +822,201 @@ PixelBuf makeShip(int w, int h, bool destroyer) {
 }
 
 // ---------------------------------------------------------------------------
-// Power-ups / bullets / misc
+// P-38 Lightning (player fighter), top-down, nose-up.
+//
+// The silhouette follows the airframe: central gun-and-pilot nacelle with a
+// pointed nose and bubble canopy, straight tapered wing, two engines on
+// booms that run straight aft into vertical fins, and an H-tail stabilizer
+// slung between the booms. Engines/booms sit at fixed offsets in every bank
+// frame so the animated propeller overlay can share one anchor pair.
+// Bank frames shift only the wingtips and tail outboard (house bank
+// language from makePlane); the banked frame is mirrored for the other side.
 // ---------------------------------------------------------------------------
+// Forward-facing propeller blur for the P-38, drawn the way a spinning
+// propeller actually reads in this view: the plane flies up-screen, so the
+// prop disc sits edge-on to the camera and appears as a FLAT spanwise
+// ellipse across each nacelle's nose — never a full circle, and never a
+// blade pointing anywhere. This texture is the animated half: a soft silver
+// wash with brighter blade-tip caps at each end. The aircraft sprite bakes
+// a matching static prop disc (so splash/squash frames still read as
+// prop-driven); the renderer pulses this streak over it to suggest rotation.
+//
+// Straight alpha (4x4 coverage sampling): blending translucent ink onto an
+// empty PixelBuf would store premultiplied colours, which SDL then
+// dark-squares.
+PixelBuf makePropStreak() {
+    const int S = 12;
+    PixelBuf p(S, S);
+    const float cc = S * 0.5f;
+    const float rx = 4.8f, ry = 2.1f;  // edge-on disc: wide, flat
+    for (int y = 0; y < S; ++y) {
+        for (int x = 0; x < S; ++x) {
+            float aBody = 0.0f;
+            float aTip = 0.0f;
+            for (int sy = 0; sy < 4; ++sy) {
+                for (int sx = 0; sx < 4; ++sx) {
+                    const float dx = x + (sx + 0.5f) / 4.0f - cc;
+                    const float dy = y + (sy + 0.5f) / 4.0f - cc;
+                    const float d2 = (dx * dx) / (rx * rx) +
+                                     (dy * dy) / (ry * ry);
+                    if (d2 >= 1.0f) continue;
+                    const float fall = 1.0f - d2;  // mild centre→edge falloff
+                    aBody += (78.0f + 52.0f * fall) *
+                             (0.55f + 0.45f * (1.0f - std::sqrt(d2)));
+                    // Bright caps where the blade tips sweep the rim.
+                    const float ax = std::fabs(dx) - (rx - 1.1f);
+                    const float tb = 1.0f - (ax * ax) / 1.4f -
+                                     (dy * dy) / 1.5f;
+                    if (tb > 0.0f) aTip += 205.0f * tb;
+                }
+            }
+            aBody /= 16.0f;
+            aTip /= 16.0f;
+            const float ao = std::min(230.0f, std::max(aBody, aTip));
+            if (ao < 0.5f) continue;
+            // Wash 0xD2DEE6, tip caps whiter toward 0xF0F6FA.
+            const float w = aTip / (aBody + aTip + 0.001f);
+            const std::uint32_t cr = static_cast<std::uint32_t>(
+                (0xD2 + (0xF0 - 0xD2) * w) + 0.5f);
+            const std::uint32_t cg = static_cast<std::uint32_t>(
+                (0xDE + (0xF6 - 0xDE) * w) + 0.5f);
+            const std::uint32_t cb = static_cast<std::uint32_t>(
+                (0xE6 + (0xFA - 0xE6) * w) + 0.5f);
+            p.set(x, y, (cr << 24) | (cg << 16) | (cb << 8) |
+                            static_cast<std::uint32_t>(ao + 0.5f));
+        }
+    }
+    return p;
+}
+
+PixelBuf makeP38(int bankRows = 0) {
+    const int W = 52, H = 52;
+    const float cx = 26.0f, cy = 26.0f;
+    Hi hi(W, H);
+    const std::uint32_t body = kDrab, bodyHi = kDrabHi, bodyDk = kDrabDk;
+    const std::uint32_t steelDk = col(0x2A3138);
+
+    // --- wing: straight leading edge, trailing edge tapering to squared tips
+    const float tipShift = static_cast<float>(bankRows);  // +side applied per wing
+    for (int side = -1; side <= 1; side += 2) {
+        const float sh = tipShift * side;
+        const float rootLE = cy - 3.2f, tipLE = cy - 2.8f + sh * 0.6f;
+        const float rootTE = cy + 3.0f, tipTE = cy + 0.4f + sh;
+        const float tipX = cx + side * 22.0f;
+        hi.fillPoly({{cx - 1.0f, rootLE}, {cx + side * 9.6f, rootLE - 0.2f},
+                     {tipX - side * 0.4f, tipLE}, {tipX, tipLE + 0.4f},
+                     {tipX, tipTE}, {tipX - side * 0.6f, tipTE + 0.3f},
+                     {cx + side * 12.0f, rootTE - 0.6f}, {cx - 1.0f, rootTE}},
+                    body);
+        // Leading-edge highlight, trailing-edge shade, aileron seam.
+        hi.stroke({{cx + side * 1.2f, rootLE + 0.2f},
+                   {cx + side * 9.6f, rootLE},
+                   {tipX - side * 0.8f, tipLE + 0.5f}}, 0.9f, bodyHi);
+        hi.stroke({{cx + side * 12.5f, rootTE - 0.9f},
+                   {tipX - side * 1.2f, tipTE + 0.2f}}, 0.85f, bodyDk);
+        hi.stroke({{cx + side * 14.5f, tipLE + (tipTE - tipLE) * 0.35f},
+                   {tipX - side * 1.6f, tipLE + (tipTE - tipLE) * 0.45f}},
+                  0.5f, bodyDk);
+    }
+
+    // --- engines + booms: cowl at the wing, boom straight aft to the fin ---
+    for (int side = -1; side <= 1; side += 2) {
+        const float ex = cx + side * kPlayerEngineX;
+        const float sh = tipShift * side * 0.6f;
+        hi.fillRoundRect(ex - 2.2f, cy - 9.0f, 4.4f, 20.0f, 2.0f, body);
+        hi.fillEllipse(ex, cy - 7.6f, 2.0f, 2.3f, bodyDk);            // cowl face
+        hi.fillEllipse(ex, cy - 7.9f, 1.1f, 1.2f, steelDk);           // hub backplate
+        hi.stroke({{ex - 1.5f, cy - 4.0f}, {ex - 1.5f, cy + 9.0f}},
+                  0.8f, bodyHi);                                      // lit rail
+        hi.stroke({{ex + 1.5f, cy - 4.0f}, {ex + 1.5f, cy + 9.4f}},
+                  0.8f, bodyDk);                                      // shaded rail
+        // Vertical fin on the boom end (top-down: a rounded tab leaning out).
+        hi.fillRoundRect(ex - 1.25f + (side > 0 ? sh : -sh * 0.5f),
+                         cy + 11.6f, 2.5f, 6.0f, 1.1f, body);
+        hi.stroke({{ex + (side > 0 ? 1.0f : -1.0f) + (side > 0 ? sh : -sh * 0.5f),
+                    cy + 12.6f},
+                   {ex + (side > 0 ? 1.0f : -1.0f) + (side > 0 ? sh : -sh * 0.5f),
+                    cy + 16.6f}}, 0.5f, side > 0 ? bodyDk : bodyHi);
+        hi.fillEllipse(ex, cy + kPlayerPropY, 1.05f, 1.05f,
+                       col(0xE8EEF4));                                 // spinner
+    }
+
+    // --- H-tail stabilizer slung between the booms -------------------------
+    {
+        const float le = cy + 11.8f, te = cy + 15.4f;
+        hi.fillPoly({{cx - 4.0f, le - 0.4f}, {cx + 4.0f, le - 0.4f},
+                     {cx + 16.0f + tipShift, le + 0.6f},
+                     {cx + 17.4f + tipShift, le + 1.4f},
+                     {cx + 17.0f + tipShift, te - 0.2f},
+                     {cx + 6.0f, te + 0.8f}, {cx - 6.0f, te + 0.8f},
+                     {cx - 17.0f - tipShift, te - 0.2f},
+                     {cx - 17.4f - tipShift, le + 1.4f},
+                     {cx - 16.0f - tipShift, le + 0.6f}}, body);
+        // Elevator hinge seam and lit leading edge.
+        hi.stroke({{cx - 16.5f - tipShift, le + 1.1f}, {cx - 5.0f, le + 0.1f},
+                   {cx + 5.0f, le + 0.1f}, {cx + 16.5f + tipShift, le + 1.1f}},
+                  0.6f, bodyHi);
+        hi.stroke({{cx - 15.5f - tipShift, te - 0.6f}, {cx + 15.5f + tipShift, te - 0.6f}},
+                  0.55f, bodyDk);
+    }
+
+    // --- centre nacelle: gun nose, pilot, tapering tail cone ---------------
+    {
+        std::vector<std::pair<float, float>> pts;
+        const float yNose = cy - 16.5f, yTail = cy + 12.8f;
+        auto hwAt = [](float t) {  // t: 0 nose .. 1 tail
+            if (t < 0.10f) return 0.25f + t * 16.0f;        // gun tip
+            if (t < 0.42f) return 1.85f + 0.45f * (t - 0.10f) / 0.32f;
+            if (t < 0.62f) return 2.3f;                     // cockpit shoulders
+            return 2.3f - 0.95f * (t - 0.62f) / 0.38f;      // tail cone
+        };
+        for (int i = 0; i <= 12; ++i)
+            pts.push_back({cx + hwAt(i / 12.0f), yNose + (yTail - yNose) * i / 12.0f});
+        for (int i = 12; i >= 0; --i)
+            pts.push_back({cx - hwAt(i / 12.0f), yNose + (yTail - yNose) * i / 12.0f});
+        hi.fillPoly(pts, body);
+        hi.stroke({{cx - 1.4f, yNose + 4.0f}, {cx - 1.7f, cy + 6.0f}}, 0.9f, bodyHi);
+        hi.stroke({{cx + 1.5f, yNose + 4.0f}, {cx + 1.8f, cy + 6.4f}}, 0.9f, bodyDk);
+        // Nose gun batteries: two barrels outboard, two inboard, ports dark.
+        hi.stroke({{cx - 0.7f, cy - 15.4f}, {cx - 0.7f, cy - 10.6f}}, 0.5f, steelDk);
+        hi.stroke({{cx + 0.7f, cy - 15.4f}, {cx + 0.7f, cy - 10.6f}}, 0.5f, steelDk);
+        // Bubble canopy with frame and glass gloss.
+        hi.fillEllipse(cx, cy - 0.6f, 1.6f, 3.2f, col(0x1E2A36));
+        hi.fillEllipse(cx - 0.5f, cy - 1.5f, 0.8f, 1.6f, col(0x9FD0E8, 200));
+        hi.stroke({{cx - 1.5f, cy + 1.4f}, {cx + 1.5f, cy + 1.4f}}, 0.45f,
+                  col(0x141A20, 170));
+    }
+
+    PixelBuf p = hi.bake();
+    outlineSilhouette(p, col(0x0A0E12, 165));
+
+    // Baked propeller disc at each engine: an edge-on spin blur, so a wide
+    // FLAT ellipse (spanwise) centred on the prop plane just ahead of the
+    // cowl — the static read of a spinning prop. The animated streak
+    // (prop_blur_p) pulses over these in flight. Post-bake because Hi.bake()
+    // flattens translucent sources.
+    const float propY = cy + kPlayerPropY;
+    for (int side = -1; side <= 1; side += 2) {
+        const float ex = cx + side * kPlayerEngineX;
+        softBlendEllipse(p, ex, propY, 4.8f, 2.0f, 0xC8D4DC, 80);
+        softBlendEllipse(p, ex, propY, 3.1f, 1.3f, 0xD2DEE6, 65);
+        softBlendEllipse(p, ex, propY, 1.15f, 1.15f, 0xE8EEF4, 235);  // spinner
+    }
+
+    // National insignia: blue disc + white star, as carried in the Pacific,
+    // on the outer LEFT wing. The mirrored bank frame carries it to the
+    // correct side automatically.
+    const float ix = cx - 15.5f, iy = cy - 0.6f;
+    p.fillEllipse(ix, iy, 3.4f, 3.4f, kInsigniaBlue);
+    p.hline(static_cast<int>(ix - 2.6f), static_cast<int>(ix + 2.6f),
+            static_cast<int>(iy), kWhite);
+    p.vline(static_cast<int>(ix), static_cast<int>(iy - 2.6f),
+            static_cast<int>(iy + 2.6f), kWhite);
+    return p;
+}
+
+// ---------------------------------------------------------------------------
+// Power-ups / bullets / misc
 // ---------------------------------------------------------------------------
 // Power-up icons (pass 3): rebuilt on the Hi supersampled raster, so every
 // silhouette, cone and chevron is a smooth vector contour instead of 1px
@@ -2570,7 +2768,9 @@ PixelBuf makeSmokePuff() {
 namespace {
 
 constexpr std::uint32_t kArtCacheMagic = 0x50534152u;  // "PSAR"
-constexpr std::uint32_t kArtCacheVersion = 1u;
+// Bump whenever any generated art changes (v5: edge-on flat prop discs +
+// spanwise blur streak on the P-38).
+constexpr std::uint32_t kArtCacheVersion = 5u;
 
 void wr32(std::ostream& o, std::uint32_t v) {
     o.write(reinterpret_cast<const char*>(&v), 4);
@@ -2665,23 +2865,42 @@ bool generateAllArt(Renderer& r, const std::string& cachePath,
     };
     auto step = [&progress](float p) { if (progress) progress(p); };
 
-    // Player: level + banked frames.
+    // Player: P-38 Lightning; level + banked frames + the spinning prop
+    // overlay (rotated by the renderer at each engine anchor).
     {
-        const PlaneStyle ps{44, 38, kDrab, kDrabHi, kDrabDk, false, false};
-        PixelBuf lvl = cropToContent(makePlane(ps, 0));
-        // Add white star insignia to the player's wings.
-        auto star = [&](int mx, int my) {
-            lvl.fillEllipse(static_cast<float>(mx), static_cast<float>(my), 4.0f, 4.0f, kInsigniaBlue);
-            lvl.hline(mx - 3, mx + 3, my, kWhite);
-            lvl.vline(mx, my - 3, my + 3, kWhite);
-        };
-        star(9, lvl.h / 2 + 1);
-        star(lvl.w - 10, lvl.h / 2 + 1);
+        const PixelBuf lvl = makeP38(0);
         add("player_fighter", lvl);
-        add("player_fighter_l", cropToContent(makePlane(ps, -2)));
-        auto right = cropToContent(makePlane(ps, -2));
+        const PixelBuf banked = makeP38(-2);
+        add("player_fighter_l", banked);
+        PixelBuf right = banked;
         right.mirrorX();
         add("player_fighter_r", right);
+        const PixelBuf prop = makePropStreak();
+        add("prop_blur_p", prop);
+#ifndef NDEBUG
+        // Debug hook: WWII_DUMP_SPRITES=<dir> writes the player sprites as
+        // PNGs for offline pixel inspection (development tool only).
+        if (const char* dumpDir = SDL_getenv("WWII_DUMP_SPRITES")) {
+            auto dump = [&](const char* name, const PixelBuf& p) {
+                std::vector<std::uint8_t> rgba(static_cast<std::size_t>(p.w) *
+                                               p.h * 4);
+                for (std::size_t i = 0; i < rgba.size(); i += 4) {
+                    const std::uint32_t v = p.px[i / 4];
+                    rgba[i] = static_cast<std::uint8_t>(v >> 24);
+                    rgba[i + 1] = static_cast<std::uint8_t>(v >> 16);
+                    rgba[i + 2] = static_cast<std::uint8_t>(v >> 8);
+                    rgba[i + 3] = static_cast<std::uint8_t>(v);
+                }
+                const std::string path =
+                    std::string(dumpDir) + "/" + name + ".png";
+                stbi_write_png(path.c_str(), p.w, p.h, 4, rgba.data(), p.w * 4);
+            };
+            dump("player_fighter", lvl);
+            dump("player_fighter_l", banked);
+            dump("player_fighter_r", right);
+            dump("prop_blur_p", prop);
+        }
+#endif
     }
     step(0.06f);
 

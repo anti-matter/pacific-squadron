@@ -813,6 +813,22 @@ void Application::renderWorld() {
                                      8.0f + 32.0f * squash, alpha);
             } else {
                 renderer_.draw(ptex, p.pos.x, p.pos.y, alpha);
+                // Spinning propellers: the plane sprite bakes a flat
+                // edge-on prop disc at each engine; this pulses the blade
+                // streak (prop_blur_p) across it. Two-frame cycle, right
+                // engine half a beat out of phase, so the eye reads a
+                // continuous spin without any upright blade ever showing.
+                // Anchors are constant across the three bank frames.
+                const int prop = renderer_.texture("prop_blur_p");
+                if (prop >= 0) {
+                    const float cyc = std::fmod(time * 11.0f, 1.0f);
+                    const float aL = cyc < 0.5f ? 1.0f : 0.4f;
+                    const float aR = cyc < 0.5f ? 0.4f : 1.0f;
+                    renderer_.draw(prop, p.pos.x - kPlayerEngineX,
+                                   p.pos.y + kPlayerPropY, alpha * aL);
+                    renderer_.draw(prop, p.pos.x + kPlayerEngineX,
+                                   p.pos.y + kPlayerPropY, alpha * aR);
+                }
             }
         }
     }

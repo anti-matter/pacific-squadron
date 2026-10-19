@@ -96,4 +96,10 @@ bool generateAllArt(Renderer& renderer,
 // Optional PNG overrides: assets/sprites/<name>.png replace generated ones.
 void loadPngOverrides(Renderer& renderer, const std::string& assetDir);
 
+// Player fighter (P-38) engine anchors, relative to the sprite centre.
+// The renderer places the spinning propeller overlays (prop_arc_p) here;
+// these offsets are constant across all bank frames by construction.
+inline constexpr float kPlayerEngineX = 9.0f;
+inline constexpr float kPlayerPropY = -10.5f;
+
 }  // namespace ww
