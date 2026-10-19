@@ -782,6 +782,7 @@ void Application::renderWorld() {
     prevCompAlive_ = hullAlive ? compAlive : 0;
 
     // Pass 4: enemy aircraft with shadows.
+    const int propE = renderer_.texture("prop_blur_e");
     for (const auto& e : sim.entities()) {
         if (!e.alive || e.kind != EKind::Enemy || e.enemyDef < 0) continue;
         const EnemyDef& def = data_.enemies[static_cast<std::size_t>(e.enemyDef)];
@@ -790,6 +791,30 @@ void Application::renderWorld() {
         const Color tint = e.flashTimer > 0.0f ? Color::rgb(0xFF9090)
                                                : Color::rgb(0xFFFFFF);
         renderer_.draw(renderer_.texture(def.sprite), e.pos.x, e.pos.y, 1.0f, tint);
+        // Spinning propellers — the same edge-on language as the player's
+        // P-38: the sprite bakes a flat prop disc, this pulses the blur
+        // streak over it (twins run 180 degrees out of phase) so the eye
+        // reads rotation without any upright blade. Anchors come from the
+        // art builder, so they match each silhouette's crop exactly; the
+        // per-entity phase offset keeps a formation from beating as one.
+        if (propE >= 0) {
+            if (const auto* anchors = enemyPropAnchors(def.sprite)) {
+                const bool beat =
+                    std::fmod(time * 11.0f + e.pos.x * 0.11f +
+                                  e.pos.y * 0.07f,
+                              1.0f) < 0.5f;
+                for (std::size_t i = 0; i < anchors->size(); ++i) {
+                    const EnemyPropAnchor& a = (*anchors)[i];
+                    const float pa = ((i % 2 == 0) == beat) ? 1.0f : 0.3f;
+                    // Stretched wider than tall: the drawn disc must
+                    // overhang the nose cowl on both sides, so the pulse
+                    // reads against the fuselage/wing and the shadow.
+                    renderer_.drawScaled(propE, e.pos.x + a.dx,
+                                         e.pos.y + a.dy, 15.0f * a.scale,
+                                         9.0f * a.scale, pa, tint);
+                }
+            }
+        }
     }
 
     // Pass 5: player.

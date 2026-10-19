@@ -176,8 +176,9 @@ the generated content cost nearly nothing at startup.
 - `WWII_NOCACHE=1` bypasses the generated art/audio disk caches (see
   Startup & loading).
 - `WWII_DUMP_SPRITES=<dir>` (debug builds, art-regeneration runs) writes the
-  generated player fighter frames and the propeller overlay to `<dir>` as
-  PNGs for offline inspection.
+  generated player fighter frames, the propeller overlays, every enemy
+  aircraft sprite and an `enemy_prop_anchors.txt` (engine anchors used by
+  the spinning-prop overlays) to `<dir>` for offline inspection.
 
 ## Architecture
 

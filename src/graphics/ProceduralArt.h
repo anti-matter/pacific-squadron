@@ -102,4 +102,15 @@ void loadPngOverrides(Renderer& renderer, const std::string& assetDir);
 inline constexpr float kPlayerEngineX = 9.0f;
 inline constexpr float kPlayerPropY = -10.5f;
 
+// Engine prop anchors for enemy aircraft, relative to the sprite centre on
+// screen axes (the enemy sprites face nose-down). Recorded by the art
+// builder whenever art is prepared — cached loads included — so the pulsing
+// prop-blur overlay (prop_blur_e) lands on each baked prop disc. Sprites
+// without propellers (ground units, capital ships) have no entry.
+struct EnemyPropAnchor {
+    float dx, dy;  // offset from the sprite centre
+    float scale;   // draw scale for the overlay (nacelle props run smaller)
+};
+const std::vector<EnemyPropAnchor>* enemyPropAnchors(const std::string& name);
+
 }  // namespace ww

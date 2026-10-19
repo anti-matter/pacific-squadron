@@ -3,6 +3,8 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <unordered_map>
+#include <utility>
 
 #ifndef NDEBUG
 #include <SDL3/SDL.h>
@@ -13,6 +15,25 @@
 
 namespace ww {
 namespace {
+
+#ifndef NDEBUG
+// Debug hook shared by the WWII_DUMP_SPRITES dumps: writes a PixelBuf as an
+// RGBA PNG for offline pixel inspection (development tool only).
+void dumpSpriteDbg(const std::string& name, const PixelBuf& p) {
+    const char* dumpDir = SDL_getenv("WWII_DUMP_SPRITES");
+    if (!dumpDir) return;
+    std::vector<std::uint8_t> rgba(static_cast<std::size_t>(p.w) * p.h * 4);
+    for (std::size_t i = 0; i < rgba.size(); i += 4) {
+        const std::uint32_t v = p.px[i / 4];
+        rgba[i] = static_cast<std::uint8_t>(v >> 24);
+        rgba[i + 1] = static_cast<std::uint8_t>(v >> 16);
+        rgba[i + 2] = static_cast<std::uint8_t>(v >> 8);
+        rgba[i + 3] = static_cast<std::uint8_t>(v);
+    }
+    const std::string path = std::string(dumpDir) + "/" + name + ".png";
+    stbi_write_png(path.c_str(), p.w, p.h, 4, rgba.data(), p.w * 4);
+}
+#endif
 
 // ---------------------------------------------------------------------------
 // Palette
@@ -405,6 +426,130 @@ void flipY(PixelBuf& p) {
         for (int x = 0; x < p.w; ++x)
             std::swap(p.px[static_cast<std::size_t>(y) * p.w + x],
                       p.px[static_cast<std::size_t>(p.h - 1 - y) * p.w + x]);
+}
+
+// ---------------------------------------------------------------------------
+// Enemy aircraft sprites + spinning-prop anchors.
+//
+// Every enemy plane bakes a flat edge-on prop disc (makePlane), exactly like
+// the player's P-38 bakes its own. The renderer pulses the prop_blur_e
+// streak over those discs, so it needs each engine's position in the final
+// nose-down sprite. Those anchors are derived here from the same geometry
+// the art is built with, mapped through the crop and the vertical flip, so
+// they can never drift from the silhouettes. buildEnemyPlanes runs on every
+// launch — cached art included — while `emit` only uploads textures when the
+// art is actually being rasterised.
+// ---------------------------------------------------------------------------
+std::unordered_map<std::string, std::vector<EnemyPropAnchor>> gEnemyProps;
+
+// Engine prop planes in the nose-up makePlane canvas; must mirror makePlane:
+// a single engine sits on the fuselage nose (noseY + 1.7), twins on the
+// nacelles at half-span-quarter, cy - 7.
+std::vector<std::pair<float, float>> propPlanesNoseUp(const PlaneStyle& st) {
+    std::vector<std::pair<float, float>> e;
+    if (st.twin) {
+        const float nx = st.span * 0.25f;
+        e.push_back({26.0f - nx, 26.0f - 7.0f});
+        e.push_back({26.0f + nx, 26.0f - 7.0f});
+    } else {
+        e.push_back({26.0f, 26.0f - st.len * 0.5f + 1.7f});
+    }
+    return e;
+}
+
+void buildEnemyPlanes(
+    const std::function<void(const std::string&, const PixelBuf&)>& emit) {
+    gEnemyProps.clear();
+
+    // Crop + flip exactly like the old addDown pipeline, recording the
+    // centre-relative screen-space anchor for every engine.
+    auto addPlane = [&](const std::string& name, const PlaneStyle& st,
+                        PixelBuf canvas, bool mirror) {
+        int x0 = canvas.w, y0 = canvas.h, x1 = -1, y1 = -1;
+        for (int y = 0; y < canvas.h; ++y)
+            for (int x = 0; x < canvas.w; ++x)
+                if (canvas.get(x, y) & 0xFF) {
+                    x0 = std::min(x0, x); y0 = std::min(y0, y);
+                    x1 = std::max(x1, x); y1 = std::max(y1, y);
+                }
+        x0 = std::max(0, x0 - 1); y0 = std::max(0, y0 - 1);  // cropToContent pad
+        const int cw = std::min(canvas.w - 1, x1 + 1) - x0 + 1;
+        const int ch = std::min(canvas.h - 1, y1 + 1) - y0 + 1;
+
+        PixelBuf p = cropToContent(canvas);
+        flipY(p);
+        // Prop planes sit above centre in the nose-up canvas; the flip puts
+        // them below centre, where a nose-down enemy's nose is.
+        const float ccx = x0 + cw * 0.5f, ccy = y0 + ch * 0.5f;
+        std::vector<EnemyPropAnchor> anchors;
+        for (const auto& [ex, ey] : propPlanesNoseUp(st))
+            anchors.push_back({ex - ccx, ccy - ey, st.twin ? 0.75f : 1.0f});
+        if (mirror) {
+            p.mirrorX();
+            for (auto& a : anchors) a.dx = -a.dx;
+        }
+        gEnemyProps[name] = anchors;
+        emit(name, p);
+#ifndef NDEBUG
+        dumpSpriteDbg(name, p);
+#endif
+    };
+    auto red = [](PlaneStyle st) { st.redDot = true; return st; };
+
+    {  // tan single-engine fighter (the formation variant shares the sprite)
+        const PlaneStyle st =
+            red({26, 22, kEnTan, shade(kEnTan, 1.18f), kEnTanDk});
+        addPlane("enemy_fighter_light", st, makePlane(st), false);
+    }
+    {  // yellow interceptor; the mirrored frame keeps mirrored anchors
+        const PlaneStyle st = red(
+            {22, 22, kEnYellow, shade(kEnYellow, 1.2f), shade(kEnYellow, 0.7f)});
+        addPlane("enemy_interceptor", st, makePlane(st), false);
+        addPlane("enemy_interceptor_m", st, makePlane(st), true);
+    }
+    {  // elite green heavy fighter
+        PlaneStyle st =
+            red({40, 30, kEnGreen, shade(kEnGreen, 1.2f), kEnGreenDk, true});
+        st.amberMark = true;
+        addPlane("enemy_heavy_fighter", st, makePlane(st), false);
+    }
+    {
+        // Carrier escort fighter: steel-blue twin with crimson nose band and
+        // bolt-on root armour — visibly tougher than anything it escorts.
+        PlaneStyle st =
+            red({34, 26, col(0x55606D), col(0x707C8A), col(0x39424D), true});
+        PixelBuf pf = makePlane(st);
+        const int pcx = 26;
+        for (int x = -2; x <= 2; ++x) {           // crimson band under the nose
+            pf.set(pcx + x, 16, col(0xB03A28));
+            pf.set(pcx + x, 17, col(0x8C2A1C));
+        }
+        for (int sx : {-1, 1})                    // root armour plates
+            for (int d = 4; d <= 11; ++d)
+                for (int c = 1; c <= 3; ++c)
+                    pf.set(pcx + sx * d, 27 + c, d == 11 ? col(0x2C343D) : col(0x3F4956));
+        for (int sx : {-1, 1})                    // wing gun pods
+            for (int t = 0; t < 4; ++t)
+                pf.set(pcx + sx * 13, 27 + t, col(0x22272C));
+        addPlane("enemy_fighter_carrier", st, std::move(pf), false);
+    }
+    {  // grey twin bomber
+        const PlaneStyle st =
+            red({56, 40, kEnGrey, shade(kEnGrey, 1.2f), kEnGreyDk, true});
+        addPlane("enemy_bomber", st, makePlane(st), false);
+    }
+#ifndef NDEBUG
+    // WWII_DUMP_SPRITES also records the anchors so offline inspection can
+    // overlay the streak exactly where the renderer will.
+    if (SDL_getenv("WWII_DUMP_SPRITES")) {
+        std::ofstream out(std::string(SDL_getenv("WWII_DUMP_SPRITES")) +
+                          "/enemy_prop_anchors.txt");
+        for (const auto& [name, list] : gEnemyProps)
+            for (const auto& a : list)
+                out << name << ' ' << a.dx << ' ' << a.dy << ' ' << a.scale
+                    << '\n';
+    }
+#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -882,6 +1027,57 @@ PixelBuf makePropStreak() {
                 (0xDE + (0xF6 - 0xDE) * w) + 0.5f);
             const std::uint32_t cb = static_cast<std::uint32_t>(
                 (0xE6 + (0xFA - 0xE6) * w) + 0.5f);
+            p.set(x, y, (cr << 24) | (cg << 16) | (cb << 8) |
+                            static_cast<std::uint32_t>(ao + 0.5f));
+        }
+    }
+    return p;
+}
+
+// Enemy-scale version of the edge-on prop streak: same construction and
+// punch as makePropStreak, sized to overhang the smaller baked prop discs
+// in makePlane (the streak must extend beyond the disc or the pulse has no
+// contrast against it) and in a bright silver that reads over the tan,
+// yellow and green enemy finishes and their dark shadows. One texture
+// serves every enemy airframe; the renderer draws it scaled per engine.
+PixelBuf makePropStreakEnemy() {
+    const int S = 10;
+    PixelBuf p(S, S);
+    const float cc = S * 0.5f;
+    const float rx = 3.9f, ry = 1.8f;  // edge-on disc: wide, flat
+    for (int y = 0; y < S; ++y) {
+        for (int x = 0; x < S; ++x) {
+            float aBody = 0.0f;
+            float aTip = 0.0f;
+            for (int sy = 0; sy < 4; ++sy) {
+                for (int sx = 0; sx < 4; ++sx) {
+                    const float dx = x + (sx + 0.5f) / 4.0f - cc;
+                    const float dy = y + (sy + 0.5f) / 4.0f - cc;
+                    const float d2 = (dx * dx) / (rx * rx) +
+                                     (dy * dy) / (ry * ry);
+                    if (d2 >= 1.0f) continue;
+                    const float fall = 1.0f - d2;  // mild centre→edge falloff
+                    aBody += (150.0f + 90.0f * fall) *
+                             (0.6f + 0.4f * (1.0f - std::sqrt(d2)));
+                    // Bright caps where the blade tips sweep the rim.
+                    const float ax = std::fabs(dx) - (rx - 1.3f);
+                    const float tb = 1.0f - (ax * ax) / 1.6f -
+                                     (dy * dy) / 1.8f;
+                    if (tb > 0.0f) aTip += 255.0f * tb;
+                }
+            }
+            aBody /= 16.0f;
+            aTip /= 16.0f;
+            const float ao = std::min(250.0f, std::max(aBody, aTip));
+            if (ao < 0.5f) continue;
+            // Wash 0xC6D2DA, tip caps whiter toward 0xF0F6FA.
+            const float w = aTip / (aBody + aTip + 0.001f);
+            const std::uint32_t cr = static_cast<std::uint32_t>(
+                (0xC6 + (0xF0 - 0xC6) * w) + 0.5f);
+            const std::uint32_t cg = static_cast<std::uint32_t>(
+                (0xD2 + (0xF6 - 0xD2) * w) + 0.5f);
+            const std::uint32_t cb = static_cast<std::uint32_t>(
+                (0xDA + (0xFA - 0xDA) * w) + 0.5f);
             p.set(x, y, (cr << 24) | (cg << 16) | (cb << 8) |
                             static_cast<std::uint32_t>(ao + 0.5f));
         }
@@ -2768,9 +2964,9 @@ PixelBuf makeSmokePuff() {
 namespace {
 
 constexpr std::uint32_t kArtCacheMagic = 0x50534152u;  // "PSAR"
-// Bump whenever any generated art changes (v5: edge-on flat prop discs +
-// spanwise blur streak on the P-38).
-constexpr std::uint32_t kArtCacheVersion = 5u;
+// Bump whenever any generated art changes (v8+: enemy prop streak rebuilt
+// with a solid bright core and tip caps so the pulse reads in flight).
+constexpr std::uint32_t kArtCacheVersion = 9u;
 
 void wr32(std::ostream& o, std::uint32_t v) {
     o.write(reinterpret_cast<const char*>(&v), 4);
@@ -2856,6 +3052,11 @@ bool generateAllArt(Renderer& r, const std::string& cachePath,
     std::vector<std::pair<std::string, PixelBuf>> captured;
     const bool wantCache = !cachePath.empty();
     if (wantCache && loadArtCache(r, cachePath, progress)) {
+        // Cached pixels never pass through the sprite builder, but the
+        // renderer still needs the enemy prop anchors. Re-deriving them is
+        // a handful of tiny 52x52 rasters — milliseconds, not the seconds
+        // the full art dump takes.
+        buildEnemyPlanes([](const std::string&, const PixelBuf&) {});
         if (progress) progress(1.0f);
         return true;
     }
@@ -2880,73 +3081,25 @@ bool generateAllArt(Renderer& r, const std::string& cachePath,
 #ifndef NDEBUG
         // Debug hook: WWII_DUMP_SPRITES=<dir> writes the player sprites as
         // PNGs for offline pixel inspection (development tool only).
-        if (const char* dumpDir = SDL_getenv("WWII_DUMP_SPRITES")) {
-            auto dump = [&](const char* name, const PixelBuf& p) {
-                std::vector<std::uint8_t> rgba(static_cast<std::size_t>(p.w) *
-                                               p.h * 4);
-                for (std::size_t i = 0; i < rgba.size(); i += 4) {
-                    const std::uint32_t v = p.px[i / 4];
-                    rgba[i] = static_cast<std::uint8_t>(v >> 24);
-                    rgba[i + 1] = static_cast<std::uint8_t>(v >> 16);
-                    rgba[i + 2] = static_cast<std::uint8_t>(v >> 8);
-                    rgba[i + 3] = static_cast<std::uint8_t>(v);
-                }
-                const std::string path =
-                    std::string(dumpDir) + "/" + name + ".png";
-                stbi_write_png(path.c_str(), p.w, p.h, 4, rgba.data(), p.w * 4);
-            };
-            dump("player_fighter", lvl);
-            dump("player_fighter_l", banked);
-            dump("player_fighter_r", right);
-            dump("prop_blur_p", prop);
+        if (SDL_getenv("WWII_DUMP_SPRITES")) {
+            dumpSpriteDbg("player_fighter", lvl);
+            dumpSpriteDbg("player_fighter_l", banked);
+            dumpSpriteDbg("player_fighter_r", right);
+            dumpSpriteDbg("prop_blur_p", prop);
         }
 #endif
     }
     step(0.06f);
 
-    // Enemies (drawn nose-down: generate nose-up then flip).
-    auto addDown = [&](const std::string& name, PlaneStyle st, int bank = 0) {
-        st.redDot = true;
-        PixelBuf p = cropToContent(makePlane(st, bank));
-        flipY(p);
-        add(name, p);
-    };
-    addDown("enemy_fighter_light", {26, 22, kEnTan, shade(kEnTan, 1.18f), kEnTanDk});
-    {
-        auto p = cropToContent(makePlane({22, 22, kEnYellow, shade(kEnYellow, 1.2f), shade(kEnYellow, 0.7f)}));
-        flipY(p);
-        auto mirror = p; mirror.mirrorX();
-        add("enemy_interceptor", p);
-        add("enemy_interceptor_m", mirror);
-    }
-    {
-        PlaneStyle st{40, 30, kEnGreen, shade(kEnGreen, 1.2f), kEnGreenDk, true};
-        st.amberMark = true;   // elite heavy fighter
-        addDown("enemy_heavy_fighter", st);
-    }
-    {
-        // Carrier escort fighter: steel-blue twin with crimson nose band and
-        // bolt-on root armour — visibly tougher than anything it escorts.
-        PlaneStyle st{34, 26, col(0x55606D), col(0x707C8A), col(0x39424D), true};
-        st.redDot = true;
-        PixelBuf pf = makePlane(st, 0);
-        const int pcx = 26;
-        for (int x = -2; x <= 2; ++x) {           // crimson band under the nose
-            pf.set(pcx + x, 16, col(0xB03A28));
-            pf.set(pcx + x, 17, col(0x8C2A1C));
-        }
-        for (int sx : {-1, 1})                    // root armour plates
-            for (int d = 4; d <= 11; ++d)
-                for (int c = 1; c <= 3; ++c)
-                    pf.set(pcx + sx * d, 27 + c, d == 11 ? col(0x2C343D) : col(0x3F4956));
-        for (int sx : {-1, 1})                    // wing gun pods
-            for (int t = 0; t < 4; ++t)
-                pf.set(pcx + sx * 13, 27 + t, col(0x22272C));
-        PixelBuf p = cropToContent(pf);
-        flipY(p);
-        add("enemy_fighter_carrier", p);
-    }
-    addDown("enemy_bomber", {56, 40, kEnGrey, shade(kEnGrey, 1.2f), kEnGreyDk, true});
+    // Enemies (drawn nose-down: generate nose-up then flip). Sprites and
+    // their spinning-prop anchors come from one builder so the prop_blur_e
+    // overlay anchors always match the finished silhouettes.
+    add("prop_blur_e", makePropStreakEnemy());
+    buildEnemyPlanes(
+        [&](const std::string& name, const PixelBuf& p) { add(name, p); });
+#ifndef NDEBUG
+    dumpSpriteDbg("prop_blur_e", makePropStreakEnemy());
+#endif
     step(0.22f);
 
     // Ground & sea.
@@ -3083,6 +3236,11 @@ void loadPngOverrides(Renderer& renderer, const std::string& assetDir) {
                     e.path().stem().string(), e.path().string());
         }
     }
+}
+
+const std::vector<EnemyPropAnchor>* enemyPropAnchors(const std::string& name) {
+    const auto it = gEnemyProps.find(name);
+    return it == gEnemyProps.end() ? nullptr : &it->second;
 }
 
 }  // namespace ww
