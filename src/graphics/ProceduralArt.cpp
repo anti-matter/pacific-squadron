@@ -44,8 +44,6 @@ const std::uint32_t kDrabDk = col(0x3C4A26);
 const std::uint32_t kInsigniaBlue = col(0x24407A);
 const std::uint32_t kWhite = col(0xF2F2F2);
 
-const std::uint32_t kEnTan = col(0x8A7A4E);
-const std::uint32_t kEnTanDk = col(0x66583A);
 const std::uint32_t kEnGreen = col(0x4E5A38);
 const std::uint32_t kEnGreenDk = col(0x38422A);
 const std::uint32_t kEnYellow = col(0xC8A83C);
@@ -429,16 +427,146 @@ void flipY(PixelBuf& p) {
 }
 
 // ---------------------------------------------------------------------------
+// Mitsubishi A6M "Zero" — top view, nose-up (the primary enemy fighter, and
+// the styling basis shared with the yellow interceptor).
+//
+// Design cues follow the TOP VIEW plate of zero.png: long slim fuselage
+// tapering to a point, compact dark engine cowl ring with a bright spinner
+// cone, broad rounded elliptical wings (leading edge sweeps back gently,
+// trailing edge sweeps forward harder) with the folded-wingtip seam the
+// A6M2 carried, red hinomaru outboard, a long multi-framed greenhouse
+// canopy with a pale gloss set just aft of the wing, rounded horizontal
+// stabilizers, and a red band on the aft fuselage. Built on the shared Hi
+// supersampled raster with the house outline, so it belongs to the same
+// art language as the P-38 and the bosses. The prop plane sits at
+// noseY + kZeroPropDy; the animated spin is the pulsing prop_blur_e
+// streak the renderer overlays there.
+// ---------------------------------------------------------------------------
+constexpr float kZeroPropDy = 1.4f;  // prop plane ahead of the cowl, nose-up
+
+struct ZeroStyle {
+    float span, len;
+    std::uint32_t body, bodyHi, bodyDk;
+    bool hinomaru = true;
+};
+
+PixelBuf makeZero(const ZeroStyle& z) {
+    const int W = 52, H = 52;
+    const float cx = 26.0f;
+    const float noseY = 26.0f - z.len * 0.5f, tailY = 26.0f + z.len * 0.5f;
+    const float half = z.span * 0.5f;
+    Hi hi(W, H);
+    const std::uint32_t body = z.body, bodyHi = z.bodyHi, bodyDk = z.bodyDk;
+
+    // --- wings: elliptical planform with rounded tips -----------------------
+    const float wy = 24.5f;  // wing band centre (sits slightly forward)
+    for (int side = -1; side <= 1; side += 2) {
+        const float s = static_cast<float>(side);
+        hi.fillPoly({{cx, wy - 4.6f},
+                     {cx + s * 4.0f, wy - 4.8f}, {cx + s * 9.0f, wy - 4.6f},
+                     {cx + s * 13.5f, wy - 3.9f}, {cx + s * (half - 2.5f), wy - 2.7f},
+                     {cx + s * (half - 0.7f), wy - 1.2f}, {cx + s * half, wy + 0.3f},
+                     {cx + s * (half - 0.8f), wy + 1.6f}, {cx + s * (half - 2.4f), wy + 2.4f},
+                     {cx + s * 12.0f, wy + 3.4f}, {cx + s * 7.0f, wy + 4.6f},
+                     {cx + s * 3.0f, wy + 5.6f}, {cx, wy + 6.0f}},
+                    body);
+        // Leading-edge highlight and trailing-edge shade follow the curve.
+        hi.stroke({{cx + s * 1.0f, wy - 4.7f}, {cx + s * 9.0f, wy - 4.5f},
+                   {cx + s * 14.0f, wy - 3.7f}, {cx + s * (half - 1.6f), wy - 1.6f}},
+                  0.85f, bodyHi);
+        hi.stroke({{cx + s * 3.0f, wy + 5.5f}, {cx + s * 8.0f, wy + 4.3f},
+                   {cx + s * 13.0f, wy + 3.0f}, {cx + s * (half - 1.8f), wy + 1.5f}},
+                  0.85f, bodyDk);
+        // Folded-wingtip seam (A6M2 carry surface) and aileron seam.
+        hi.stroke({{cx + s * (half - 3.6f), wy - 2.6f},
+                   {cx + s * (half - 3.6f), wy + 1.9f}}, 0.5f, bodyDk);
+        hi.stroke({{cx + s * 14.5f, wy + 2.3f}, {cx + s * 8.0f, wy + 3.9f}},
+                  0.45f, bodyDk);
+        // Hinomaru outboard: dark rim disc plus the bright centre.
+        if (z.hinomaru) {
+            hi.fillEllipse(cx + s * 11.8f, wy, 2.9f, 2.9f, col(0x9E2620));
+            hi.fillEllipse(cx + s * 11.8f, wy, 2.6f, 2.6f, col(0xC8302A));
+        }
+    }
+
+    // --- fuselage: long, slim, tapering to a point --------------------------
+    {
+        auto hwAt = [](float t) {  // t: 0 nose .. 1 tail
+            if (t < 0.06f) return 0.2f + t * 21.7f;
+            if (t < 0.22f) return 1.5f + (t - 0.06f) / 0.16f * 0.6f;
+            if (t < 0.62f) return 2.1f;
+            return 2.1f - 1.8f * (t - 0.62f) / 0.38f;
+        };
+        std::vector<std::pair<float, float>> pts;
+        for (int i = 0; i <= 24; ++i)
+            pts.push_back({cx + hwAt(i / 24.0f), noseY + z.len * i / 24.0f});
+        for (int i = 24; i >= 0; --i)
+            pts.push_back({cx - hwAt(i / 24.0f), noseY + z.len * i / 24.0f});
+        hi.fillPoly(pts, body);
+        // Top-light spine, shaded right flank.
+        hi.stroke({{cx - 0.85f, noseY + 6.0f}, {cx - 1.0f, tailY - 9.0f}},
+                  0.7f, bodyHi);
+        hi.stroke({{cx + 1.0f, noseY + 6.0f}, {cx + 0.9f, tailY - 11.0f}},
+                  0.7f, bodyDk);
+    }
+
+    // --- cowl, exhausts and spinner -----------------------------------------
+    hi.fillEllipse(cx, noseY + 3.1f, 2.25f, 3.5f, col(0x33393E));   // cowl ring
+    hi.fillEllipse(cx, noseY + 2.0f, 1.95f, 1.8f, col(0x232A2F));   // front face
+    hi.stroke({{cx - 1.9f, noseY + 4.4f}, {cx - 1.55f, noseY + 1.5f}},
+              0.5f, col(0x6A7278));                                 // cowl glint
+    for (int k = 0; k < 3; ++k)  // exhaust stubs, right flank of the cowl
+        hi.stroke({{cx + 1.5f, noseY + 3.6f + k * 1.4f},
+                   {cx + 2.6f, noseY + 4.1f + k * 1.4f}}, 0.5f, col(0x191D20));
+    hi.fillEllipse(cx, noseY + 0.7f, 0.9f, 1.2f, col(0xB9C1C7));    // spinner
+    hi.fillEllipse(cx - 0.3f, noseY + 0.4f, 0.35f, 0.5f, col(0xE6ECF0));
+
+    // --- canopy: long multi-framed greenhouse, just aft of the wing ---------
+    hi.fillEllipse(cx, 28.2f, 1.55f, 4.7f, col(0x1C2E38));
+    hi.fillEllipse(cx, 24.0f, 1.2f, 1.0f, col(0x35586A));            // windshield
+    for (int k = 0; k < 4; ++k)  // glazing ribs
+        hi.stroke({{cx - 1.4f, 25.6f + k * 1.8f}, {cx + 1.4f, 25.6f + k * 1.8f}},
+                  0.45f, col(0xA9A392));
+    hi.fillEllipse(cx - 0.45f, 27.2f, 0.6f, 2.0f, col(0x9FD0E8, 190));  // gloss
+
+    // --- tail: rounded stabilizers, elevator seams, rudder hint -------------
+    for (int side = -1; side <= 1; side += 2) {
+        const float s = static_cast<float>(side);
+        hi.fillEllipse(cx + s * 5.0f, tailY - 4.6f, 5.0f, 2.2f, body);
+        hi.stroke({{cx + s * 4.4f, tailY - 6.5f}, {cx + s * 9.2f, tailY - 5.4f}},
+                  0.55f, bodyHi);
+        hi.stroke({{cx + s * 1.3f, tailY - 2.9f}, {cx + s * 9.4f, tailY - 4.2f}},
+                  0.45f, bodyDk);
+    }
+    hi.stroke({{cx, tailY - 4.4f}, {cx, tailY - 0.9f}}, 0.45f, bodyDk);
+
+    // Red identification band on the aft fuselage.
+    hi.stroke({{cx - 1.3f, tailY - 7.6f}, {cx + 1.3f, tailY - 7.6f}}, 1.1f,
+              col(0xB4322A));
+
+    PixelBuf p = hi.bake();
+    outlineSilhouette(p, col(0x0A0E12, 165));
+
+    // Static edge-on prop disc at the cowl nose (the animated prop_blur_e
+    // streak pulses over it in flight). Translucent, so post-bake; kept
+    // softer than the player's P-38 so the nose reads clean.
+    const float propY = noseY + kZeroPropDy;
+    softBlendEllipse(p, cx, propY, 5.6f, 2.1f, 0xC8D4DC, 58);
+    softBlendEllipse(p, cx, propY, 3.4f, 1.35f, 0xD2DEE6, 48);
+    return p;
+}
+
+// ---------------------------------------------------------------------------
 // Enemy aircraft sprites + spinning-prop anchors.
 //
-// Every enemy plane bakes a flat edge-on prop disc (makePlane), exactly like
-// the player's P-38 bakes its own. The renderer pulses the prop_blur_e
-// streak over those discs, so it needs each engine's position in the final
-// nose-down sprite. Those anchors are derived here from the same geometry
-// the art is built with, mapped through the crop and the vertical flip, so
-// they can never drift from the silhouettes. buildEnemyPlanes runs on every
-// launch — cached art included — while `emit` only uploads textures when the
-// art is actually being rasterised.
+// Every enemy plane bakes a flat edge-on prop disc (makeZero / makePlane),
+// exactly like the player's P-38 bakes its own. The renderer pulses the
+// prop_blur_e streak over those discs, so it needs each engine's position in
+// the final nose-down sprite. Those anchors are derived here from the same
+// geometry the art is built with, mapped through the crop and the vertical
+// flip, so they can never drift from the silhouettes. buildEnemyPlanes runs
+// on every launch — cached art included — while `emit` only uploads
+// textures when the art is actually being rasterised.
 // ---------------------------------------------------------------------------
 std::unordered_map<std::string, std::vector<EnemyPropAnchor>> gEnemyProps;
 
@@ -462,9 +590,11 @@ void buildEnemyPlanes(
     gEnemyProps.clear();
 
     // Crop + flip exactly like the old addDown pipeline, recording the
-    // centre-relative screen-space anchor for every engine.
-    auto addPlane = [&](const std::string& name, const PlaneStyle& st,
-                        PixelBuf canvas, bool mirror) {
+    // centre-relative screen-space anchor for every engine (anchors given in
+    // the nose-up 52x52 canvas coordinates).
+    auto addPlaneRaw = [&](const std::string& name, PixelBuf canvas,
+                           const std::vector<std::pair<float, float>>& noseUp,
+                           float scale, bool mirror) {
         int x0 = canvas.w, y0 = canvas.h, x1 = -1, y1 = -1;
         for (int y = 0; y < canvas.h; ++y)
             for (int x = 0; x < canvas.w; ++x)
@@ -482,8 +612,8 @@ void buildEnemyPlanes(
         // them below centre, where a nose-down enemy's nose is.
         const float ccx = x0 + cw * 0.5f, ccy = y0 + ch * 0.5f;
         std::vector<EnemyPropAnchor> anchors;
-        for (const auto& [ex, ey] : propPlanesNoseUp(st))
-            anchors.push_back({ex - ccx, ccy - ey, st.twin ? 0.75f : 1.0f});
+        for (const auto& [ex, ey] : noseUp)
+            anchors.push_back({ex - ccx, ccy - ey, scale});
         if (mirror) {
             p.mirrorX();
             for (auto& a : anchors) a.dx = -a.dx;
@@ -494,18 +624,27 @@ void buildEnemyPlanes(
         dumpSpriteDbg(name, p);
 #endif
     };
+    auto addPlane = [&](const std::string& name, const PlaneStyle& st,
+                        PixelBuf canvas, bool mirror) {
+        addPlaneRaw(name, std::move(canvas), propPlanesNoseUp(st),
+                    st.twin ? 0.75f : 1.0f, mirror);
+    };
     auto red = [](PlaneStyle st) { st.redDot = true; return st; };
 
-    {  // tan single-engine fighter (the formation variant shares the sprite)
-        const PlaneStyle st =
-            red({26, 22, kEnTan, shade(kEnTan, 1.18f), kEnTanDk});
-        addPlane("enemy_fighter_light", st, makePlane(st), false);
+    {  // primary fighter: A6M "Zero" (the formation variant shares the sprite)
+        const ZeroStyle z{38, 37, col(0xBDB6A3), col(0xD8D2C0), col(0x8C8571)};
+        addPlaneRaw("enemy_fighter_light", makeZero(z),
+                    {{26.0f, 26.0f - z.len * 0.5f + kZeroPropDy}}, 0.72f, false);
     }
-    {  // yellow interceptor; the mirrored frame keeps mirrored anchors
-        const PlaneStyle st = red(
-            {22, 22, kEnYellow, shade(kEnYellow, 1.2f), shade(kEnYellow, 0.7f)});
-        addPlane("enemy_interceptor", st, makePlane(st), false);
-        addPlane("enemy_interceptor_m", st, makePlane(st), true);
+    {  // yellow interceptor: slimmer, faster Zero variant; the mirrored frame
+       // keeps mirrored anchors
+        const ZeroStyle z{31, 33, kEnYellow, shade(kEnYellow, 1.2f),
+                          shade(kEnYellow, 0.7f)};
+        const float propY = 26.0f - z.len * 0.5f + kZeroPropDy;
+        addPlaneRaw("enemy_interceptor", makeZero(z), {{26.0f, propY}}, 0.7f,
+                    false);
+        addPlaneRaw("enemy_interceptor_m", makeZero(z), {{26.0f, propY}}, 0.7f,
+                    true);
     }
     {  // elite green heavy fighter
         PlaneStyle st =
@@ -2964,9 +3103,9 @@ PixelBuf makeSmokePuff() {
 namespace {
 
 constexpr std::uint32_t kArtCacheMagic = 0x50534152u;  // "PSAR"
-// Bump whenever any generated art changes (v8+: enemy prop streak rebuilt
-// with a solid bright core and tip caps so the pulse reads in flight).
-constexpr std::uint32_t kArtCacheVersion = 9u;
+// Bump whenever any generated art changes (v10: A6M Zero redesign of the
+// primary enemy fighter and interceptor).
+constexpr std::uint32_t kArtCacheVersion = 10u;
 
 void wr32(std::ostream& o, std::uint32_t v) {
     o.write(reinterpret_cast<const char*>(&v), 4);

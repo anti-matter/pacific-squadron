@@ -1,17 +1,17 @@
 [
-  { "name": "fighter_light", "sprite": "enemy_fighter_light", "width": 28, "height": 24,
-    "hitbox": [0, 0, 14, 12], "hp": 1, "score": 100, "speed": 85,
+  { "name": "fighter_light", "sprite": "enemy_fighter_light", "width": 40, "height": 38,
+    "hitbox": [0, 0, 16, 13], "hp": 1, "score": 100, "speed": 85,
     "path": "sine_down", "amp": 34, "freq": 0.7,
     "weapon": "e_light_gun", "fireInterval": 2.4, "aimAtPlayer": true,
     "dropChance": 0.12, "drop": "random", "deathEffect": 1 },
 
-  { "name": "fighter_formation", "sprite": "enemy_fighter_light", "width": 28, "height": 24,
-    "hitbox": [0, 0, 14, 12], "hp": 1, "score": 120, "speed": 95,
+  { "name": "fighter_formation", "sprite": "enemy_fighter_light", "width": 40, "height": 38,
+    "hitbox": [0, 0, 16, 13], "hp": 1, "score": 120, "speed": 95,
     "path": "straight", "angleDeg": 90,
     "weapon": "e_light_gun", "fireInterval": 2.8, "aimAtPlayer": true,
     "dropChance": 0.05, "deathEffect": 1 },
 
-  { "name": "interceptor", "sprite": "enemy_interceptor", "width": 24, "height": 24,
+  { "name": "interceptor", "sprite": "enemy_interceptor", "width": 33, "height": 33,
     "hitbox": [0, 0, 12, 12], "hp": 1, "score": 150, "speed": 210,
     "path": "straight", "angleDeg": 95,
     "dropChance": 0.10, "deathEffect": 1 },
