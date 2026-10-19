@@ -56,8 +56,14 @@ private:
     std::filesystem::path prefPath(const char* file) const;
     // Loading splash: presented between window creation and the first game
     // frame so slow probes/bakes never look like a hung launch. Draws with
-    // the game's own font/palette and shows phase-labelled progress.
+    // the game's own font/palette and shows phase-labelled progress. With
+    // the splash artwork loaded it fills the window edge-to-edge, keeps
+    // showing after loading completes, and waits for any key to dismiss.
     void showSplash(float progress, const char* label);
+    // Modal gate after loading: animates the "press any key" prompt until a
+    // key/click/button arrives (or the window is closed), then restores the
+    // game canvas and a gameplay-sized window.
+    void waitForSplashDismiss();
 
     Renderer renderer_;
     Input input_;
@@ -68,6 +74,12 @@ private:
 
     std::string assetDir_;
     std::string prefDir_;
+    // Splash artwork (assets/splash.png): texture, logical canvas height the
+    // artwork was fit to, and the loaded flag gating the "press any key"
+    // prompt. splashTex_ < 0 keeps the procedural fallback splash.
+    int splashTex_ = -1;
+    float splashH_ = 0.0f;
+    bool splashDone_ = false;
     bool running_ = false;
     // Audio stays silent until the first real frame has been presented, so
     // the player never hears the title theme from behind an unopened window.

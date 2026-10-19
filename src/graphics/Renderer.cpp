@@ -61,6 +61,8 @@ bool Renderer::init(const std::string& title, bool fullscreen) {
         return false;
     }
     SDL_SetTextureScaleMode(canvas_, SDL_SCALEMODE_NEAREST);
+    canvasW_ = kCanvasW;
+    canvasH_ = kCanvasH;
     fullscreen_ = fullscreen;
 
     if (fullscreen) {
@@ -68,6 +70,11 @@ bool Renderer::init(const std::string& title, bool fullscreen) {
     } else {
         // Fit a 3x scaled canvas with a modest window.
         SDL_SetWindowSize(window_, kCanvasW * 2, kCanvasH * 2);
+        // Remember this as the game's natural footprint: the splash may
+        // resize the window, and restoreWindowSize() must bring it back
+        // here (not to the larger CreateWindow request).
+        baseW_ = kCanvasW * 2;
+        baseH_ = kCanvasH * 2;
         SDL_GetWindowSizeInPixels(window_, &winW_, &winH_);
     }
     return true;
@@ -163,13 +170,13 @@ void Renderer::endFrame() {
     // one (perfectly uniform pixels at the natural 1x/2x/3x/4x sizes).
     // For awkward window sizes, fill the window with nearest-neighbour
     // fractional scaling - still crisp, just uneven pixel doubling.
-    const float fit = std::min(static_cast<float>(winW_) / kCanvasW,
-                               static_cast<float>(winH_) / kCanvasH);
+    const float fit = std::min(static_cast<float>(winW_) / canvasW_,
+                               static_cast<float>(winH_) / canvasH_);
     float scale = std::round(fit);
     if (std::abs(fit - scale) > 0.12f) scale = fit;
     if (scale < 1.0f) scale = fit;
-    const float dw = std::floor(kCanvasW * scale);
-    const float dh = std::floor(kCanvasH * scale);
+    const float dw = std::floor(canvasW_ * scale);
+    const float dh = std::floor(canvasH_ * scale);
     const SDL_FRect dst{std::floor((winW_ - dw) * 0.5f),
                         std::floor((winH_ - dh) * 0.5f), dw, dh};
     SDL_RenderTexture(sdl_, canvas_, nullptr, &dst);
@@ -381,6 +388,46 @@ void Renderer::setFullscreen(bool fs) {
 
 void Renderer::setVSync(bool on) {
     SDL_SetRenderVSync(sdl_, on ? 1 : 0);
+}
+
+bool Renderer::setSplashCanvas(bool on, int w, int h) {
+    const int cw = on ? w : kCanvasW;
+    const int ch = on ? h : kCanvasH;
+    if (cw == canvasW_ && ch == canvasH_) return true;
+    SDL_Texture* nc = SDL_CreateTexture(sdl_, SDL_PIXELFORMAT_RGBA8888,
+                                        SDL_TEXTUREACCESS_TARGET, cw, ch);
+    if (!nc) return false;
+    // The splash is a high-resolution photo-style artwork: linear sampling
+    // keeps it smooth at fractional window scales. The game canvas keeps
+    // nearest-neighbour pixel art crisp.
+    SDL_SetTextureScaleMode(nc, on ? SDL_SCALEMODE_LINEAR
+                                   : SDL_SCALEMODE_NEAREST);
+    SDL_SetRenderTarget(sdl_, nullptr);  // detach before destroying
+    if (canvas_) SDL_DestroyTexture(canvas_);
+    canvas_ = nc;
+    canvasW_ = cw;
+    canvasH_ = ch;
+    return true;
+}
+
+void Renderer::setWindowSize(int w, int h) {
+    if (fullscreen_) return;  // let the display own the size in fullscreen
+    SDL_SetWindowSize(window_, w, h);
+    SDL_GetWindowSizeInPixels(window_, &winW_, &winH_);
+}
+
+void Renderer::restoreWindowSize() { setWindowSize(baseW_, baseH_); }
+
+void Renderer::displayBounds(int& w, int& h) const {
+    SDL_DisplayID id = SDL_GetPrimaryDisplay();
+    SDL_Rect r{};
+    if (id && SDL_GetDisplayBounds(id, &r) && r.w > 0 && r.h > 0) {
+        w = r.w;
+        h = r.h;
+    } else {
+        w = 1920;  // headless/driver fallback
+        h = 1080;
+    }
 }
 
 }  // namespace ww

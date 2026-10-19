@@ -69,6 +69,19 @@ public:
     // ---- window --------------------------------------------------------
     void setFullscreen(bool fs);
     bool isFullscreen() const { return fullscreen_; }
+    // Splash presentation: temporarily swaps the logical canvas for a
+    // `w`x`h` target sampled with linear filtering, so a high-resolution
+    // artwork can fill the window smoothly (the letterbox math and the
+    // native-resolution text overlay follow the new canvas). Passing false
+    // restores the 384x512 nearest-neighbour game canvas.
+    bool setSplashCanvas(bool on, int w, int h);
+    void setWindowSize(int w, int h);
+    // The window size requested at creation - the game's natural footprint.
+    // restoreWindowSize() puts it back (e.g. after the splash resized it).
+    void baseWindowSize(int& w, int& h) const { w = baseW_; h = baseH_; }
+    void restoreWindowSize();
+    // Primary display size in pixels (fallback 1920x1080 when headless).
+    void displayBounds(int& w, int& h) const;
     // Vsync is disabled while the loading splash presents progress updates
     // (each present would otherwise block for a refresh), and re-enabled
     // once the first real frame is up.
@@ -87,6 +100,7 @@ private:
     SDL_Window* window_ = nullptr;
     SDL_Renderer* sdl_ = nullptr;
     SDL_Texture* canvas_ = nullptr;
+    int canvasW_ = 384, canvasH_ = 512;  // current logical canvas size
     std::vector<SDL_Texture*> textures_;
     std::vector<int> texW_, texH_;
     std::unordered_map<std::string, int> texByName_;
@@ -94,6 +108,7 @@ private:
     std::unordered_map<int, int> fontTexByScale_;  // px*16 -> font atlas id
     bool fullscreen_ = false;
     int winW_ = 1152, winH_ = 1536;
+    int baseW_ = 1152, baseH_ = 1536;  // game's natural footprint (init)
     std::string screenshotPath_;
 };
 

@@ -100,6 +100,35 @@ bool Application::init() {
     // at an unopened window while that happens. Vsync stays off until the
     // loop starts so splash progress presents never block on a refresh.
     renderer_.setVSync(false);
+
+    // Splash artwork: fill the window edge-to-edge at the poster's aspect
+    // ratio (logical canvas 384 wide, height derived from the image). The
+    // splash window is capped to the game's original window footprint
+    // (and to the display on smaller screens), so it never grows the app.
+    if (renderer_.createTextureFromPng(
+            "splash_screen",
+            (std::filesystem::path(assetDir_) / "splash.png").string())) {
+        splashTex_ = renderer_.texture("splash_screen");
+        int iw = 0, ih = 0;
+        renderer_.textureSize(splashTex_, iw, ih);
+        if (splashTex_ >= 0 && iw > 0 && ih > 0) {
+            splashH_ = 384.0f * static_cast<float>(ih) /
+                       static_cast<float>(iw);
+            int dw = 0, dh = 0, bw = 0, bh = 0;
+            renderer_.displayBounds(dw, dh);
+            renderer_.baseWindowSize(bw, bh);
+            const float fit = std::min(std::min(dw * 0.94f / 384.0f,
+                                                dh * 0.94f / splashH_),
+                                       std::min(bw * 1.0f / 384.0f,
+                                                bh * 1.0f / splashH_));
+            renderer_.setSplashCanvas(true, 384,
+                                      static_cast<int>(std::lround(splashH_)));
+            renderer_.setWindowSize(static_cast<int>(std::lround(384.0f * fit)),
+                                    static_cast<int>(std::lround(splashH_ * fit)));
+        } else {
+            splashTex_ = -1;
+        }
+    }
     showSplash(0.02f, "STARTING UP");
 
     // Data.
@@ -199,7 +228,23 @@ bool Application::init() {
     audio_.setMusicVolume(game_->settings().musicVolume);
     audio_.setSfxVolume(game_->settings().sfxVolume);
 
-    showSplash(1.0f, "READY");
+    splashDone_ = true;
+    if (SDL_getenv("WWII_SMOKE")) {
+        // WWII_SMOKE_SPLASH_SHOT=<path>: grab the finished splash (prompt
+        // visible) before handing over to gameplay.
+        if (const char* sp = SDL_getenv("WWII_SMOKE_SPLASH_SHOT"))
+            renderer_.requestScreenshot(sp);
+        showSplash(1.0f, "READY");
+    } else {
+        waitForSplashDismiss();
+    }
+    // Back to the game presentation: nearest-neighbour 384x512 canvas in
+    // the game's original window size. (The smoke path skips the dismiss
+    // gate entirely, so the restore lives here rather than inside
+    // waitForSplashDismiss. If the user closed the splash window, running_
+    // is already false and run() simply no-ops.)
+    renderer_.setSplashCanvas(false, 0, 0);
+    renderer_.restoreWindowSize();
     renderer_.setVSync(true);
 
     running_ = true;
@@ -272,12 +317,59 @@ void Application::saveHighScores() {
 // ---------------------------------------------------------------------------
 // Loading splash
 //
-// Drawn with the game's own palette, stroke font and pixel language: night
-// sea with tile-tone glints, the title stack, the player fighter once its
-// texture exists, and a progress bar whose label names the current phase
-// (also a live diagnostic: the last label shown pinpoints a slow probe).
+// With assets/splash.png present the artwork fills the splash window
+// edge-to-edge and the title, progress bar, phase label and a pulsing
+// "PRESS ANY KEY" prompt are superimposed over it. Without the artwork the
+// fallback draws with the game's own palette, stroke font and pixel
+// language: night sea with tile-tone glints, the title stack, the player
+// fighter once its texture exists, and a progress bar whose label names the
+// current phase (also a live diagnostic: the last label shown pinpoints a
+// slow probe).
 // ---------------------------------------------------------------------------
 void Application::showSplash(float progress, const char* label) {
+    if (splashTex_ >= 0) {
+        // ---- artwork splash --------------------------------------------
+        renderer_.beginFrame(Color::rgb(0x05080C));
+        renderer_.drawScaled(splashTex_, 192.0f, splashH_ * 0.5f, 384.0f,
+                             splashH_);
+        // Title over the bright sky band at the top; the overlay's built-in
+        // drop shadow keeps it legible over cloud. Scale 3 would be 381 of
+        // 384 logical px wide - the glyph ink and shadow then clip at the
+        // window edges - so auto-fit with a safety margin.
+        static constexpr const char* kTitle = "PACIFIC SQUADRON";
+        int ts = 3;
+        while (ts > 1 && renderer_.textWidth(kTitle, ts) > 348) --ts;
+        renderer_.text(kTitle, 192.0f, 32.0f, ts, Color::rgb(0xFFD860), true);
+        renderer_.text("A WORLD WAR II ARCADE SHOOTER", 192.0f,
+                       32.0f + 11.0f * ts + 7.0f, 1, Color::rgb(0xF0F6FC),
+                       true);
+        // Progress over the dark sea band at the bottom.
+        constexpr float kBarW = 232.0f;
+        const float bx = 192.0f - kBarW * 0.5f;
+        const float by = splashH_ - 52.0f;
+        renderer_.fillRect(bx - 1.0f, by - 1.0f, kBarW + 2.0f, 14.0f,
+                           Color{5, 10, 16, 170});
+        renderer_.outlineRect(bx, by, kBarW, 12.0f, Color::rgb(0x3A5068));
+        const float w = (kBarW - 4.0f) * clamp(progress, 0.0f, 1.0f);
+        if (w >= 1.0f)
+            renderer_.fillRect(bx + 2.0f, by + 2.0f, w, 8.0f,
+                               Color::rgb(0xFFD860));
+        renderer_.text(label, 192.0f, by + 17.0f, 1, Color::rgb(0xC8D8E8),
+                       true);
+        if (splashDone_) {
+            // Loading finished: the dismissal prompt breathes between a dim
+            // slate and full white (~1.1 Hz) to draw the eye.
+            const float t = static_cast<float>(SDL_GetTicks()) / 1000.0f;
+            const float b = 0.5f + 0.5f * std::sin(t * 6.2832f * 1.1f);
+            const auto v = static_cast<std::uint8_t>(110.0f + 145.0f * b);
+            renderer_.text("PRESS ANY KEY", 192.0f, by - 22.0f, 2,
+                           Color{v, v, v, 255}, true);
+        }
+        renderer_.endFrame();
+        return;
+    }
+
+    // ---- procedural fallback -------------------------------------------
     renderer_.beginFrame(Color::rgb(0x06101C));  // night sea, as in-game
 
     // Static glints: sparse dashes in the ocean tiles' dark tone.
@@ -307,7 +399,41 @@ void Application::showSplash(float progress, const char* label) {
     if (w >= 1.0f)
         renderer_.fillRect(bx + 2.0f, by + 2.0f, w, 8.0f, Color::rgb(0xFFD860));
     renderer_.text(label, 192.0f, 366.0f, 1, Color::rgb(0x7A90A8), true);
+    if (splashDone_) {
+        const float t = static_cast<float>(SDL_GetTicks()) / 1000.0f;
+        const float b = 0.5f + 0.5f * std::sin(t * 6.2832f * 1.1f);
+        const auto v = static_cast<std::uint8_t>(110.0f + 145.0f * b);
+        renderer_.text("PRESS ANY KEY", 192.0f, 400.0f, 2, Color{v, v, v, 255},
+                       true);
+    }
     renderer_.endFrame();
+}
+
+// ---------------------------------------------------------------------------
+// Splash dismissal gate. Presents the finished splash (with the pulsing
+// prompt) until any key, mouse click or gamepad button arrives. The headless
+// smoke harness skips it — there is nobody at the keyboard.
+// ---------------------------------------------------------------------------
+void Application::waitForSplashDismiss() {
+    renderer_.setVSync(true);
+    bool dismiss = false;
+    while (!dismiss) {
+        SDL_Event ev;
+        while (SDL_PollEvent(&ev)) {
+            if (ev.type == SDL_EVENT_QUIT ||
+                ev.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
+                running_ = false;
+                return;
+            }
+            if (ev.type == SDL_EVENT_KEY_DOWN ||
+                ev.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
+                ev.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN)
+                dismiss = true;
+        }
+        if (dismiss) break;
+        showSplash(1.0f, "READY");
+        SDL_Delay(1);
+    }
 }
 
 // ---------------------------------------------------------------------------
