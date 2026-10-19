@@ -37,6 +37,22 @@ void test_formation() {
     CHECK(arc.size() == 6);
     for (const auto& p : arc) CHECK(length(p) < 100.0f);
 
+    // Wingspan clearance: the Zero sprite is 40px wide, so with the default
+    // spacing no two members of any shape (any count 2..6) may sit close
+    // enough for the art to touch.
+    for (FormationShape s : {FormationShape::VLine, FormationShape::HLine,
+                             FormationShape::VFormation, FormationShape::Arc,
+                             FormationShape::Staggered,
+                             FormationShape::SideWaveLeft,
+                             FormationShape::Wedge}) {
+        for (int n = 2; n <= 6; ++n) {
+            const auto off = formationOffsets(s, n);
+            for (std::size_t a = 0; a < off.size(); ++a)
+                for (std::size_t b = a + 1; b < off.size(); ++b)
+                    CHECK(length(off[a] - off[b]) >= 43.5f);
+        }
+    }
+
     // Shape names map correctly.
     CHECK(formationShapeFromName("v_formation") == FormationShape::VFormation);
     CHECK(formationShapeFromName("wave_left") == FormationShape::SideWaveLeft);

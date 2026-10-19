@@ -34,7 +34,16 @@ std::vector<Vec2> formationOffsets(FormationShape shape, int count, float spacin
             const float t = count > 1
                 ? static_cast<float>(i) / static_cast<float>(count - 1) : 0.5f;
             const float a = degToRad(-55.0f) + t * degToRad(110.0f);
-            const float r = spacing * 1.6f;
+            // Radius grows with the member count so the chord between two
+            // adjacent members stays ~one spacing apart. A fixed radius put
+            // them only 0.6*spacing apart at six members - overlapping the
+            // Zero's 40px wingspan.
+            float r = spacing * 1.6f;
+            if (count > 1) {
+                const float halfStep =
+                    degToRad(55.0f) / static_cast<float>(count - 1);
+                r = spacing / (2.0f * std::sin(halfStep));
+            }
             p = {std::sin(a) * r, (1.0f - std::cos(a)) * r};
             break;
         }
@@ -47,10 +56,11 @@ std::vector<Vec2> formationOffsets(FormationShape shape, int count, float spacin
         case FormationShape::SideWaveLeft:
         case FormationShape::SideWaveRight:
         case FormationShape::Wedge: {
-            // Echelon wedge trailing back from the anchor.
-            p = {(count > 1 ? static_cast<float>(i) / static_cast<float>(count - 1) : 0.0f) *
-                         spacing * 1.2f,
-                 static_cast<float>(i) * spacing * 0.7f};
+            // Echelon wedge trailing back from the anchor. The step is per
+            // member (not spread across the count): normalising by the count
+            // packed larger formations until their wings touched.
+            p = {static_cast<float>(i) * spacing * 0.6f,
+                 static_cast<float>(i) * spacing * 0.75f};
             break;
         }
         }

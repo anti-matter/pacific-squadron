@@ -229,7 +229,7 @@ struct SpawnEvent {
     float x = 192.0f;             // anchor spawn x
     float y = -30.0f;             // anchor spawn y (usually off-screen)
     float delayBetween = 0.15f;   // stagger per member
-    float spacing = 36.0f;        // formation member spacing
+    float spacing = 46.0f;        // formation member spacing
     float hpMul = 1.0f;
     float rateMul = 1.0f;         // fire interval multiplier
     float speedMul = 1.0f;

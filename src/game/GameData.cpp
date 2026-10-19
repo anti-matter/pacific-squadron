@@ -400,7 +400,7 @@ bool parseStageJson(const std::string& text, StageDef& out, std::string& error) 
             ev.x = getF(e, "x", 192.0f);
             ev.y = getF(e, "y", -30.0f);
             ev.delayBetween = std::max(0.0f, getF(e, "delayBetween", 0.15f));
-            ev.spacing = std::max(4.0f, getF(e, "spacing", 36.0f));
+            ev.spacing = std::max(4.0f, getF(e, "spacing", 46.0f));
             ev.hpMul = std::max(0.1f, getF(e, "hpMul", 1.0f));
             ev.rateMul = std::max(0.05f, getF(e, "rateMul", 1.0f));
             ev.speedMul = std::max(0.1f, getF(e, "speedMul", 1.0f));
