@@ -321,25 +321,32 @@ void Renderer::renderTextOverlay(float ox, float oy, float wscale) {
         SDL_Texture* t = textures_[static_cast<std::size_t>(it->second)];
 
         const float S = key / 16.0f;                // atlas pixels per base px
-        const float cellW = kTextCellW * S, cellH = kTextCellH * S;
+        // The glyph cells in the atlas are whole pixels (buildFontAtlas rounds
+        // 7x11 * S) and packed edge-to-edge with no padding. Sample and blit
+        // exactly those integer cells: a float-sized rect (7.0 * S) is up to
+        // half a texel wider than the cell, and nearest sampling then drags a
+        // sliver of the neighbouring glyph into the inter-letter gap.
+        const float cellW = static_cast<float>(std::lround(kTextCellW * S));
+        const float cellH = static_cast<float>(std::lround(kTextCellH * S));
         const float adv = kTextAdvance * wscale * q.scale;
         const float wLogical = static_cast<float>(textWidth(q.str, q.scale));
         const float startX =
             ox + (q.center ? q.x - wLogical * 0.5f : q.x) * wscale;
         const float baseY = oy + q.y * wscale;
         const float off = std::max(1.0f, std::round(S * 0.75f));
-        const int atlasCellW = static_cast<int>(std::lround(kTextCellW * S));
 
-        // Pass 1: drop shadow.
+        // Pass 1: drop shadow. Origins land on physical pixels so each glyph
+        // is a 1:1 texel copy at any window scale (no soft or doubled edges).
         SDL_SetTextureColorMod(t, 0, 0, 0);
         SDL_SetTextureAlphaMod(t, static_cast<Uint8>(q.c.a * 6 / 10));
         {
             float px = startX;
             for (char ch : q.str) {
                 if (ch >= 32 && ch <= 126) {
-                    const SDL_FRect src{static_cast<float>((ch - 32) * atlasCellW),
+                    const SDL_FRect src{static_cast<float>((ch - 32)) * cellW,
                                         0.0f, cellW, cellH};
-                    const SDL_FRect dst{px + off, baseY + off, cellW, cellH};
+                    const SDL_FRect dst{std::round(px) + off,
+                                        std::round(baseY) + off, cellW, cellH};
                     SDL_RenderTexture(sdl_, t, &src, &dst);
                 }
                 px += adv;
@@ -352,9 +359,10 @@ void Renderer::renderTextOverlay(float ox, float oy, float wscale) {
             float px = startX;
             for (char ch : q.str) {
                 if (ch >= 32 && ch <= 126) {
-                    const SDL_FRect src{static_cast<float>((ch - 32) * atlasCellW),
+                    const SDL_FRect src{static_cast<float>((ch - 32)) * cellW,
                                         0.0f, cellW, cellH};
-                    const SDL_FRect dst{px, baseY, cellW, cellH};
+                    const SDL_FRect dst{std::round(px), std::round(baseY),
+                                        cellW, cellH};
                     SDL_RenderTexture(sdl_, t, &src, &dst);
                 }
                 px += adv;
