@@ -9,6 +9,6 @@ Comment=Fast-paced 2D WWII vertical-scrolling arcade shooter
 Icon=pacific-squadron
 Exec=pacific-squadron
 Terminal=false
-Categories=Game;ActionGame;
+Categories=Game;ArcadeGame;
 Keywords=game;shooter;wwii;plane;arcade;
 StartupNotify=true

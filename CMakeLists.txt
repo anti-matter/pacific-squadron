@@ -124,18 +124,21 @@ if(WIN32)
     # Bake the .ico into the executable so Explorer/taskbar/Alt+Tab use it.
     # The path is configured absolute because windres resolves relative paths
     # against the build directory, not the .rc file's own directory.
+    set(PACIFIC_SQUADRON_ICO ${GAME_ICO})
     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/packaging/pacific-squadron.rc.in
                    ${CMAKE_CURRENT_BINARY_DIR}/pacific-squadron.rc @ONLY)
     target_sources(pacific-squadron PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/pacific-squadron.rc)
 endif()
 
+if(APPLE)
+    option(PACIFIC_SQUADRON_MAC_BUNDLE "Package the executable as a macOS .app bundle" ON)
+endif()
 if(APPLE AND PACIFIC_SQUADRON_MAC_BUNDLE)
     # The dock icon comes from the bundle, not from SDL_SetWindowIcon, so the
-    # .icns has to be a bundle resource. Producing a .app changes where the
-    # executable lands (and the POST_BUILD asset copy), so it stays opt-in:
-    # cmake -DPACIFIC_SQUADRON_MAC_BUNDLE=ON ..
-    # Without it the .icns is left in place, ready for whatever tooling builds
-    # the .app (CPack, create-dmg, a hand-rolled script, ...).
+    # .icns has to be a bundle resource. Default ON on macOS: assets resolve
+    # via SDL_GetBasePath() and the POST_BUILD copy lands inside the bundle's
+    # executable directory, so running the .app from the build tree works.
+    # Disable with -DPACIFIC_SQUADRON_MAC_BUNDLE=OFF for a bare executable.
     set_source_files_properties(${GAME_ICNS} TARGET_DIRECTORY pacific-squadron
         PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
     target_sources(pacific-squadron PRIVATE ${GAME_ICNS})
@@ -153,6 +156,15 @@ endif()
 # ---------------------------------------------------------------------------
 install(TARGETS pacific-squadron RUNTIME DESTINATION bin)
 if(UNIX AND NOT APPLE)
+    # Runtime assets beside the installed binary's share dir so the .desktop
+    # launcher works from any cwd (the app also probes <exe>/../share/...).
+    # Dev reference sheets and the icon master are not needed at runtime.
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/assets/
+            DESTINATION share/pacific-squadron/assets
+            PATTERN "P-38.png" EXCLUDE
+            PATTERN "zero.png" EXCLUDE
+            PATTERN "app-icon-base.png" EXCLUDE
+            PATTERN "Pacific Squadron*" EXCLUDE)
     foreach(size 16 24 32 48 64 128 256 512 1024)
         install(FILES ${ICON_DIR}/pacific-squadron-${size}x${size}.png
                 DESTINATION share/icons/hicolor/${size}x${size}/apps

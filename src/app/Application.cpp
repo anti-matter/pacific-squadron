@@ -76,15 +76,26 @@ Application::Application() = default;
 Application::~Application() = default;
 
 bool Application::init() {
-    // Locate the asset directory: cwd/assets, then <exe>/assets.
+    // Locate the asset directory: cwd/assets, <exe>/assets (build tree or
+    // macOS bundle), then <prefix>/share/pacific-squadron/assets so an
+    // installed launcher works regardless of its working directory.
     namespace fs = std::filesystem;
     if (fs::exists("assets/data")) {
         assetDir_ = "assets";
     } else {
         const char* base = SDL_GetBasePath();
-        const fs::path p = fs::path(base ? base : ".") / "assets";
-        if (fs::exists(p / "data")) assetDir_ = p.string();
+        const fs::path exeDir = fs::path(base ? base : ".");
         SDL_free(const_cast<char*>(base));
+        const fs::path candidates[] = {
+            exeDir / "assets",
+            exeDir / ".." / "share" / "pacific-squadron" / "assets",
+        };
+        for (const fs::path& p : candidates) {
+            if (fs::exists(p / "data")) {
+                assetDir_ = p.string();
+                break;
+            }
+        }
     }
     if (assetDir_.empty()) {
         SDL_Log("Could not find an assets/ directory next to the executable or cwd.");
