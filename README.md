@@ -176,6 +176,9 @@ the generated content cost nearly nothing at startup.
 - `WWII_SMOKE*` headless smoke hooks (table above).
 - `WWII_NOCACHE=1` bypasses the generated art/audio disk caches (see
   Startup & loading).
+- `SIGINT`/`SIGTERM`/`SIGHUP` stop the game cleanly, including while it waits on
+  the splash gate, so `timeout 30 ./pacific-squadron` and CI kill paths work even
+  with nobody at the keyboard.
 - `WWII_DUMP_SPRITES=<dir>` (debug builds, art-regeneration runs) writes the
   generated player fighter frames, the propeller overlays, every enemy
   aircraft sprite and an `enemy_prop_anchors.txt` (engine anchors used by

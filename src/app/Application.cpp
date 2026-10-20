@@ -3,10 +3,16 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+
+#ifndef _WIN32
+#include <signal.h>  // sigaction (POSIX only; SDL maps console events on Windows)
+#endif
 
 #include <nlohmann/json.hpp>
 
@@ -18,6 +24,32 @@
 namespace ww {
 
 namespace {
+
+// Set by the SIGINT/SIGTERM handler so every wait loop can bail out. SDL's own
+// handler (which turns those signals into SDL_EVENT_QUIT) is only installed
+// when the disposition is still SIG_DFL, and a backgrounded shell starts the
+// game with SIGINT already ignored -- so a polite `kill`/`timeout` would be
+// swallowed and the process would spin forever. std::atomic<int> is
+// lock-free and async-signal-safe, which is all the handler may touch.
+std::atomic<int> gTerminateSignal{0};
+
+void handleTerminateSignal(int sig) {
+    gTerminateSignal.store(sig, std::memory_order_relaxed);
+}
+
+// Installs handleTerminateSignal for SIGINT/SIGTERM (and SIGHUP, so closing the
+// controlling terminal also stops a headless run). Replaces whatever
+// disposition was inherited -- including SIG_IGN, which is exactly the case
+// that made SDL skip its own handler.
+void installTerminateHandlers() {
+#ifndef _WIN32
+    struct sigaction sa {};
+    sa.sa_handler = handleTerminateSignal;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;  // no SA_RESTART: let blocking calls return EINTR
+    for (const int sig : {SIGINT, SIGTERM, SIGHUP}) sigaction(sig, &sa, nullptr);
+#endif
+}
 
 constexpr float kTile = 32.0f;
 
@@ -93,6 +125,10 @@ bool Application::init() {
     if (!renderer_.init("Pacific Squadron — a WWII arcade shooter", false))
         return false;
     phase("renderer init");
+    // After SDL_Init on purpose: SDL installs its own SIGINT/SIGTERM handler
+    // during init only if the disposition is still SIG_DFL, and would otherwise
+    // be the sole path to a clean shutdown. Ours is unconditional.
+    installTerminateHandlers();
 
     // Window/taskbar icon from the generated PNG pack (tools/make_icons.py).
     // Best-effort: on macOS the dock uses the app bundle's .icns instead, and
@@ -424,6 +460,12 @@ void Application::waitForSplashDismiss() {
     renderer_.setVSync(true);
     bool dismiss = false;
     while (!dismiss) {
+        // A pending SIGINT/SIGTERM must end the wait: nobody is at the keyboard
+        // in a headless run, and this gate would otherwise hold the process.
+        if (gTerminateSignal.load(std::memory_order_relaxed) != 0) {
+            running_ = false;
+            return;
+        }
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
             if (ev.type == SDL_EVENT_QUIT ||
@@ -448,6 +490,10 @@ void Application::waitForSplashDismiss() {
 int Application::run() {
     Uint64 prevTicks = SDL_GetTicks();
     while (running_) {
+        // Same reason as the splash gate: the signal handler is the one
+        // shutdown path that is guaranteed to fire regardless of how the
+        // process was started.
+        if (gTerminateSignal.load(std::memory_order_relaxed) != 0) running_ = false;
         const Uint64 loopStart = SDL_GetTicks();
         // --- events -----------------------------------------------------
         SDL_Event ev;
