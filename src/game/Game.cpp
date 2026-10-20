@@ -221,9 +221,15 @@ void Game::update(float dt) {
     switch (state_) {
     case GameState::Title: {
         constexpr int kItems = 5;  // Start / Scores / Help / Options / Quit
+        const int prevSel = menuSel_;
         if (up) menuSel_ = (menuSel_ + kItems - 1) % kItems;
         if (down) menuSel_ = (menuSel_ + 1) % kItems;
+        // Short click-beep whenever the highlight actually moves (simultaneous
+        // up+down cancels out, so no spurious sound).
+        if (menuSel_ != prevSel)
+            events_.push_back({GameEvent::Type::Sound, "menu_select"});
         if (confirm) {
+            events_.push_back({GameEvent::Type::Sound, "menu_confirm"});
             if (menuSel_ == 0) startGame();
             else if (menuSel_ == 1) enterState(GameState::HighScores);
             else if (menuSel_ == 2) enterState(GameState::Help);
@@ -234,17 +240,27 @@ void Game::update(float dt) {
     }
 
     case GameState::HighScores:
-        if (back || confirm) enterState(GameState::Title);
+        if (back || confirm) {
+            // Leaving a screen is a menu action too: esc/back/enter clicks.
+            events_.push_back({GameEvent::Type::Sound, "menu_confirm"});
+            enterState(GameState::Title);
+        }
         break;
 
     case GameState::Help:
-        if (back || confirm) enterState(GameState::Title);
+        if (back || confirm) {
+            events_.push_back({GameEvent::Type::Sound, "menu_confirm"});
+            enterState(GameState::Title);
+        }
         break;
 
     case GameState::Options: {
         constexpr int kItems = 6;  // difficulty/master/music/sfx/fullscreen/back
+        const int prevSel = menuSel_;
         if (up) menuSel_ = (menuSel_ + kItems - 1) % kItems;
         if (down) menuSel_ = (menuSel_ + 1) % kItems;
+        if (menuSel_ != prevSel)
+            events_.push_back({GameEvent::Type::Sound, "menu_select"});
         auto volStep = [](float& v, bool l, bool r) {
             if (l) v = clamp(v - 0.1f, 0.0f, 1.0f);
             if (r) v = clamp(v + 0.1f, 0.0f, 1.0f);
@@ -267,6 +283,8 @@ void Game::update(float dt) {
             break;
         case 5:
             if (confirm || back) {
+                // Either trigger leaves the menu, so either one clicks.
+                events_.push_back({GameEvent::Type::Sound, "menu_confirm"});
                 if (changed) events_.push_back({GameEvent::Type::SaveSettings, ""});
                 enterState(GameState::Title);
             }
@@ -274,7 +292,10 @@ void Game::update(float dt) {
         default: break;
         }
         if (changed) events_.push_back({GameEvent::Type::SaveSettings, ""});
-        if (back && menuSel_ != 5) enterState(GameState::Title);
+        if (back && menuSel_ != 5) {
+            events_.push_back({GameEvent::Type::Sound, "menu_confirm"});
+            enterState(GameState::Title);
+        }
         break;
     }
 

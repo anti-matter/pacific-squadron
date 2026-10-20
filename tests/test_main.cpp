@@ -14,6 +14,8 @@ int main() {
     test_ground_scroll_anchor();
     test_sfx_explosions();
     test_menu_quit();
+    test_menu_move_sfx();
+    test_menu_confirm_sfx();
     test_shipped_data();
     test_input_gamepad_axes();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);

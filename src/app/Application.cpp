@@ -642,29 +642,34 @@ void Application::consumeGameEvents() {
 void Application::updateMusic() {
     if (!windowShown_) return;  // no sound from behind an unopened window
     if (!audio_.available()) return;
+    // Music belongs to the mission only: every non-game screen (title,
+    // options, high scores, help, initials entry, results) stays silent, so
+    // the empty request below stops the loop at the stage intro/game-over
+    // transitions.
     std::string want;
     switch (game_->state()) {
-    case GameState::Title:
-    case GameState::Options:
-    case GameState::HighScores:
-    case GameState::Help:
-    case GameState::EnterInitials:
-        want = "music_title";
-        break;
     case GameState::StageIntro:
     case GameState::Playing:
     case GameState::Paused:
     case GameState::StageComplete:
         want = game_->stageIndex() == 0 ? "music_stage1" : "music_stage2";
         break;
+    case GameState::Title:
+    case GameState::Options:
+    case GameState::HighScores:
+    case GameState::Help:
+    case GameState::EnterInitials:
     case GameState::GameOver:
     case GameState::Victory:
-        want = "music_title";
+        want = "";
         break;
     }
     if (want != currentMusic_) {
         currentMusic_ = want;
-        audio_.playMusic(want);
+        if (want.empty())
+            audio_.stopMusic();
+        else
+            audio_.playMusic(want);
     }
 }
 
