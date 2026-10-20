@@ -203,6 +203,11 @@ struct BossDef {
     std::string sortieEnemy;
     float sortieInterval = 0.0f;
     int sortieCount = 2;
+    // Arena override: while this boss is alive the world renders as open
+    // water (the boss itself carries its own ground, e.g. the island
+    // fortress). Keeps a static land-locked boss from appearing to slide
+    // over scrolling terrain.
+    bool arenaOcean = false;
 };
 
 // ---------------------------------------------------------------------------

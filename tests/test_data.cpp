@@ -100,4 +100,33 @@ void test_shipped_data() {
     CHECK(static_cast<float>(elite.hitW) / static_cast<float>(elite.width) <
           static_cast<float>(heavy.hitW) / static_cast<float>(heavy.width));
     CHECK(elite.speed > heavy.speed);
+
+    // Stage 5: the island fortress.
+    CHECK(data.stages.size() >= 5);
+    const StageDef& st5 = data.stages[4];
+    CHECK(st5.name == "ISLAND FORTRESS");
+    CHECK(st5.bossTime > 0.0f && st5.bossTime < st5.duration);
+    const BossDef& fort = data.bosses[static_cast<std::size_t>(st5.bossRef)];
+    CHECK(fort.name == "COASTAL FORTRESS");
+    CHECK(fort.hullSprite == "boss_fortress_hull");
+    // The fortress carries its own island: its arena is open sea.
+    CHECK(fort.arenaOcean);
+    // Three large main guns, secondaries, AA nests and the command keep.
+    CHECK(fort.components.size() == 8);
+    int mains = 0;
+    for (const auto& c : fort.components)
+        if (c.sprite == "boss_big_turret") ++mains;
+    CHECK(mains == 3);
+    // Kill-difficulty budget: ~34% above the carrier's 252 hp.
+    int fortHp = fort.hullHp;
+    for (const auto& c : fort.components) fortHp += c.hp;
+    CHECK(fortHp == 338);
+    CHECK(fortHp * 100 >= 252 * 131 && fortHp * 100 <= 252 * 137);
+    // The fortress scrambles Zero fighters; bomber waves arrive via stage
+    // events during the boss window.
+    CHECK(fort.sortieEnemy == "fighter_light");
+    CHECK(fort.sortieInterval > 0.0f);
+    CHECK(fort.sortieCount >= 3);
+    // Fire rate keeps climbing as it burns: three escalation phases.
+    CHECK(fort.phases.size() == 3);
 }

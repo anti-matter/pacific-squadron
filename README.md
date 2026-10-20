@@ -96,6 +96,7 @@ SDL_VIDEO_DRIVER=dummy ./build/pacific-squadron
 | `WWII_SMOKE_SHOT_AT` | time (s) at which to capture it (default 10)      |
 | `WWII_SMOKE_SPLASH_SHOT` | path to write a PNG of the finished loading splash (skips the press-any-key gate, like all `WWII_SMOKE` runs) |
 | `WWII_START_STAGE`   | begin at stage *n* (1-based). With no `WWII_SMOKE` this is a normal hands-on playthrough of that stage; with `WWII_SMOKE` the autopilot starts there too |
+| `WWII_BOSS_NOW`      | **not smoke-only** — works in normal runs too: trigger the current stage's own boss ~1 s after the intro (optionally `WWII_BOSS_NOW=<delay s>`). Combine with `WWII_START_STAGE=n` to jump straight to stage *n*'s boss, e.g. `WWII_START_STAGE=5 WWII_BOSS_NOW ./pacific-squadron`. Unlike `WWII_SMOKE_BOSS` (a boss definition by index), the fight, health bar and escorts are exactly as that stage scripts them; applies to the stage you start on, later stages keep their scripted `bossTime` |
 
 Note: run smoke durations that cross a stage's scripted `bossTime` to
 exercise the natural boss-spawn path in stage scripts (stage 1: 86 s,

@@ -321,6 +321,7 @@ bool parseBossesJson(const std::string& text, std::vector<BossDef>& out, std::st
         b.sortieEnemy = getS(j, "sortieEnemy", b.sortieEnemy);
         b.sortieInterval = std::max(0.0f, getF(j, "sortieInterval", b.sortieInterval));
         b.sortieCount = clamp(getI(j, "sortieCount", 2), 1, 6);
+        b.arenaOcean = getB(j, "arenaOcean", b.arenaOcean);
         if (j.contains("components") && j["components"].is_array()) {
             for (const auto& c : j["components"]) {
                 if (!c.is_object() || !c.contains("name") || !c["name"].is_string()) {

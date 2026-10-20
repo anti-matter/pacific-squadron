@@ -36,13 +36,21 @@ public:
     float scrollY() const { return scrollY_; }
     // Difficulty-adjusted world scroll rate. THE single source of truth:
     // terrain rendering (scrollY) and ground-unit drift must both use it,
-    // or installations visibly slide over the terrain.
+    // or installations visibly slide over the terrain. Frozen during a
+    // settled boss fight (see setScrollFrozen) so the battle takes place
+    // over one fixed location.
     void setScrollMul(float m) { scrollMul_ = m; }
+    void setScrollFrozen(bool f) { scrollFrozen_ = f; }
     float scrollRate() const {
+        if (scrollFrozen_) return 0.0f;
         return (stage_ ? stage_->scrollSpeed : 60.0f) * scrollMul_;
     }
     bool bossDue() const { return bossDue_; }
     const StageDef* stageDef() const { return stage_; }
+    // Debug: fire this stage's boss at the given stage-clock time instead of
+    // the scripted bossTime (WWII_BOSS_NOW). Applies to the currently loaded
+    // stage only; the next stage's load() restores the scripted timing.
+    void setBossTimeOverride(float t) { bossTimeOverride_ = t; }
     int nextFormationId() { return nextFormationId_++; }
 
 private:
@@ -50,7 +58,9 @@ private:
     float time_ = 0.0f;
     float scrollY_ = 0.0f;
     float scrollMul_ = 1.0f;
+    bool scrollFrozen_ = false;
     bool bossDue_ = false;
+    float bossTimeOverride_ = -1.0f;
     int nextFormationId_ = 1;
     std::vector<SpawnEvent> events_;  // local copy with fired flags
 };

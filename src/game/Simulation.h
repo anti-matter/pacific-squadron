@@ -153,6 +153,7 @@ public:
         bool active = false;
         std::string name;
         float hpFraction = 0.0f;
+        bool arenaOcean = false;  // boss carries its own ground: sea below
     };
     BossView bossView() const;
 
@@ -174,6 +175,9 @@ public:
     void setGodMode(bool g) { godMode_ = g; }
     // Headless smoke-testing hook.
     void debugSpawnBoss(int defRef) { spawnBoss(defRef); }
+    // Debug: trigger the current stage's boss at this stage-clock time
+    // (see LevelDirector::setBossTimeOverride / WWII_BOSS_NOW).
+    void debugSetBossTime(float t) { director_.setBossTimeOverride(t); }
 
     const GameData& data() const { return data_; }
 

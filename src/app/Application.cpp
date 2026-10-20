@@ -273,6 +273,18 @@ bool Application::init() {
     } else if (startStageIdx >= 0) {
         game_->debugStartAtStage(startStageIdx);
     }
+    // WWII_BOSS_NOW[=<delay s>] (debug, works in normal mode): skip the
+    // build-up and trigger the CURRENT stage's boss a moment after the intro
+    // card, e.g. WWII_START_STAGE=5 WWII_BOSS_NOW jumps straight to the
+    // Coastal Fortress. Unlike the smoke-only WWII_SMOKE_BOSS (which spawns
+    // a boss definition by index), this uses the stage's own boss, so the
+    // fight, bar and escort behaviour are exactly as scripted. The override
+    // applies to this stage only; later stages use their scripted bossTime.
+    if (const char* bn = SDL_getenv("WWII_BOSS_NOW")) {
+        float delay = bn[0] ? SDL_atof(bn) : 1.0f;
+        if (delay < 0.0f) delay = 0.0f;
+        game_->sim().debugSetBossTime(delay);
+    }
     // Debug HUD on from the environment (F3 still toggles in-game).
     if (SDL_getenv("WWII_DEBUG"))
         game_->debugOverlay = true;
@@ -844,7 +856,10 @@ void Application::renderWorld() {
     flashT_ = std::max(0.0f, flashT_ - dt);
     armorFlashT_ = std::max(0.0f, armorFlashT_ - dt);
 
-    renderTerrain(stage, scrollY, time);
+    // Bosses with arenaOcean (the island fortress) carry their own ground:
+    // while one is alive the world renders as open sea, so the island never
+    // appears to slide over scrolling land.
+    renderTerrain(sim.bossView().arenaOcean ? nullptr : stage, scrollY, time);
 
     auto findAnim = [&](const char* name) -> const AnimDef* {
         const int i = data_.findAnim(name);

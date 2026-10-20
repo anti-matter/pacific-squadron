@@ -2329,6 +2329,159 @@ inline float half(float t) {
 }
 }  // namespace dship
 
+// --- COASTAL FORTRESS boss hull ----------------------------------------------
+// A concrete island fortress: sand beach ring, jungle scrub fringe, breaker
+// foam, octagonal seawall with corner bastions, and an inner courtyard whose
+// barbettes/pads MUST mirror the component offsets in bosses.json (main guns
+// (0,34) (-44,18) (44,18); secondaries (±52,-34); AA nests (±24,-58); keep
+// (0,-10)). damage: 0 pristine, 2 cracked & scorching, 3 wreck (dark, holes).
+PixelBuf makeFortressHull(int damage) {
+    constexpr int W = 150, H = 140;
+    const int cx = W / 2, cy = H / 2;
+    PixelBuf p(W, H);
+
+    const std::uint32_t sand = col(0xC9B283);
+    const std::uint32_t sandDk = col(0xAE9A6C);
+    const std::uint32_t rock = col(0x6E6455);
+    const std::uint32_t jungle = col(0x3E6B34);
+    const std::uint32_t jungleDk = col(0x2C5026);
+    const std::uint32_t conc = col(0x8F8B7E);
+    const std::uint32_t concHi = col(0x9D998B);
+    const std::uint32_t concSeam = col(0x6E6A5E);
+    const std::uint32_t concRim = col(0x494539);
+    const std::uint32_t court = col(0x7E7A6D);
+
+    // Cast shadow on the water.
+    p.fillEllipse(cx + 4.0f, cy + 6.0f, 71.0f, 65.0f, col(0x050F1A, 90));
+
+    // Island base: sand with rock rim, dithered shading and scrub fringe.
+    p.fillEllipse(cx, cy, 71.0f, 65.0f, sand);
+    for (int y = -66; y <= 66; ++y)
+        for (int x = -72; x <= 72; ++x) {
+            const float q = std::sqrt((x * x) / (71.0f * 71.0f) +
+                                      (y * y) / (65.0f * 65.0f));
+            if (q > 1.0f) continue;
+            const int h = (x * 7 + y * 13) & 7;
+            if (q > 0.94f)
+                p.set(cx + x, cy + y, (h & 1) ? rock : sandDk);
+            else if (q > 0.86f && h == 0)
+                p.set(cx + x, cy + y, sandDk);
+            else if (q > 0.72f && (h == 3 || h == 6) && ((x + 2 * y) & 3) == 0)
+                p.set(cx + x, cy + y, h == 3 ? jungle : jungleDk);
+        }
+
+    // Breaker foam around the shore edge.
+    for (int k = 0; k < 96; ++k) {
+        const float a = static_cast<float>(k) / 96.0f * 6.2832f;
+        const int fx = cx + static_cast<int>(73.5f * std::cos(a));
+        const int fy = cy + static_cast<int>(67.5f * std::sin(a));
+        p.set(fx, fy, col(0xE8F2FA, 190));
+        if (k % 3) p.set(fx, fy + 1, col(0xC8DCF0, 110));
+    }
+
+    // Octagonal concrete seawall platform.
+    auto inOct = [](int x, int y, int hx, int hy, int cut) {
+        const int ax = std::abs(x), ay = std::abs(y);
+        return ax <= hx && ay <= hy && ax + ay <= hx + hy - cut;
+    };
+    for (int y = -54; y <= 54; ++y)
+        for (int x = -60; x <= 60; ++x) {
+            if (!inOct(x, y, 60, 54, 22)) continue;
+            std::uint32_t c = conc;
+            if (!inOct(x + 1, y, 60, 54, 22) || !inOct(x - 1, y, 60, 54, 22) ||
+                !inOct(x, y + 1, 60, 54, 22) || !inOct(x, y - 1, 60, 54, 22))
+                c = concRim;
+            else if ((x - y) % 14 == 0 || (x + y) % 17 == 0)
+                c = concSeam;
+            else if (x < -10 && (x + 4 * y) % 9 != 0)
+                c = concHi;  // sun side of the wall
+            p.set(cx + x, cy + y, c);
+        }
+
+    // Corner bastions.
+    for (int sx : {-1, 1})
+        for (int sy : {-1, 1}) {
+            const int bx = cx + sx * 40, by = cy + sy * 36;
+            p.fillRect(bx - 7, by - 7, 14, 14, concRim);
+            p.fillRect(bx - 6, by - 6, 12, 12, sx * sy > 0 ? concHi : conc);
+            p.hline(bx - 6, bx + 6, by, concSeam);
+            p.vline(bx, by - 6, by + 6, concSeam);
+        }
+
+    // Inner courtyard with panel seams and camo splotches.
+    for (int y = -34; y <= 34; ++y)
+        for (int x = -40; x <= 40; ++x) {
+            if (!inOct(x, y, 40, 34, 14)) continue;
+            std::uint32_t c = court;
+            if ((x + 2 * y) % 11 == 0) c = col(0x6E6A5E);
+            else if ((x * 5 + y * 3) % 29 == 0) c = col(0x8A867A);
+            else if ((x * 7 + y * 11) % 37 < 3 && x * x + 2 * y * y < 2100)
+                c = jungleDk;  // netting over stores
+            p.set(cx + x, cy + y, c);
+        }
+
+    // Main-gun barbettes (mirror bosses.json offsets).
+    for (int i = 0; i < 3; ++i) {
+        const int ox = (i == 0 ? 0 : (i == 1 ? -44 : 44));
+        const int oy = (i == 0 ? 34 : 18);
+        p.fillEllipse(static_cast<float>(cx + ox) + 3.0f,
+                      static_cast<float>(cy + oy) + 4.0f, 22.0f, 22.0f,
+                      col(0x0A0806, 90));
+        p.fillEllipse(static_cast<float>(cx + ox), static_cast<float>(cy + oy),
+                      20.5f, 20.5f, concRim);
+        p.fillEllipse(static_cast<float>(cx + ox), static_cast<float>(cy + oy),
+                      17.5f, 17.5f, col(0x777368));
+        p.fillEllipse(static_cast<float>(cx + ox),
+                      static_cast<float>(cy + oy) - 1.0f, 12.0f, 12.0f,
+                      col(0x55524A));
+        for (int r = 0; r < 12; ++r) {  // collar bolts
+            const float a = r * 0.5236f;
+            p.set(cx + ox + static_cast<int>(19.0f * std::cos(a)),
+                  cy + oy + static_cast<int>(19.0f * std::sin(a)), concHi);
+        }
+    }
+
+    // Secondary-turret pads and AA nests.
+    for (int sx : {-1, 1}) {
+        const float px = static_cast<float>(cx + sx * 52);
+        const float py = static_cast<float>(cy - 34);
+        p.fillEllipse(px, py, 14.0f, 14.0f, concRim);
+        p.fillEllipse(px, py, 11.5f, 11.5f, col(0x777368));
+        const float ax = static_cast<float>(cx + sx * 24);
+        const float ay = static_cast<float>(cy - 58);
+        p.fillEllipse(ax, ay, 12.5f, 12.5f, concRim);
+        p.fillEllipse(ax, ay, 10.0f, 10.0f, col(0x777368));
+    }
+
+    // Command keep pad (bridge component sits here).
+    p.fillRect(cx - 22, cy - 36, 44, 52, concRim);
+    p.fillRect(cx - 20, cy - 34, 40, 48, conc);
+    for (int y = cy - 34; y <= cy + 14; y += 6)
+        p.hline(cx - 20, cx + 20, y, concSeam);
+    p.fillRect(cx - 20, cy - 34, 4, 48, concHi);
+
+    // Battle damage.
+    if (damage >= 2) {
+        p.fillEllipse(cx - 30.0f, cy + 26.0f, 9.0f, 7.0f, col(0x241F18, 160));
+        p.fillEllipse(cx + 36.0f, cy - 20.0f, 8.0f, 6.0f, col(0x241F18, 150));
+        for (int k = 0; k < 30; ++k) {  // cracks radiating from hits
+            const float a = k * 0.21f + 0.4f;
+            const float ox = (k % 2) ? -30.0f : 36.0f;
+            const float oy = (k % 2) ? 26.0f : -20.0f;
+            for (int d = 6; d < 6 + (k % 5) * 4; d += 2)
+                p.set(cx + static_cast<int>(ox + d * std::cos(a)),
+                      cy + static_cast<int>(oy + d * 0.7f * std::sin(a)),
+                      col(0x35322B, 220));
+        }
+    }
+    if (damage >= 3) {
+        p.fillEllipse(cx, cy, 62.0f, 56.0f, col(0x24201A, 120));  // soot
+        p.fillEllipse(cx - 14.0f, cy - 6.0f, 12.0f, 10.0f, col(0x14110D));
+        p.fillEllipse(cx + 20.0f, cy + 30.0f, 10.0f, 8.0f, col(0x14110D));
+    }
+    return p;
+}
+
 PixelBuf makeDestroyerHull(int damage) {
     using namespace dship;
     const int cx = W / 2;
@@ -3145,7 +3298,7 @@ namespace {
 constexpr std::uint32_t kArtCacheMagic = 0x50534152u;  // "PSAR"
 // Bump whenever any generated art changes (v10: A6M Zero redesign of the
 // primary enemy fighter and interceptor).
-constexpr std::uint32_t kArtCacheVersion = 11u;
+constexpr std::uint32_t kArtCacheVersion = 12u;
 
 void wr32(std::ostream& o, std::uint32_t v) {
     o.write(reinterpret_cast<const char*>(&v), 4);
@@ -3362,6 +3515,10 @@ bool generateAllArt(Renderer& r, const std::string& cachePath,
     add("boss_carrier_hull_dmg", makeCarrierHull(2));
     add("boss_carrier_hull_wreck", makeCarrierHull(3));
     add("boss_carrier_hull_flash", toFlashSilhouette(makeCarrierHull(0)));
+    add("boss_fortress_hull", makeFortressHull(0));
+    add("boss_fortress_hull_dmg", makeFortressHull(2));
+    add("boss_fortress_hull_wreck", makeFortressHull(3));
+    add("boss_fortress_hull_flash", toFlashSilhouette(makeFortressHull(0)));
     add("boss_carrier_island", makeCarrierIsland());
     add("wake_foam", makeWake());
     add("fire_puff", makeFirePuff());
@@ -3400,6 +3557,8 @@ void loadPngOverrides(Renderer& renderer, const std::string& assetDir) {
         "boss_destroyer_bridge",
         "boss_carrier_hull", "boss_carrier_hull_light", "boss_carrier_hull_dmg",
         "boss_carrier_hull_wreck", "boss_carrier_hull_flash", "boss_carrier_island",
+        "boss_fortress_hull", "boss_fortress_hull_dmg",
+        "boss_fortress_hull_wreck", "boss_fortress_hull_flash",
         "wake_foam", "fire_puff", "smoke_puff",
     };
     for (const char* n : names) {

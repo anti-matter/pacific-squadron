@@ -174,6 +174,16 @@ void Simulation::setPlayerIntent(Vec2 moveDir, bool fire, bool special) {
 void Simulation::update() {
     const float dt = kSimDt;
 
+    // Boss arena: once the boss has fully entered the scene (entry done,
+    // state >= 1) the world scroll freezes until the fight is over, so the
+    // battle takes place over one fixed location — terrain stops translating
+    // and ground units stay welded to it (scrollRate is the single source).
+    // While the boss is still descending, the world keeps scrolling.
+    bool bossEngaged = false;
+    for (const auto& b : bosses_)
+        if (b.state == 1 || b.state == 2) { bossEngaged = true; break; }
+    director_.setScrollFrozen(bossEngaged);
+
     // Director -> spawn queue -> world.
     director_.update(dt, spawnQueue_);
     const float now = director_.time();
@@ -745,6 +755,20 @@ void Simulation::spawnBoss(int defRef) {
         e.fireTimer = cd.firstFireDelay;
         b.components.push_back(ci);
     }
+    // arenaOcean arena: the world becomes open sea while this boss lives,
+    // so land installations left over from the approach (AA nests, bunkers,
+    // tanks) would visibly slide across the water — sink them. Ships are
+    // at home on the sea and stay.
+    if (def.arenaOcean) {
+        std::vector<int> toSink;
+        for (std::size_t i = 0; i < pool_.size(); ++i) {
+            const Entity& e = pool_[i];
+            if (!e.alive || e.kind != EKind::Enemy) continue;
+            const EnemyDef& ed = data_.enemies[static_cast<std::size_t>(e.enemyDef)];
+            if (ed.ground && !ed.ship) toSink.push_back(static_cast<int>(i));
+        }
+        for (int i : toSink) killEnemy(i, false);
+    }
     // First air-group sortie lands shortly after the ship settles in.
     b.sortieTimer = def.sortieInterval > 0.0f ? def.sortieInterval * 0.55f : 0.0f;
     bosses_.push_back(std::move(b));
@@ -756,6 +780,7 @@ Simulation::BossView Simulation::bossView() const {
     for (const auto& b : bosses_) {
         if (b.state >= 3) continue;
         const BossDef& def = data_.bosses[static_cast<std::size_t>(b.defRef)];
+        v.arenaOcean = def.arenaOcean;
         int hp = 0, maxHp = def.hullHp;
         if (b.hull >= 0 && pool_[static_cast<std::size_t>(b.hull)].alive)
             hp += pool_[static_cast<std::size_t>(b.hull)].hp;

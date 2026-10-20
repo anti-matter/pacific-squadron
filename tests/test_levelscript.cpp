@@ -72,4 +72,25 @@ void test_levelscript() {
     }
     // bossRef unresolved here (no bosses list), so rely on the due flag.
     CHECK(dir.bossDue());
+
+    // Boss-arena freeze: while engaged, the world scroll (terrain AND the
+    // ground-unit drift that reads scrollRate) stops, but the stage clock
+    // keeps running so scripted events keep firing. Unfreezing resumes.
+    LevelDirector fr;
+    fr.load(stage);
+    std::vector<SpawnRequest> frq;
+    for (int i = 0; i < 60; ++i) fr.update(1.0f / 60.0f, frq);
+    const float y0 = fr.scrollY();
+    CHECK(y0 > 0.0f);
+    fr.setScrollFrozen(true);
+    CHECK_NEAR(fr.scrollRate(), 0.0f, 1e-6f);
+    for (int i = 0; i < 60; ++i) fr.update(1.0f / 60.0f, frq);
+    CHECK_NEAR(fr.scrollY(), y0, 1e-4f);  // world held still
+    CHECK_NEAR(fr.time(), 2.0f, 0.1f);    // clock kept running
+    fr.setScrollFrozen(false);
+    for (int i = 0; i < 60; ++i) fr.update(1.0f / 60.0f, frq);
+    CHECK(fr.scrollY() > y0 + 55.0f);  // scrolling resumed
+    // A new stage load restores the scripted (unfrozen) timing.
+    fr.load(stage);
+    CHECK(fr.scrollRate() > 0.0f);
 }

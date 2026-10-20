@@ -12,6 +12,8 @@ void LevelDirector::load(const StageDef& stage) {
     scrollY_ = 0.0f;
     scrollMul_ = 1.0f;
     bossDue_ = false;
+    bossTimeOverride_ = -1.0f;  // scripted timing returns for the new stage
+    scrollFrozen_ = false;
     nextFormationId_ = 1;
     events_ = stage.events;
     for (auto& e : events_) e.fired = false;
@@ -61,7 +63,9 @@ void LevelDirector::update(float dt, std::vector<SpawnRequest>& out) {
         }
     }
 
-    if (!bossDue_ && !stage_->boss.empty() && time_ >= stage_->bossTime) {
+    if (!bossDue_ && !stage_->boss.empty() &&
+        time_ >= (bossTimeOverride_ >= 0.0f ? bossTimeOverride_
+                                            : stage_->bossTime)) {
         bossDue_ = true;
         SpawnRequest req;
         req.time = time_;
