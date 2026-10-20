@@ -94,6 +94,12 @@ bool Application::init() {
         return false;
     phase("renderer init");
 
+    // Window/taskbar icon from the generated PNG pack (tools/make_icons.py).
+    // Best-effort: on macOS the dock uses the app bundle's .icns instead, and
+    // a missing pack simply leaves the default icon in place.
+    renderer_.setWindowIconFromDir(
+        (std::filesystem::path(assetDir_) / "icons").string());
+
     // Splash first: as soon as a window exists, make it visible. Everything
     // below can take seconds on slower machines (gamepad and audio device
     // probes, art baking, music synthesis) and the player must never stare

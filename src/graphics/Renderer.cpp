@@ -7,6 +7,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <filesystem>
+#include <string>
 
 #include "core/MathUtil.h"
 #include "graphics/BitmapFont.h"
@@ -388,6 +391,62 @@ void Renderer::setFullscreen(bool fs) {
 
 void Renderer::setVSync(bool on) {
     SDL_SetRenderVSync(sdl_, on ? 1 : 0);
+}
+
+bool Renderer::setWindowIconFromDir(const std::string& iconsDir) {
+    namespace fs = std::filesystem;
+    if (!window_) return false;
+    // The dummy driver (headless runs, CI) has no icon support at all; skip the
+    // decode work rather than logging a failure that means nothing there.
+    if (const char* drv = SDL_GetCurrentVideoDriver(); drv && std::strcmp(drv, "dummy") == 0)
+        return false;
+
+    // Ascending: the first one loaded becomes the 100%-scale surface and the
+    // rest are attached as high-DPI alternates, which is what SDL hands to
+    // shells that ask for a specific size.
+    static constexpr int kSizes[] = {16, 24, 32, 48, 64, 128, 256, 512};
+
+    std::vector<SDL_Surface*> loaded;
+    loaded.reserve(std::size(kSizes));
+    for (const int size : kSizes) {
+        const fs::path p =
+            fs::path(iconsDir) / ("pacific-squadron-" + std::to_string(size) + "x" + std::to_string(size) + ".png");
+        std::error_code ec;
+        if (!fs::exists(p, ec)) continue;
+        int w = 0, h = 0, ch = 0;
+        unsigned char* px = stbi_load(p.string().c_str(), &w, &h, &ch, 4);
+        if (!px) {
+            SDL_Log("Window icon: could not decode %s (%s)", p.string().c_str(), stbi_failure_reason());
+            continue;
+        }
+        SDL_Surface* surf = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_RGBA32);
+        if (surf) {
+            for (int row = 0; row < h; ++row) {
+                SDL_memcpy(static_cast<unsigned char*>(surf->pixels) + row * surf->pitch,
+                           px + static_cast<std::size_t>(row) * w * 4,
+                           static_cast<std::size_t>(w) * 4);
+            }
+            loaded.push_back(surf);
+        }
+        stbi_image_free(px);
+    }
+    if (loaded.empty()) return false;
+
+    SDL_Surface* icon = loaded.front();
+    for (std::size_t i = 1; i < loaded.size(); ++i)
+        SDL_AddSurfaceAlternateImage(icon, loaded[i]);  // takes a reference
+
+    const bool ok = SDL_SetWindowIcon(window_, icon);
+#ifndef NDEBUG
+    // Headless runs (SDL_VIDEODRIVER=dummy) legitimately report "not
+    // supported", so this stays a debug-only diagnostic.
+    if (!ok) SDL_Log("Window icon: SDL_SetWindowIcon failed: %s", SDL_GetError());
+#endif
+
+    // SDL_SetWindowIcon converted (and copied the alternates of) our surface,
+    // so everything we created is ours to release again.
+    for (SDL_Surface* s : loaded) SDL_DestroySurface(s);
+    return ok;
 }
 
 bool Renderer::setSplashCanvas(bool on, int w, int h) {

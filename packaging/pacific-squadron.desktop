@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Pacific Squadron
+GenericName=WWII Arcade Shooter
+Comment=Fast-paced 2D WWII vertical-scrolling arcade shooter
+# Resolved through the hicolor icon theme (share/icons/hicolor/<size>/apps/),
+# so keep this as a bare name rather than a filesystem path.
+Icon=pacific-squadron
+Exec=pacific-squadron
+Terminal=false
+Categories=Game;ActionGame;
+Keywords=game;shooter;wwii;plane;arcade;
+StartupNotify=true

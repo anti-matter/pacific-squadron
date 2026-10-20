@@ -95,6 +95,75 @@ add_custom_command(TARGET pacific-squadron POST_BUILD
         $<TARGET_FILE_DIR:pacific-squadron>/assets)
 
 # ---------------------------------------------------------------------------
+# Application icon (assets/icons/ -- see tools/make_icons.py)
+# ---------------------------------------------------------------------------
+set(ICON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/assets/icons)
+set(GAME_ICO ${ICON_DIR}/pacific-squadron.ico)
+set(GAME_ICNS ${ICON_DIR}/pacific-squadron.icns)
+
+# Regenerate the whole pack from the master artwork: cmake --build . --target icons
+# (opt-in maintenance task -- the generated icons are committed, so a normal
+# build never needs Python or Pillow.)
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+    execute_process(COMMAND ${Python3_EXECUTABLE} -c "import numpy, PIL"
+                    RESULT_VARIABLE _icons_py_ok OUTPUT_QUIET ERROR_QUIET)
+    if(_icons_py_ok EQUAL 0)
+        add_custom_target(icons
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/make_icons.py
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            COMMENT "Regenerating icon pack from assets/app-icon-base.png"
+            VERBATIM)
+    else()
+        message(STATUS "icons target skipped: python3 lacks Pillow/numpy "
+                       "(pip install pillow numpy to enable)")
+    endif()
+endif()
+
+if(WIN32)
+    # Bake the .ico into the executable so Explorer/taskbar/Alt+Tab use it.
+    # The path is configured absolute because windres resolves relative paths
+    # against the build directory, not the .rc file's own directory.
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/packaging/pacific-squadron.rc.in
+                   ${CMAKE_CURRENT_BINARY_DIR}/pacific-squadron.rc @ONLY)
+    target_sources(pacific-squadron PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/pacific-squadron.rc)
+endif()
+
+if(APPLE AND PACIFIC_SQUADRON_MAC_BUNDLE)
+    # The dock icon comes from the bundle, not from SDL_SetWindowIcon, so the
+    # .icns has to be a bundle resource. Producing a .app changes where the
+    # executable lands (and the POST_BUILD asset copy), so it stays opt-in:
+    # cmake -DPACIFIC_SQUADRON_MAC_BUNDLE=ON ..
+    # Without it the .icns is left in place, ready for whatever tooling builds
+    # the .app (CPack, create-dmg, a hand-rolled script, ...).
+    set_source_files_properties(${GAME_ICNS} TARGET_DIRECTORY pacific-squadron
+        PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    target_sources(pacific-squadron PRIVATE ${GAME_ICNS})
+    set_target_properties(pacific-squadron PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_ICON_FILE pacific-squadron.icns
+        MACOSX_BUNDLE_BUNDLE_NAME "Pacific Squadron"
+        MACOSX_BUNDLE_GUI_IDENTIFIER com.pacificsquadron.game
+        MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+        MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION})
+endif()
+
+# ---------------------------------------------------------------------------
+# Install (Linux/Unix layout; icons registered with the hicolor theme)
+# ---------------------------------------------------------------------------
+install(TARGETS pacific-squadron RUNTIME DESTINATION bin)
+if(UNIX AND NOT APPLE)
+    foreach(size 16 24 32 48 64 128 256 512 1024)
+        install(FILES ${ICON_DIR}/pacific-squadron-${size}x${size}.png
+                DESTINATION share/icons/hicolor/${size}x${size}/apps
+                RENAME pacific-squadron.png)
+    endforeach()
+    install(FILES ${GAME_ICO} DESTINATION share/pacific-squadron)
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/packaging/pacific-squadron.desktop
+            DESTINATION share/applications)
+endif()
+
+# ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 enable_testing()

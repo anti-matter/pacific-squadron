@@ -181,6 +181,58 @@ the generated content cost nearly nothing at startup.
   aircraft sprite and an `enemy_prop_anchors.txt` (engine anchors used by
   the spinning-prop overlays) to `<dir>` for offline inspection.
 
+## Application icon & packaging
+
+`assets/app-icon-base.png` (1254x1254 master artwork) is the single source for
+every platform icon. `tools/make_icons.py` regenerates the whole pack:
+
+```
+python3 tools/make_icons.py            # or: cmake --build . --target icons
+```
+
+Outputs in `assets/icons/`:
+
+| File | Used by |
+|---|---|
+| `pacific-squadron-{16,24,32,48,64,128,256,512,1024}x{N}.png` | Linux/hicolor, runtime window icon |
+| `pacific-squadron.ico` (16/24/32/48/64/128/256) | Windows executable resource |
+| `pacific-squadron.icns` (icp4…ic14, 16→1024) | macOS app bundle |
+
+The master has no alpha channel (its rounded corners are painted black), so the
+generator attaches an analytic rounded-square mask, un-premultiplies the
+black-blended edge, and resamples in premultiplied space — no dark fringe on a
+light desktop, at any size. The `.ico` and `.icns` containers are written by the
+script itself, so regeneration works identically on Linux, macOS and Windows
+(needs only `pip install pillow numpy`; the generated files are committed, so a
+normal build never needs Python).
+
+Wired in automatically:
+
+- **Runtime** — `Renderer::setWindowIconFromDir()` loads the PNG pack and hands
+  the window a multi-resolution surface (X11/Wayland taskbars, Windows titlebar
+  and Alt+Tab). Skipped on the dummy driver and on macOS, where the dock uses
+  the bundle icon.
+- **Windows** — `packaging/pacific-squadron.rc.in` is configured into the build
+  tree and compiled into the executable, so Explorer/taskbar show the icon.
+- **macOS** — configure with `-DPACIFIC_SQUADRON_MAC_BUNDLE=ON` to build a real
+  `.app` with the `.icns` in `Contents/Resources`. It is opt-in because bundling
+  moves the executable and the asset copy step.
+- **Linux install** — `cmake --install` places the binary in `bin/`, the PNGs in
+  `share/icons/hicolor/<size>/apps/pacific-squadron.png`, and
+  `packaging/pacific-squadron.desktop` in `share/applications/`.
+
+Manual steps still required per platform:
+
+- **Linux, no install** — to use the icon without `cmake --install`, copy any PNG
+  to `~/.local/share/icons/hicolor/256x256/apps/pacific-squadron.png` and run
+  `gtk-update-icon-cache ~/.local/share/icons/hicolor`.
+- **Windows** — rebuild after regenerating the `.ico` (the resource is compiled
+  in at build time; there is no post-hoc patching).
+- **macOS** — the dock ignores `SDL_SetWindowIcon`; ship a `.app` (either the
+  opt-in CMake bundle above or your own tooling) for the `.icns` to take effect.
+  To rebuild the `.icns` with Apple's own tooling instead, `iconutil` needs an
+  `.iconset` folder: `iconutil -c icns pacific-squadron.iconset`.
+
 ## Architecture
 
 ```
