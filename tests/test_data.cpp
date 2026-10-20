@@ -129,4 +129,38 @@ void test_shipped_data() {
     CHECK(fort.sortieCount >= 3);
     // Fire rate keeps climbing as it burns: three escalation phases.
     CHECK(fort.phases.size() == 3);
+
+    // Stage 6: the deep blue fleet.
+    CHECK(data.stages.size() >= 6);
+    const StageDef& st6 = data.stages[5];
+    CHECK(st6.name == "DEEP BLUE FLEET");
+    CHECK(st6.bossTime > 0.0f && st6.bossTime < st6.duration);
+    const BossDef& cruis = data.bosses[static_cast<std::size_t>(st6.bossRef)];
+    CHECK(cruis.name == "HEAVY CRUISER");
+    CHECK(cruis.hullSprite == "boss_cruiser_hull");
+    // A ship, not an island: no arena override needed.
+    CHECK(!cruis.arenaOcean);
+    // Four main guns (superfiring pairs fore & aft), secondaries, AA, bridge.
+    CHECK(cruis.components.size() == 9);
+    int cruisMains = 0, cruisSecondaries = 0, cruisAa = 0;
+    for (const auto& c : cruis.components) {
+        if (c.sprite == "boss_big_turret") ++cruisMains;
+        else if (c.sprite == "boss_turret_small") ++cruisSecondaries;
+        else if (c.sprite == "boss_aa") ++cruisAa;
+    }
+    CHECK(cruisMains == 4);
+    CHECK(cruisSecondaries == 2);
+    CHECK(cruisAa == 2);
+    // Kill-difficulty budget: ~33% above the fortress's 338 hp.
+    int cruisHp = cruis.hullHp;
+    for (const auto& c : cruis.components) cruisHp += c.hp;
+    CHECK(cruisHp == 448);
+    CHECK(cruisHp * 100 >= 338 * 131 && cruisHp * 100 <= 338 * 137);
+    // Deck park: the cruiser flies Zero fighters off her stern catapult.
+    CHECK(cruis.sortieEnemy == "fighter_light");
+    CHECK(cruis.sortieInterval > 0.0f);
+    CHECK(cruis.sortieCount >= 3);
+    // Higher speed & volume of fire than the fortress: three phases.
+    CHECK(cruis.phases.size() == 3);
+    CHECK(cruis.hoverFreq > fort.hoverFreq);
 }

@@ -2329,6 +2329,240 @@ inline float half(float t) {
 }
 }  // namespace dship
 
+// --- HEAVY CRUISER boss hull --------------------------------------------------
+// A treaty heavy cruiser running full speed, bow toward the player: armour
+// belt, superfiring main-gun barbettes fore and aft at dy +58/+30/-52/-78,
+// secondary gun sponsons at (±26,+4), AA platforms at (±30,-30), the island
+// bridge with fire-control tower at (0,-14) and a raked funnel at (0,-38).
+// Barbettes and pads MUST mirror the component offsets in bosses.json.
+// damage: 0 pristine, 2 scorched, 3 wreck.
+namespace hcship {
+constexpr int W = 120, H = 212;
+constexpr int yTop = 8, yBot = 204;
+constexpr float L = static_cast<float>(yBot - yTop);
+inline float half(float t) {  // 0 = stern (top) .. 1 = bow tip (bottom)
+    if (t < 0.06f) return 19.0f + 10.0f * std::sqrt(std::max(0.0f, t / 0.06f));
+    if (t < 0.58f) return 29.0f;                                  // flush waist
+    if (t < 0.80f) return 29.0f - 6.0f * ((t - 0.58f) / 0.22f);   // tumblehome
+    if (t < 0.93f) return 23.0f - 10.0f * ((t - 0.80f) / 0.13f);  // forecastle
+    return std::max(0.0f, 13.0f * (1.0f - (t - 0.93f) / 0.07f));  // raked bow
+}
+}  // namespace hcship
+
+PixelBuf makeCruiserHull(int damage) {
+    using namespace hcship;
+    const int cx = W / 2;
+    PixelBuf p(W, H);
+    auto halfAt = [&](int y) { return half(static_cast<float>(y - yTop) / L); };
+
+    // --- water shadow ----------------------------------------------------------
+    for (int y = yTop; y <= yBot + 4; ++y) {
+        const int hw = static_cast<int>(halfAt(std::min(y - 4, yBot))) + 4;
+        for (int x = -hw; x <= hw; ++x)
+            p.set(cx + x + 3, y + 4, col(0x050F1A, 100));
+    }
+    // --- bow wave & side foam ----------------------------------------------------
+    for (int k = 0; k < 58; ++k) {
+        const float a = static_cast<float>(k) / 57.0f;
+        const float bowY = yBot - 4.0f - 38.0f * a;
+        const float spread = 3.0f + 22.0f * a;
+        const std::uint32_t foam = col(0xE8F2FA, static_cast<std::uint8_t>(200 - 160 * a));
+        for (int sx : {-1, 1}) {
+            const int fx = cx + static_cast<int>(sx * (halfAt(static_cast<int>(bowY)) + spread));
+            p.set(fx, static_cast<int>(bowY), foam);
+            p.set(fx + sx, static_cast<int>(bowY) + 1, col(0xC8DCF0, 110));
+            if (k % 7 == 0) p.set(fx + sx * 2, static_cast<int>(bowY) - 2, col(0xFFFFFF, 150));
+        }
+    }
+    // Sterna wake feathering behind the transom.
+    for (int k = 0; k < 12; ++k) {
+        const float a = static_cast<float>(k) / 11.0f;
+        const int wy = yTop - 3 + k;
+        const int off = 15 + static_cast<int>(10.0f * (1.0f - a));
+        p.set(cx - off, wy, col(0xC8DCF0, static_cast<std::uint8_t>(75 - 5 * k)));
+        p.set(cx + off, wy, col(0xC8DCF0, static_cast<std::uint8_t>(75 - 5 * k)));
+    }
+    for (int y = yTop + 6; y < yBot - 8; y += 3) {
+        const int hw = static_cast<int>(halfAt(y));
+        p.set(cx - hw - 2, y, col(0xC8DCF0, 70));
+        p.set(cx + hw + 2, y + 1, col(0xC8DCF0, 70));
+    }
+
+    // --- sponson shoulders: secondaries & AA ride these (before hull body) -----
+    for (int sx : {-1, 1}) {
+        for (int y = H / 2 + 17; y >= H / 2 - 11; --y) {  // secondary sponsons
+            const int hw = static_cast<int>(halfAt(y));
+            for (int x = hw - 1; x <= hw + 5; ++x) {
+                const int edge = hw + 5 - x;
+                p.set(cx + sx * x, y, edge <= 1 ? col(0x23282D)
+                                                : (y % 4 == 0 ? col(0x434A50) : col(0x4E555C)));
+            }
+        }
+        for (int y = H / 2 - 20; y >= H / 2 - 42; --y) {  // AA sponsons
+            const int hw = static_cast<int>(halfAt(y));
+            for (int x = hw - 1; x <= hw + 7; ++x) {
+                const int edge = hw + 7 - x;
+                p.set(cx + sx * x, y, edge <= 1 ? col(0x23282D)
+                                                : (y % 4 == 0 ? col(0x434A50) : col(0x4E555C)));
+            }
+        }
+    }
+
+    // --- hull body with armour belt ----------------------------------------------
+    for (int y = yTop; y <= yBot; ++y) {
+        const int hw = static_cast<int>(halfAt(y));
+        for (int x = -hw; x <= hw; ++x) {
+            const int dEdge = hw - std::abs(x);
+            std::uint32_t c = col(0x545B62);
+            if (dEdge <= 1) c = col(0x22272C);
+            else if (dEdge <= 4) {  // thick belt plating
+                const int plate = (y / 10) % 2;
+                c = plate ? col(0x424950) : col(0x4D545B);
+                if (y % 10 == 0) c = col(0x2B3035);
+            }
+            else if (x < 0) c = col(0x5F676E);
+            p.set(cx + x, y, c);
+        }
+    }
+    // --- deck with panel seams -----------------------------------------------------
+    for (int y = yTop + 3; y <= yBot - 3; ++y) {
+        const int hw = static_cast<int>(halfAt(y)) - 5;
+        for (int x = -hw; x <= hw; ++x) {
+            std::uint32_t c = col(0x686F76);
+            if ((y % 3) == 0) c = col(0x596067);
+            else if ((x + y) % 13 == 0) c = col(0x747B82);
+            p.set(cx + x, y, c);
+        }
+    }
+    for (int y = yTop + 6; y < yBot - 6; ++y)
+        if (y % 3 != 2) p.set(cx, y, col(0x828990));  // centreline walkway
+
+    // --- main gun barbette collars (match JSON offsets dy +58/+30/-52/-78) -------
+    for (int dy : {58, 30, -52, -78}) {
+        const float by = static_cast<float>(H / 2 + dy);
+        p.fillEllipse(static_cast<float>(cx) + 2.0f, by + 3.0f, 16.5f, 16.5f,
+                      col(0x0A0806, 90));
+        p.fillEllipse(static_cast<float>(cx), by, 16.0f, 16.0f, col(0x2E3338));
+        p.fillEllipse(static_cast<float>(cx), by, 13.5f, 13.5f, col(0x474E54));
+        p.fillEllipse(static_cast<float>(cx), by - 1.0f, 9.5f, 9.5f, col(0x33383D));
+        for (int r = 0; r < 12; ++r) {  // collar bolts
+            const float a = r * 0.5236f;
+            p.set(cx + static_cast<int>(15.0f * std::cos(a)),
+                  static_cast<int>(by + 15.0f * std::sin(a)), col(0x6E757C));
+        }
+    }
+    // Superfire step: 'B' mount rides a raised deck block behind 'A'.
+    p.fillRect(cx - 16, H / 2 + 44, 32, 2, col(0x767D84));
+    p.fillRect(cx - 16, H / 2 + 46, 32, 1, col(0x23282D));
+
+    // --- secondary gun pads on the sponsons (match JSON offsets ±26,+4) ----------
+    for (int sx : {-1, 1}) {
+        const float px = static_cast<float>(cx + sx * 26);
+        p.fillEllipse(px, static_cast<float>(H / 2 + 4), 11.5f, 11.0f, col(0x23282D));
+        p.fillEllipse(px, static_cast<float>(H / 2 + 3), 10.0f, 9.5f, col(0x4E555C));
+        p.fillEllipse(px, static_cast<float>(H / 2 + 2), 5.5f, 5.5f, col(0x3A4046));
+    }
+    // --- AA platforms (match JSON offsets ±30,-30) --------------------------------
+    for (int sx : {-1, 1}) {
+        const float ax = static_cast<float>(cx + sx * 30);
+        p.fillEllipse(ax, static_cast<float>(H / 2 - 30), 10.5f, 10.0f, col(0x23282D));
+        p.fillEllipse(ax, static_cast<float>(H / 2 - 31), 9.0f, 8.5f, col(0x4E555C));
+    }
+
+    // --- bridge blockout & fire-control tower (the bridge component rides it) ----
+    p.fillRect(cx - 17, H / 2 - 24, 34, 20, col(0x3E454C));
+    p.fillRect(cx - 17, H / 2 - 24, 34, 1, col(0x858C93));
+    p.fillRect(cx - 20, H / 2 - 18, 4, 6, col(0x4E555C));   // bridge wings
+    p.fillRect(cx + 16, H / 2 - 18, 4, 6, col(0x4E555C));
+    p.fillRect(cx - 11, H / 2 - 31, 22, 8, col(0x4A5158));  // conning tower
+    p.fillRect(cx - 11, H / 2 - 31, 22, 1, col(0x8A9094));
+    p.fillRect(cx - 14, H / 2 - 33, 28, 2, col(0x2E3338));  // rangefinder bar
+    p.fillEllipse(static_cast<float>(cx), static_cast<float>(H / 2 - 36), 3.0f, 3.0f,
+                  col(0x33383D));  // director hood
+    p.vline(cx - 6, H / 2 - 24, H / 2 - 5, col(0x2E3338));  // tripod legs
+    p.vline(cx + 6, H / 2 - 24, H / 2 - 5, col(0x2E3338));
+
+    // --- raked funnel amidships ------------------------------------------------------
+    p.fillEllipse(static_cast<float>(cx) + 2.0f, static_cast<float>(H / 2 - 36), 8.0f, 9.0f,
+                  col(0x0A0806, 90));
+    p.fillEllipse(static_cast<float>(cx) + 0.5f, static_cast<float>(H / 2 - 38), 7.5f, 8.5f,
+                  col(0x3A4046));
+    p.fillEllipse(static_cast<float>(cx) + 1.0f, static_cast<float>(H / 2 - 39), 5.5f, 6.5f,
+                  col(0x17191B));
+    p.fillEllipse(static_cast<float>(cx - 1), static_cast<float>(H / 2 - 41), 1.8f, 1.8f,
+                  col(0x565C61));
+    p.hline(cx - 12, cx + 12, H / 2 - 15, col(0x8A9094, 140));  // bridge walkway
+
+    // --- stern crane over the after deck ------------------------------------------------
+    p.fillRect(cx - 1, H / 2 - 66, 2, 10, col(0x565C61));
+    p.fillRect(cx - 4, H / 2 - 66, 8, 2, col(0x7C838A));
+
+    // --- bow & stern fittings ---------------------------------------------------------
+    for (int sx : {-1, 1}) {  // anchor recesses
+        const int ax = cx + sx * 13;
+        p.fillRect(ax - 2, yBot - 30, 4, 3, col(0x33383D));
+        p.set(ax, yBot - 29, col(0x858C93));
+    }
+    for (int sx : {-1, 1})  // breakwater strokes
+        for (int i = 0; i < 6; ++i)
+            p.set(cx + sx * (8 - i), yBot - 18 - i * 2, col(0x7C838A, 180));
+    // Portholes along the belt.
+    for (int k = 0; k < 13; ++k) {
+        const int py = yTop + 20 + k * 12;
+        const int hw = static_cast<int>(halfAt(py)) - 2;
+        if (hw > 4) { p.set(cx - hw, py, col(0x1E2226)); p.set(cx + hw, py, col(0x1E2226)); }
+    }
+    // Vents & hatches scatter.
+    for (int k = 0; k < 12; ++k) {
+        const int vx = cx - 15 + (k * 37) % 31;
+        const int vy = yTop + 18 + (k * 83) % (static_cast<int>(L) - 36);
+        if (k % 3 == 0) p.fillRect(vx, vy, 2, 3, col(0x858C93, 200));
+        else { p.fillRect(vx, vy, 2, 2, col(0x4E555C)); p.set(vx, vy, col(0x7C838A)); }
+    }
+    // Rust streaks along the waterline.
+    for (int k = 0; k < 12; ++k) {
+        const int rx = cx - 20 + (k * 41) % 41;
+        const int ry = yTop + 12 + (k * 71) % (static_cast<int>(L) - 24);
+        p.set(rx, ry, col(0x6E4A2C, 85));
+        p.set(rx, ry + 1, col(0x6E4A2C, 50));
+    }
+
+    // --- damage tiers ------------------------------------------------------------------
+    auto scorch = [&](int dx, int dy, int r, bool ember) {
+        const int yy = H / 2 + dy;
+        const int lim = std::max(4, static_cast<int>(halfAt(yy)) - r - 2);
+        dx = std::max(-lim, std::min(lim, dx));
+        // Near-opaque alphas: low-alpha darks over the sea read blue, not burnt.
+        p.fillEllipse(static_cast<float>(cx + dx), static_cast<float>(yy),
+                      static_cast<float>(r), static_cast<float>(r), col(0x14100C, 215));
+        p.fillEllipse(static_cast<float>(cx + dx), static_cast<float>(yy),
+                      r * 0.5f, r * 0.5f, col(0x0A0806, 255));
+        if (ember)
+            p.fillEllipse(static_cast<float>(cx + dx) + 1.0f, static_cast<float>(yy) + 1.0f,
+                          r * 0.25f, r * 0.25f, col(0x8A3B12, 200));
+    };
+    if (damage >= 2) {
+        scorch(-14, 46, 6, true);
+        scorch(10, -8, 5, false);
+        scorch(-8, -62, 6, true);
+        scorch(16, 20, 4, false);
+    }
+    if (damage >= 3) {
+        scorch(0, 74, 8, true);
+        scorch(-16, -40, 7, true);
+        scorch(12, -72, 6, false);
+        scorch(6, 40, 7, true);
+        // Soot wash down the whole deck.
+        for (int y = yTop + 4; y < yBot - 4; ++y) {
+            const int hw = static_cast<int>(halfAt(y)) - 4;
+            for (int x = -hw; x <= hw; ++x)
+                if ((x * 7 + y * 11) % 13 < 5)
+                    p.set(cx + x, y, col(0x1E1A16, 120));
+        }
+    }
+    return p;
+}
+
 // --- COASTAL FORTRESS boss hull ----------------------------------------------
 // A concrete island fortress: sand beach ring, jungle scrub fringe, breaker
 // foam, octagonal seawall with corner bastions, and an inner courtyard whose
@@ -3298,7 +3532,7 @@ namespace {
 constexpr std::uint32_t kArtCacheMagic = 0x50534152u;  // "PSAR"
 // Bump whenever any generated art changes (v10: A6M Zero redesign of the
 // primary enemy fighter and interceptor).
-constexpr std::uint32_t kArtCacheVersion = 12u;
+constexpr std::uint32_t kArtCacheVersion = 13u;
 
 void wr32(std::ostream& o, std::uint32_t v) {
     o.write(reinterpret_cast<const char*>(&v), 4);
@@ -3519,6 +3753,10 @@ bool generateAllArt(Renderer& r, const std::string& cachePath,
     add("boss_fortress_hull_dmg", makeFortressHull(2));
     add("boss_fortress_hull_wreck", makeFortressHull(3));
     add("boss_fortress_hull_flash", toFlashSilhouette(makeFortressHull(0)));
+    add("boss_cruiser_hull", makeCruiserHull(0));
+    add("boss_cruiser_hull_dmg", makeCruiserHull(2));
+    add("boss_cruiser_hull_wreck", makeCruiserHull(3));
+    add("boss_cruiser_hull_flash", toFlashSilhouette(makeCruiserHull(0)));
     add("boss_carrier_island", makeCarrierIsland());
     add("wake_foam", makeWake());
     add("fire_puff", makeFirePuff());
@@ -3559,6 +3797,8 @@ void loadPngOverrides(Renderer& renderer, const std::string& assetDir) {
         "boss_carrier_hull_wreck", "boss_carrier_hull_flash", "boss_carrier_island",
         "boss_fortress_hull", "boss_fortress_hull_dmg",
         "boss_fortress_hull_wreck", "boss_fortress_hull_flash",
+        "boss_cruiser_hull", "boss_cruiser_hull_dmg",
+        "boss_cruiser_hull_wreck", "boss_cruiser_hull_flash",
         "wake_foam", "fire_puff", "smoke_puff",
     };
     for (const char* n : names) {
