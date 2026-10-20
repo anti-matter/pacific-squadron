@@ -99,8 +99,8 @@ void loadPngOverrides(Renderer& renderer, const std::string& assetDir);
 // Player fighter (P-38) engine anchors, relative to the sprite centre.
 // The renderer places the spinning propeller overlays (prop_arc_p) here;
 // these offsets are constant across all bank frames by construction.
-inline constexpr float kPlayerEngineX = 9.0f;
-inline constexpr float kPlayerPropY = -10.5f;
+inline constexpr float kPlayerEngineX = 10.0f;
+inline constexpr float kPlayerPropY = -13.6f;
 
 // Engine prop anchors for enemy aircraft, relative to the sprite centre on
 // screen axes (the enemy sprites face nose-down). Recorded by the art

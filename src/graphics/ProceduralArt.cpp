@@ -38,9 +38,11 @@ void dumpSpriteDbg(const std::string& name, const PixelBuf& p) {
 // ---------------------------------------------------------------------------
 // Palette
 // ---------------------------------------------------------------------------
-const std::uint32_t kDrab = col(0x5A6E3A);
-const std::uint32_t kDrabHi = col(0x748C4E);
-const std::uint32_t kDrabDk = col(0x3C4A26);
+// Player P-38 drab, sampled from the reference (assets/P-38.png): a warm,
+// slightly yellow olive with a broad light band and a deep green shadow.
+const std::uint32_t kDrab = col(0x686C40);
+const std::uint32_t kDrabHi = col(0x8B8F5E);
+const std::uint32_t kDrabDk = col(0x444728);
 const std::uint32_t kInsigniaBlue = col(0x24407A);
 const std::uint32_t kWhite = col(0xF2F2F2);
 
@@ -1108,13 +1110,15 @@ PixelBuf makeShip(int w, int h, bool destroyer) {
 // ---------------------------------------------------------------------------
 // P-38 Lightning (player fighter), top-down, nose-up.
 //
-// The silhouette follows the airframe: central gun-and-pilot nacelle with a
-// pointed nose and bubble canopy, straight tapered wing, two engines on
-// booms that run straight aft into vertical fins, and an H-tail stabilizer
-// slung between the booms. Engines/booms sit at fixed offsets in every bank
-// frame so the animated propeller overlay can share one anchor pair.
-// Bank frames shift only the wingtips and tail outboard (house bank
-// language from makePlane); the banked frame is mirrored for the other side.
+// The silhouette follows the reference airframe (assets/P-38.png): a long
+// gun-nose centre nacelle with a framed greenhouse canopy ending forward of
+// the stabilizer, slightly swept tapered wings carrying star-and-bars on
+// both panels, and bulged engine cowlings on slim booms that run straight
+// aft into the fins with an H-tail slung between them. Engines/booms sit at
+// fixed offsets in every bank frame so the animated propeller overlay can
+// share one anchor pair. Bank frames shift only the wingtips and tail
+// outboard (house bank language from makePlane); the banked frame is
+// mirrored for the other side.
 // ---------------------------------------------------------------------------
 // Forward-facing propeller blur for the P-38, drawn the way a spinning
 // propeller actually reads in this view: the plane flies up-screen, so the
@@ -1129,10 +1133,10 @@ PixelBuf makeShip(int w, int h, bool destroyer) {
 // empty PixelBuf would store premultiplied colours, which SDL then
 // dark-squares.
 PixelBuf makePropStreak() {
-    const int S = 12;
+    const int S = 11;
     PixelBuf p(S, S);
     const float cc = S * 0.5f;
-    const float rx = 4.8f, ry = 2.1f;  // edge-on disc: wide, flat
+    const float rx = 4.6f, ry = 1.8f;  // edge-on disc: wide, flat
     for (int y = 0; y < S; ++y) {
         for (int x = 0; x < S; ++x) {
             float aBody = 0.0f;
@@ -1145,27 +1149,28 @@ PixelBuf makePropStreak() {
                                      (dy * dy) / (ry * ry);
                     if (d2 >= 1.0f) continue;
                     const float fall = 1.0f - d2;  // mild centre→edge falloff
-                    aBody += (78.0f + 52.0f * fall) *
+                    aBody += (70.0f + 46.0f * fall) *
                              (0.55f + 0.45f * (1.0f - std::sqrt(d2)));
-                    // Bright caps where the blade tips sweep the rim.
+                    // Yellow caps where the blade tips sweep the rim (the
+                    // reference airframe carries yellow-painted tips).
                     const float ax = std::fabs(dx) - (rx - 1.1f);
-                    const float tb = 1.0f - (ax * ax) / 1.4f -
+                    const float tb = 1.0f - (ax * ax) / 1.3f -
                                      (dy * dy) / 1.5f;
-                    if (tb > 0.0f) aTip += 205.0f * tb;
+                    if (tb > 0.0f) aTip += 235.0f * tb;
                 }
             }
             aBody /= 16.0f;
             aTip /= 16.0f;
-            const float ao = std::min(230.0f, std::max(aBody, aTip));
+            const float ao = std::min(215.0f, std::max(aBody, aTip));
             if (ao < 0.5f) continue;
-            // Wash 0xD2DEE6, tip caps whiter toward 0xF0F6FA.
+            // Wash 0xB4C2CC, tip caps warming to yellow 0xF2D878.
             const float w = aTip / (aBody + aTip + 0.001f);
             const std::uint32_t cr = static_cast<std::uint32_t>(
-                (0xD2 + (0xF0 - 0xD2) * w) + 0.5f);
+                (0xB4 + (0xF2 - 0xB4) * w) + 0.5f);
             const std::uint32_t cg = static_cast<std::uint32_t>(
-                (0xDE + (0xF6 - 0xDE) * w) + 0.5f);
+                (0xC2 + (0xD8 - 0xC2) * w) + 0.5f);
             const std::uint32_t cb = static_cast<std::uint32_t>(
-                (0xE6 + (0xFA - 0xE6) * w) + 0.5f);
+                (0xCC + (0x78 - 0xCC) * w) + 0.5f);
             p.set(x, y, (cr << 24) | (cg << 16) | (cb << 8) |
                             static_cast<std::uint32_t>(ao + 0.5f));
         }
@@ -1225,128 +1230,163 @@ PixelBuf makePropStreakEnemy() {
 }
 
 PixelBuf makeP38(int bankRows = 0) {
-    const int W = 52, H = 52;
-    const float cx = 26.0f, cy = 26.0f;
+    const int W = 56, H = 56;
+    const float cx = 28.0f, cy = 28.0f;
     Hi hi(W, H);
     const std::uint32_t body = kDrab, bodyHi = kDrabHi, bodyDk = kDrabDk;
     const std::uint32_t steelDk = col(0x2A3138);
+    const std::uint32_t steelMid = col(0x4A535C);
+    const std::uint32_t seam = col(0x51532F);    // panel seam (darker drab)
+    const std::uint32_t seamLt = col(0x8F9260);  // lit rivet seam
+    const float engX = kPlayerEngineX;
+    const float propY = cy + kPlayerPropY;
 
-    // --- wing: straight leading edge, trailing edge tapering to squared tips
+    // --- wing: slightly swept leading edge, trailing edge raking forward to
+    // broad rounded tips; aileron seam and a mid-chord rivet line ----------
     const float tipShift = static_cast<float>(bankRows);  // +side applied per wing
     for (int side = -1; side <= 1; side += 2) {
         const float sh = tipShift * side;
-        const float rootLE = cy - 3.2f, tipLE = cy - 2.8f + sh * 0.6f;
-        const float rootTE = cy + 3.0f, tipTE = cy + 0.4f + sh;
-        const float tipX = cx + side * 22.0f;
+        const float rootLE = cy - 4.2f, tipLE = cy - 3.4f + sh * 0.6f;
+        const float rootTE = cy + 6.4f, tipTE = cy + 3.6f + sh;
+        const float tipX = cx + side * 23.0f;
         hi.fillPoly({{cx - 1.0f, rootLE}, {cx + side * 9.6f, rootLE - 0.2f},
-                     {tipX - side * 0.4f, tipLE}, {tipX, tipLE + 0.4f},
-                     {tipX, tipTE}, {tipX - side * 0.6f, tipTE + 0.3f},
-                     {cx + side * 12.0f, rootTE - 0.6f}, {cx - 1.0f, rootTE}},
+                     {tipX - side * 0.8f, tipLE + 0.3f}, {tipX, tipLE + 1.2f},
+                     {tipX, tipTE - 0.8f}, {tipX - side * 0.9f, tipTE + 0.3f},
+                     {cx + side * 12.4f, rootTE - 0.5f}, {cx - 1.0f, rootTE}},
                     body);
         // Leading-edge highlight, trailing-edge shade, aileron seam.
         hi.stroke({{cx + side * 1.2f, rootLE + 0.2f},
                    {cx + side * 9.6f, rootLE},
-                   {tipX - side * 0.8f, tipLE + 0.5f}}, 0.9f, bodyHi);
-        hi.stroke({{cx + side * 12.5f, rootTE - 0.9f},
-                   {tipX - side * 1.2f, tipTE + 0.2f}}, 0.85f, bodyDk);
-        hi.stroke({{cx + side * 14.5f, tipLE + (tipTE - tipLE) * 0.35f},
-                   {tipX - side * 1.6f, tipLE + (tipTE - tipLE) * 0.45f}},
-                  0.5f, bodyDk);
+                   {tipX - side * 1.1f, tipLE + 0.7f}}, 0.9f, bodyHi);
+        hi.stroke({{cx + side * 12.8f, rootTE - 0.9f},
+                   {tipX - side * 1.3f, tipTE + 0.1f}}, 0.85f, bodyDk);
+        hi.stroke({{cx + side * 19.0f, tipTE + 1.1f},
+                   {tipX - side * 1.7f, tipTE - 0.1f}}, 0.45f, seam);
+        hi.stroke({{cx + side * 14.2f, cy + 1.6f},
+                   {tipX - side * 2.0f, cy + 0.3f}}, 0.4f, seamLt);
     }
 
-    // --- engines + booms: cowl at the wing, boom straight aft to the fin ---
+    // --- national insignia: star-and-bars on both wings (Pacific theatre) --
     for (int side = -1; side <= 1; side += 2) {
-        const float ex = cx + side * kPlayerEngineX;
+        const float ix = cx + side * 17.0f, iy = cy + 0.2f;
+        hi.fillRoundRect(ix - 2.7f, iy - 0.65f, 5.4f, 1.3f, 0.65f, kWhite);
+        hi.fillEllipse(ix, iy, 2.4f, 2.4f, kInsigniaBlue);
+        std::vector<std::pair<float, float>> star;
+        for (int i = 0; i < 10; ++i) {
+            const float a = -1.5708f + static_cast<float>(i) * 0.6283f;
+            const float r = (i % 2 == 0) ? 1.8f : 0.72f;
+            star.push_back({ix + r * std::cos(a), iy + r * std::sin(a)});
+        }
+        hi.fillPoly(star, kWhite);
+    }
+
+    // --- engines + booms: long bulged cowl running from the prop plane back
+    // over the wing, slim boom aft into the fin; exhaust stubs + red band ---
+    for (int side = -1; side <= 1; side += 2) {
+        const float ex = cx + side * engX;
         const float sh = tipShift * side * 0.6f;
-        hi.fillRoundRect(ex - 2.2f, cy - 9.0f, 4.4f, 20.0f, 2.0f, body);
-        hi.fillEllipse(ex, cy - 7.6f, 2.0f, 2.3f, bodyDk);            // cowl face
-        hi.fillEllipse(ex, cy - 7.9f, 1.1f, 1.2f, steelDk);           // hub backplate
-        hi.stroke({{ex - 1.5f, cy - 4.0f}, {ex - 1.5f, cy + 9.0f}},
+        hi.fillRoundRect(ex - 1.3f, cy - 6.5f, 2.6f, 22.0f, 1.3f, body);   // boom
+        hi.fillRoundRect(ex - 2.5f, propY + 0.4f, 5.0f, 12.6f, 2.4f, body);  // cowl
+        hi.fillEllipse(ex, propY + 1.0f, 1.9f, 1.5f, steelDk);             // cowl face
+        hi.fillEllipse(ex, propY + 1.3f, 1.3f, 0.9f, steelMid);
+        for (int i = 0; i < 3; ++i)  // exhaust stubs on the outer flank
+            hi.strokeLine(ex + side * 1.9f, cy - 7.8f + i * 1.3f,
+                          ex + side * 2.6f, cy - 7.2f + i * 1.3f, 0.3f,
+                          col(0x232A2E));
+        hi.stroke({{ex - 1.45f, cy - 1.5f}, {ex - 1.45f, cy + 13.4f}},
                   0.8f, bodyHi);                                      // lit rail
-        hi.stroke({{ex + 1.5f, cy - 4.0f}, {ex + 1.5f, cy + 9.4f}},
+        hi.stroke({{ex + 1.45f, cy - 1.5f}, {ex + 1.45f, cy + 13.8f}},
                   0.8f, bodyDk);                                      // shaded rail
+        hi.stroke({{ex - 2.0f, cy + 4.6f}, {ex + 2.0f, cy + 4.6f}},
+                  0.4f, seam);                                        // cowl join
+        hi.stroke({{ex - 1.25f, cy + 12.4f}, {ex + 1.25f, cy + 12.4f}},
+                  0.7f, col(0x8E2B22));  // recognition band (reference marking)
         // Vertical fin on the boom end (top-down: a rounded tab leaning out).
         hi.fillRoundRect(ex - 1.25f + (side > 0 ? sh : -sh * 0.5f),
-                         cy + 11.6f, 2.5f, 6.0f, 1.1f, body);
+                         cy + 11.0f, 2.5f, 5.2f, 1.1f, body);
         hi.stroke({{ex + (side > 0 ? 1.0f : -1.0f) + (side > 0 ? sh : -sh * 0.5f),
-                    cy + 12.6f},
+                    cy + 11.9f},
                    {ex + (side > 0 ? 1.0f : -1.0f) + (side > 0 ? sh : -sh * 0.5f),
-                    cy + 16.6f}}, 0.5f, side > 0 ? bodyDk : bodyHi);
-        hi.fillEllipse(ex, cy + kPlayerPropY, 1.05f, 1.05f,
-                       col(0xE8EEF4));                                 // spinner
+                    cy + 15.5f}}, 0.5f, side > 0 ? bodyDk : seam);
+        // Spinner on the prop plane, dark with a lit shoulder.
+        hi.fillEllipse(ex, propY, 1.0f, 1.05f, col(0x39424A));
+        hi.fillEllipse(ex - 0.28f, propY - 0.32f, 0.38f, 0.33f, col(0x93A4B0));
     }
 
-    // --- H-tail stabilizer slung between the booms -------------------------
+    // --- H-tail stabilizer slung between the booms, tips just outboard ----
     {
-        const float le = cy + 11.8f, te = cy + 15.4f;
+        const float le = cy + 12.6f, te = cy + 16.0f;
         hi.fillPoly({{cx - 4.0f, le - 0.4f}, {cx + 4.0f, le - 0.4f},
-                     {cx + 16.0f + tipShift, le + 0.6f},
-                     {cx + 17.4f + tipShift, le + 1.4f},
-                     {cx + 17.0f + tipShift, te - 0.2f},
-                     {cx + 6.0f, te + 0.8f}, {cx - 6.0f, te + 0.8f},
-                     {cx - 17.0f - tipShift, te - 0.2f},
-                     {cx - 17.4f - tipShift, le + 1.4f},
-                     {cx - 16.0f - tipShift, le + 0.6f}}, body);
+                     {cx + 11.4f + tipShift, le + 0.4f},
+                     {cx + 13.4f + tipShift, le + 1.1f},
+                     {cx + 13.1f + tipShift, te - 0.5f},
+                     {cx + 6.0f, te + 0.6f}, {cx - 6.0f, te + 0.6f},
+                     {cx - 13.1f - tipShift, te - 0.5f},
+                     {cx - 13.4f - tipShift, le + 1.1f},
+                     {cx - 11.4f - tipShift, le + 0.4f}}, body);
         // Elevator hinge seam and lit leading edge.
-        hi.stroke({{cx - 16.5f - tipShift, le + 1.1f}, {cx - 5.0f, le + 0.1f},
-                   {cx + 5.0f, le + 0.1f}, {cx + 16.5f + tipShift, le + 1.1f}},
+        hi.stroke({{cx - 12.9f - tipShift, le + 0.8f}, {cx - 5.0f, le + 0.0f},
+                   {cx + 5.0f, le + 0.0f}, {cx + 12.9f + tipShift, le + 0.8f}},
                   0.6f, bodyHi);
-        hi.stroke({{cx - 15.5f - tipShift, te - 0.6f}, {cx + 15.5f + tipShift, te - 0.6f}},
-                  0.55f, bodyDk);
+        hi.stroke({{cx - 12.6f - tipShift, te - 1.3f},
+                   {cx + 12.6f + tipShift, te - 1.3f}}, 0.45f, seam);
+        hi.stroke({{cx - 12.2f - tipShift, te - 0.6f},
+                   {cx + 12.2f + tipShift, te - 0.6f}}, 0.55f, bodyDk);
     }
 
-    // --- centre nacelle: gun nose, pilot, tapering tail cone ---------------
+    // --- centre nacelle: long gun nose (guns, not a prop), greenhouse
+    // canopy, tail cone tapering to a point just aft of the wing -----------
     {
         std::vector<std::pair<float, float>> pts;
-        const float yNose = cy - 16.5f, yTail = cy + 12.8f;
+        const float yNose = cy - 11.8f, yTail = cy + 8.4f;
         auto hwAt = [](float t) {  // t: 0 nose .. 1 tail
-            if (t < 0.10f) return 0.25f + t * 16.0f;        // gun tip
-            if (t < 0.42f) return 1.85f + 0.45f * (t - 0.10f) / 0.32f;
-            if (t < 0.62f) return 2.3f;                     // cockpit shoulders
-            return 2.3f - 0.95f * (t - 0.62f) / 0.38f;      // tail cone
+            if (t < 0.08f) return 0.25f + t * 14.0f;        // gun tip
+            if (t < 0.42f) return 1.37f + 0.68f * (t - 0.08f) / 0.34f;
+            if (t < 0.60f) return 2.05f;                    // cockpit shoulders
+            return 2.05f - 1.5f * (t - 0.60f) / 0.40f;      // tail cone
         };
         for (int i = 0; i <= 12; ++i)
             pts.push_back({cx + hwAt(i / 12.0f), yNose + (yTail - yNose) * i / 12.0f});
         for (int i = 12; i >= 0; --i)
             pts.push_back({cx - hwAt(i / 12.0f), yNose + (yTail - yNose) * i / 12.0f});
         hi.fillPoly(pts, body);
-        hi.stroke({{cx - 1.4f, yNose + 4.0f}, {cx - 1.7f, cy + 6.0f}}, 0.9f, bodyHi);
-        hi.stroke({{cx + 1.5f, yNose + 4.0f}, {cx + 1.8f, cy + 6.4f}}, 0.9f, bodyDk);
-        // Nose gun batteries: two barrels outboard, two inboard, ports dark.
-        hi.stroke({{cx - 0.7f, cy - 15.4f}, {cx - 0.7f, cy - 10.6f}}, 0.5f, steelDk);
-        hi.stroke({{cx + 0.7f, cy - 15.4f}, {cx + 0.7f, cy - 10.6f}}, 0.5f, steelDk);
-        // Bubble canopy with frame and glass gloss.
-        hi.fillEllipse(cx, cy - 0.6f, 1.6f, 3.2f, col(0x1E2A36));
-        hi.fillEllipse(cx - 0.5f, cy - 1.5f, 0.8f, 1.6f, col(0x9FD0E8, 200));
-        hi.stroke({{cx - 1.5f, cy + 1.4f}, {cx + 1.5f, cy + 1.4f}}, 0.45f,
-                  col(0x141A20, 170));
+        hi.stroke({{cx - 1.3f, yNose + 3.0f}, {cx - 1.6f, cy + 4.5f}}, 0.9f, bodyHi);
+        hi.stroke({{cx + 1.4f, yNose + 3.0f}, {cx + 1.7f, cy + 5.0f}}, 0.9f, bodyDk);
+        // Raised gun deck with the four nose-gun ports.
+        hi.fillEllipse(cx, cy - 8.4f, 1.0f, 2.0f, bodyDk);
+        for (const float gy : {-10.1f, -9.3f})
+            for (const float gx : {-0.5f, 0.5f})
+                hi.fillEllipse(cx + gx, cy + gy, 0.27f, 0.3f, steelDk);
+        // Walkway strip aft of the gun deck.
+        hi.stroke({{cx, cy - 5.6f}, {cx, cy - 4.2f}}, 0.5f, seamLt);
+        // Greenhouse canopy: dark frame, blue glass, tan ribs, gloss.
+        hi.fillEllipse(cx, cy + 0.6f, 1.8f, 4.2f, col(0x31401E));
+        hi.fillEllipse(cx, cy + 0.6f, 1.35f, 3.7f, col(0x43719C));
+        hi.fillEllipse(cx - 0.45f, cy - 0.6f, 0.6f, 1.5f, col(0x9FCBE8, 210));
+        for (const float ry : {-1.9f, 0.4f, 2.6f})
+            hi.stroke({{cx - 1.1f, cy + ry}, {cx + 1.1f, cy + ry}}, 0.4f,
+                      col(0x8A7A4A));
+        // Antenna mast base just aft of the canopy.
+        hi.fillEllipse(cx + 0.9f, cy + 5.8f, 0.32f, 0.32f, steelDk);
     }
 
     PixelBuf p = hi.bake();
     outlineSilhouette(p, col(0x0A0E12, 165));
 
-    // Baked propeller disc at each engine: an edge-on spin blur, so a wide
-    // FLAT ellipse (spanwise) centred on the prop plane just ahead of the
-    // cowl — the static read of a spinning prop. The animated streak
-    // (prop_blur_p) pulses over these in flight. Post-bake because Hi.bake()
-    // flattens translucent sources.
-    const float propY = cy + kPlayerPropY;
+    // Baked propeller disc at each engine: an edge-on spin blur — a dark
+    // smoke disc with blade hints and yellow tip caps, centred on the prop
+    // plane. The animated streak (prop_blur_p) pulses over these in flight.
+    // Post-bake because Hi.bake() flattens translucent sources.
     for (int side = -1; side <= 1; side += 2) {
-        const float ex = cx + side * kPlayerEngineX;
-        softBlendEllipse(p, ex, propY, 4.8f, 2.0f, 0xC8D4DC, 80);
-        softBlendEllipse(p, ex, propY, 3.1f, 1.3f, 0xD2DEE6, 65);
-        softBlendEllipse(p, ex, propY, 1.15f, 1.15f, 0xE8EEF4, 235);  // spinner
+        const float ex = cx + side * engX;
+        softBlendEllipse(p, ex, propY, 4.7f, 1.9f, 0x1E262D, 105);  // dark disc
+        softBlendEllipse(p, ex, propY, 3.0f, 1.15f, 0x2C353D, 90);
+        softBlendEllipse(p, ex - 1.6f, propY - 0.45f, 1.5f, 0.35f, 0x10161B, 85);
+        softBlendEllipse(p, ex + 1.2f, propY + 0.5f, 1.3f, 0.32f, 0x10161B, 75);
+        softBlendEllipse(p, ex - 3.9f, propY, 0.75f, 0.95f, 0xF2D878, 220);
+        softBlendEllipse(p, ex + 3.9f, propY, 0.75f, 0.95f, 0xF2D878, 220);
+        softBlendEllipse(p, ex, propY, 0.85f, 0.85f, 0xB7C3CB, 245);  // spinner
     }
-
-    // National insignia: blue disc + white star, as carried in the Pacific,
-    // on the outer LEFT wing. The mirrored bank frame carries it to the
-    // correct side automatically.
-    const float ix = cx - 15.5f, iy = cy - 0.6f;
-    p.fillEllipse(ix, iy, 3.4f, 3.4f, kInsigniaBlue);
-    p.hline(static_cast<int>(ix - 2.6f), static_cast<int>(ix + 2.6f),
-            static_cast<int>(iy), kWhite);
-    p.vline(static_cast<int>(ix), static_cast<int>(iy - 2.6f),
-            static_cast<int>(iy + 2.6f), kWhite);
     return p;
 }
 
@@ -3105,7 +3145,7 @@ namespace {
 constexpr std::uint32_t kArtCacheMagic = 0x50534152u;  // "PSAR"
 // Bump whenever any generated art changes (v10: A6M Zero redesign of the
 // primary enemy fighter and interceptor).
-constexpr std::uint32_t kArtCacheVersion = 10u;
+constexpr std::uint32_t kArtCacheVersion = 11u;
 
 void wr32(std::ostream& o, std::uint32_t v) {
     o.write(reinterpret_cast<const char*>(&v), 4);

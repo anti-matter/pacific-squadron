@@ -965,7 +965,7 @@ void Application::renderWorld() {
                 const float spin = (0.9f - p.specialTimer) / 0.9f;
                 const float squash =
                     std::abs(std::sin(spin * 3.14159265f * 4.0f));
-                renderer_.drawScaled(ptex, p.pos.x, p.pos.y, 40.0f,
+                renderer_.drawScaled(ptex, p.pos.x, p.pos.y, 46.0f,
                                      8.0f + 32.0f * squash, alpha);
             } else {
                 renderer_.draw(ptex, p.pos.x, p.pos.y, alpha);
