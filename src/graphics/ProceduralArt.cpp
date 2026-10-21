@@ -1789,10 +1789,26 @@ PixelBuf makeFlak() {
 }
 
 PixelBuf makeShadow() {
-    Hi hi(20, 12);
-    hi.fillEllipse(10, 6, 9, 5, col(0x000000, 70));
-    hi.fillEllipse(10, 6, 6, 3, col(0x000000, 50));
-    return hi.bake();
+    // Generated straight into PixelBuf with true per-pixel alpha, bypassing
+    // Hi/bake(): bake() reads sub-pixel alpha as COVERAGE (any nonzero fill
+    // counts solid, near-solid snaps to 255), so the old translucent fills
+    // baked into a hard black blob that sat on the aircraft like an
+    // artifact — glaringly so since the sea became calm and solid blue.
+    // A soft radial falloff reads as a proper cast shadow on the water.
+    PixelBuf p(20, 12);
+    for (int y = 0; y < 12; ++y)
+        for (int x = 0; x < 20; ++x) {
+            const float dx = (x + 0.5f - 10.0f) / 9.0f, dy = (y + 0.5f - 6.0f) / 5.0f;
+            const float q = dx * dx + dy * dy;
+            if (q >= 1.0f) continue;
+            const float fall = 1.0f - q;
+            int a = static_cast<int>(88.0f * fall * std::sqrt(fall) +
+                                     22.0f * (q < 0.30f ? 1.0f : 0.0f));
+            if (a < 4) continue;
+            if (a > 255) a = 255;
+            p.set(x, y, col(0x02060C, static_cast<std::uint32_t>(a)));
+        }
+    return p;
 }
 
 // ---------------------------------------------------------------------------
@@ -4823,7 +4839,7 @@ namespace {
 constexpr std::uint32_t kArtCacheMagic = 0x50534152u;  // "PSAR"
 // Bump whenever any generated art changes (v10: A6M Zero redesign of the
 // primary enemy fighter and interceptor).
-constexpr std::uint32_t kArtCacheVersion = 24u;
+constexpr std::uint32_t kArtCacheVersion = 25u;
 
 void wr32(std::ostream& o, std::uint32_t v) {
     o.write(reinterpret_cast<const char*>(&v), 4);
