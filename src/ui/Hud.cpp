@@ -45,12 +45,12 @@ void Hud::draw(Renderer& r, const Game& game) const {
                      std::to_string(p.weaponLevel);
     r.text(wl, 8 + p.maxHp * 11 + 6, 33, 1, Color::rgb(0xF0D060));
 
-    // --- center column: loop (evasive special) charges -------------------
+    // --- center column: bomb charges --------------------------------------
     r.text("BOMB", 192, 2, 1, Color::rgb(0x70A8F0), true);
     const int nb = std::min(p.bombs, 4);
     for (int i = 0; i < nb; ++i)
         r.draw(r.texture("powerup_bomb"),
-               192.0f + (i - (nb - 1) * 0.5f) * 16.0f, 21, 1.0f,
+               192.0f + (i - (nb - 1) * 0.5f) * 16.0f, 25, 1.0f,
                Color::rgb(0xFFFFFF), false, 0.0f);
 
     // --- right column: hi score, lives ------------------------------------
@@ -58,7 +58,7 @@ void Hud::draw(Renderer& r, const Game& game) const {
     r.text(hi, kPlayW - 8 - r.textWidth(hi, 1), 2, 1, dim);
     const int planeTex = r.texture("player_fighter");
     for (int i = 0; i < std::min(p.lives, 5); ++i)
-        r.drawScaled(planeTex, kPlayW - 14 - i * 19, 17, 16, 16, 1.0f);
+        r.drawScaled(planeTex, kPlayW - 14 - i * 19, 21, 16, 16, 1.0f);
     r.text("LIVES", kPlayW - 8 - r.textWidth("LIVES", 1), 29, 1, dim);
 
     // Boss health bar.
