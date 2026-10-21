@@ -1682,53 +1682,100 @@ std::uint32_t shadeBy(std::uint32_t c, float n) {
     return shade(c, f);
 }
 
-PixelBuf makeOceanTile(int variant) {
-    // Two-scale wave texture over a smooth low-frequency depth field, so the
-    // tiled sea never reads as flat repeating wallpaper. All features wrap
-    // modulo 32 to keep the tile seamless.
+PixelBuf makeOceanTile(int /*variant*/) {
+    // Solid deep-blue open-ocean base: deliberately featureless so no tile
+    // seams or per-tile patterns are ever visible. All surface character
+    // comes from the separate drifting glint layer (tile_ocean_glint),
+    // whose soft light wave lines flow down the screen over this field.
     PixelBuf p(32, 32);
-    Rng rng(0x0CE4Au + variant * 77);
+    p.fill(col(0x153763));
+    return p;
+}
+
+PixelBuf makeOceanGlintTile() {
+    // Seamless 128px surface-glint overlay: a handful of long, feathered,
+    // low-alpha highlight strokes (wide crests catching sunlight), each at
+    // its own height, length and brightness, plus a few very faint short
+    // twinkle dashes. Positions are deliberately scattered rather than
+    // evenly spaced so the eye never locks onto the tile lattice. The layer
+    // drifts slowly downward over open water, which is what gives the ocean
+    // its gentle living surface. Peak alpha stays far below any in-game
+    // bullet, flame or pickup.
+    PixelBuf p(128, 128);   // starts fully transparent
+    Rng rng(0x611A70u);
     auto wset = [&](int x, int y, std::uint32_t c) {
-        p.set(((x % 32) + 32) % 32, ((y % 32) + 32) % 32, c);
+        p.set(((x % 128) + 128) % 128, ((y % 128) + 128) % 128, c);
     };
-    // Base + seamless depth shading: two sine sweeps + lattice noise.
-    const float ph = variant * 1.7f;
-    for (int y = 0; y < 32; ++y) {
-        for (int x = 0; x < 32; ++x) {
-            const float w1 = std::sin((x * 0.3927f) + (y * 0.1963f) + ph) * 0.5f + 0.5f;
-            const float n = tileNoise(x + variant * 13, y, 0x5EA0u + variant);
-            const float v = (w1 * 0.35f + n * 0.65f - 0.5f) * 0.22f;
-            p.set(x, y, shadeBy(col(0x173C6C), v));
-        }
-    }
-    // Long swell lines with soft crests and troughs.
-    const int swells = 2 + (variant % 2);
-    for (int i = 0; i < swells; ++i) {
-        const int x = rng.rangeInt(0, 24), y0 = rng.rangeInt(0, 30);
-        const int len = rng.rangeInt(12, 20);
+    const float k = 6.2831853f / 128.0f;
+    for (int i = 0; i < 5; ++i) {
+        const int y0 = rng.rangeInt(6, 118);          // scattered rows
+        const float ph = rng.range(0.0f, 6.2831853f);
+        const float amp = rng.range(1.5f, 3.0f);
+        const int x0 = rng.rangeInt(0, 110);
+        const int len = rng.rangeInt(42, 88);
+        const float bright = rng.range(0.62f, 1.0f);  // per-stroke strength
+        const int wig = rng.chance(0.5f) ? 2 : 1;     // undulation speed
         for (int q = 0; q < len; ++q) {
-            const int yy = y0 + (q / 4) % 2;
-            wset(x + q, yy, col(0x2A568F));
-            wset(x + q, yy - 1, col(0x41729F));
-            wset(x + q, yy + 2, col(0x113260));
+            const int x = x0 + q;
+            // Undulation period divides the tile width, so strokes that
+            // wrap across the border continue seamlessly.
+            const int yy = y0 + static_cast<int>(
+                                   std::sin(x * wig * k + ph) * amp + 0.5f);
+            const float t = static_cast<float>(q) / static_cast<float>(len);
+            const float fade = std::sin(3.1415927f * t) * bright;  // soft ends
+            auto A = [&](float m) {
+                return static_cast<std::uint8_t>(
+                    std::clamp(fade * m, 0.0f, 255.0f));
+            };
+            wset(x, yy - 1, col(0x9CC2E0, A(40)));    // crest highlight
+            wset(x, yy, col(0x6E9AC4, A(22)));        // body
+            wset(x, yy + 2, col(0x0E2A4E, A(26)));    // soft trough shadow
         }
     }
-    // Short ripple dashes.
-    for (int i = 0; i < 6; ++i) {
-        const int x = rng.rangeInt(0, 28), y = rng.rangeInt(0, 31);
-        wset(x, y, col(0x2E5A92));
-        wset(x + 1, y, col(0x2E5A92));
-        wset(x + 2, y - 1, col(0x2E5A92));
+    // A few faint short twinkle dashes for sparkle variety.
+    for (int i = 0; i < 5; ++i) {
+        const int x0 = rng.rangeInt(0, 120), y0 = rng.rangeInt(0, 127);
+        const int len = rng.rangeInt(4, 9);
+        const std::uint8_t a = static_cast<std::uint8_t>(rng.rangeInt(14, 24));
+        for (int q = 0; q < len; ++q) wset(x0 + q, y0, col(0x8FB4D6, a));
     }
-    // Fine speckle kept subtle (noise field already carries the mid-tones).
-    for (int i = 0; i < 14; ++i)
-        wset(rng.rangeInt(0, 31), rng.rangeInt(0, 31),
-             rng.chance(0.5f) ? col(0x1F487E) : col(0x123462));
-    // Specular sparkles.
-    const int sparkles = 2 + variant * 2;
-    for (int i = 0; i < sparkles; ++i)
-        wset(rng.rangeInt(0, 31), rng.rangeInt(0, 31),
-             col(0x6FA0CC, static_cast<std::uint8_t>(rng.rangeInt(150, 220))));
+    return p;
+}
+
+PixelBuf makeOceanGlintFarTile() {
+    // Second, larger glint sheet (192px): three long, very faint swells at
+    // a different spacing than the near layer. The two layers drift at
+    // different speeds, so their overlap never settles into a visible
+    // lattice — the wave lines appear at irregular gaps like real sea.
+    PixelBuf p(192, 192);
+    Rng rng(0x51F7Au);
+    auto wset = [&](int x, int y, std::uint32_t c) {
+        p.set(((x % 192) + 192) % 192, ((y % 192) + 192) % 192, c);
+    };
+    const float k = 6.2831853f / 192.0f;
+    for (int i = 0; i < 3; ++i) {
+        const int y0 = rng.rangeInt(10, 178);
+        const float ph = rng.range(0.0f, 6.2831853f);
+        const float amp = rng.range(2.0f, 4.0f);
+        const int x0 = rng.rangeInt(0, 150);
+        const int len = rng.rangeInt(70, 150);
+        const float bright = rng.range(0.6f, 1.0f);
+        const int wig = rng.chance(0.5f) ? 2 : 1;
+        for (int q = 0; q < len; ++q) {
+            const int x = x0 + q;
+            const int yy = y0 + static_cast<int>(
+                                   std::sin(x * wig * k + ph) * amp + 0.5f);
+            const float t = static_cast<float>(q) / static_cast<float>(len);
+            const float fade = std::sin(3.1415927f * t) * bright;
+            auto A = [&](float m) {
+                return static_cast<std::uint8_t>(
+                    std::clamp(fade * m, 0.0f, 255.0f));
+            };
+            wset(x, yy - 1, col(0x9CC2E0, A(30)));    // faint crest
+            wset(x, yy, col(0x6E9AC4, A(16)));        // body
+            wset(x, yy + 2, col(0x0E2A4E, A(20)));    // soft trough
+        }
+    }
     return p;
 }
 
@@ -3997,7 +4044,7 @@ namespace {
 constexpr std::uint32_t kArtCacheMagic = 0x50534152u;  // "PSAR"
 // Bump whenever any generated art changes (v10: A6M Zero redesign of the
 // primary enemy fighter and interceptor).
-constexpr std::uint32_t kArtCacheVersion = 15u;
+constexpr std::uint32_t kArtCacheVersion = 18u;
 
 void wr32(std::ostream& o, std::uint32_t v) {
     o.write(reinterpret_cast<const char*>(&v), 4);
@@ -4174,6 +4221,8 @@ bool generateAllArt(Renderer& r, const std::string& cachePath,
     add("tile_ocean_a", makeOceanTile(0));
     add("tile_ocean_b", makeOceanTile(1));
     add("tile_ocean_c", makeOceanTile(2));
+    add("tile_ocean_glint", makeOceanGlintTile());
+    add("tile_ocean_glint_far", makeOceanGlintFarTile());
     add("tile_sand", makeSandTile(0));
     add("tile_jungle_a", makeJungleTile(1));
     add("tile_jungle_b", makeJungleTile(2));

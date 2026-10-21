@@ -754,14 +754,16 @@ void Application::updateMusic() {
 // ---------------------------------------------------------------------------
 // Rendering
 // ---------------------------------------------------------------------------
-void Application::renderTerrain(const StageDef* stage, float scrollY,
-                                float time) {
+void Application::renderTerrain(const StageDef* stage, float scrollY) {
     const int cols = 12;
-    const int wavePhase = static_cast<int>(time * 1.4f);
-    // Tile choice for a plain (non-shore) terrain kind.
+    // Tile choice for a plain (non-shore) terrain kind. Ocean variants are
+    // picked from the STATIC tile hash only — never from time. (A time term
+    // here used to re-roll every ocean tile ~1.4 times/s, which teleported
+    // the whole sea pattern: the "jumping water". Surface motion now comes
+    // from the smoothly drifting glint layer drawn after the tile pass.)
     auto tileForKind = [&](TerrainKind kind, std::uint32_t h, int col) -> const char* {
         switch (kind) {
-        case TerrainKind::Ocean:    return oceanFor(h + static_cast<std::uint32_t>(wavePhase));
+        case TerrainKind::Ocean:    return oceanFor(h);
         case TerrainKind::Island:   return (h % 5 == 0) ? "tile_sand"
                                          : (h % 2 == 0) ? "tile_jungle_a" : "tile_jungle_b";
         case TerrainKind::Jungle:   return (h % 2 == 0) ? "tile_jungle_a" : "tile_jungle_b";
@@ -845,6 +847,50 @@ void Application::renderTerrain(const StageDef* stage, float scrollY,
                                  tileCenterY);
         }
     }
+
+    // Drifting surface-glint layers: two seamless sheets of soft, low-alpha
+    // wave lines (128px near + 192px far) sliding slowly and monotonically
+    // downward over open water at different speeds, so their overlap never
+    // reads as a lattice. Driven by the monotonic wall clock — not the
+    // stage clock, which resets per level (that would snap the layers) and
+    // not the scroll, so the sea keeps a gentle living surface even in
+    // scroll-frozen boss arenas. A cell is drawn only while the WHOLE cell
+    // sits on ocean: coastlines, beaches and shallows keep the calm base
+    // plus their own foam, and the glints never wash over land. Per-cell
+    // alpha wobble is a STATIC hash (never time-driven), which breaks up
+    // the grid impression without any flicker.
+    struct GlintLayer { const char* tex; int cell; float speed; };
+    static constexpr GlintLayer kGlintLayers[] = {
+        {"tile_ocean_glint_far", 192, 7.0f},
+        {"tile_ocean_glint", 128, 12.0f},
+    };
+    const float wall = static_cast<float>(SDL_GetTicks()) / 1000.0f;
+    for (const auto& layer : kGlintLayers) {
+        const int tid = renderer_.texture(layer.tex);
+        if (tid < 0) continue;
+        const float cell = static_cast<float>(layer.cell);
+        const float half = cell * 0.5f;
+        const float drift = std::fmod(wall * layer.speed, cell);
+        const int gcols = static_cast<int>(kPlayW / cell);
+        const int grows = static_cast<int>(kPlayH / cell) + 2;
+        for (int gy = -1; gy <= grows; ++gy) {
+            const float cy = static_cast<float>(gy) * cell - half + drift;
+            if (cy + half < 0.0f || cy - half > kPlayH) continue;
+            if (stage) {
+                const bool topSea =
+                    terrainAt(*stage, base - (cy - half)) == TerrainKind::Ocean;
+                const bool botSea =
+                    terrainAt(*stage, base - (cy + half)) == TerrainKind::Ocean;
+                if (!topSea || !botSea) continue;
+            }
+            for (int gx = 0; gx < gcols; ++gx) {
+                const float a =
+                    0.50f + static_cast<float>(hashXY(gx, gy) % 5U) * 0.05f;
+                renderer_.draw(tid, static_cast<float>(gx) * cell + half,
+                               cy, a);
+            }
+        }
+    }
 }
 
 void Application::renderWorld() {
@@ -862,7 +908,7 @@ void Application::renderWorld() {
     // Bosses with arenaOcean (the island fortress) carry their own ground:
     // while one is alive the world renders as open sea, so the island never
     // appears to slide over scrolling land.
-    renderTerrain(sim.bossView().arenaOcean ? nullptr : stage, scrollY, time);
+    renderTerrain(sim.bossView().arenaOcean ? nullptr : stage, scrollY);
 
     auto findAnim = [&](const char* name) -> const AnimDef* {
         const int i = data_.findAnim(name);
@@ -1153,7 +1199,7 @@ void Application::renderWorld() {
 }
 
 void Application::renderTitleBackground(float time) {
-    renderTerrain(nullptr, time * 40.0f, time);
+    renderTerrain(nullptr, time * 40.0f);
     // Beauty shot: the battleship flagship idles at the bottom of the
     // screen, half cropped by the frame edge, slowly swaying.
     const int hull = renderer_.texture("boss_battleship_hull");

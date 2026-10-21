@@ -35,7 +35,7 @@ private:
 
     void renderFrame(float fps);
     void dimOverlay();
-    void renderTerrain(const StageDef* stage, float scrollY, float time);
+    void renderTerrain(const StageDef* stage, float scrollY);
     void renderWorld();
     void renderTitleBackground(float time);
     void renderTitle();
