@@ -158,6 +158,9 @@ the finale supersedes or reuses it).
 
 ## Gotchas
 
+- `Hi::bake()` treats sub-pixel alpha as **coverage** (any nonzero fill
+  counts solid, near-solid snaps to 255) — never encode translucency in
+  `Hi` fills; generate soft/translucent sprites straight into `PixelBuf`.
 - Git: commit to `main` and push only after the user approves that change.
 - The stage clock resets per level; anything time-based in presentation must
   handle that (the glint drift uses the wall clock for exactly this reason).
