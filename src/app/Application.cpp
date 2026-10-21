@@ -1003,7 +1003,8 @@ void Application::renderWorld() {
             else if (frac < 0.85f && renderer_.texture(e.sprite + "_light") >= 0)
                 texName = e.sprite + "_light";
             // Wake foam trails behind the battleship's stern (screen-up).
-            if (texName.find("battleship") != std::string::npos)
+            if (texName.find("battleship") != std::string::npos ||
+                texName.find("yamato") != std::string::npos)
                 renderer_.draw(renderer_.texture("wake_foam"),
                                e.pos.x + std::sin(time * 2.0f) * 2.0f,
                                e.pos.y - 140.0f);
@@ -1021,7 +1022,17 @@ void Application::renderWorld() {
                 }
             }
         }
-        renderer_.draw(renderer_.texture(texName), e.pos.x, e.pos.y, 1.0f, tint);
+        if (!hull && e.angle != 0.0f) {
+            // Predictive turret: rotate about the barbette centre.
+            int tw = 1, th = 1;
+            renderer_.textureSize(renderer_.texture(texName), tw, th);
+            renderer_.drawScaled(renderer_.texture(texName), e.pos.x, e.pos.y,
+                                 static_cast<float>(tw), static_cast<float>(th),
+                                 1.0f, tint, false, e.angle * 57.29578f);
+        } else {
+            renderer_.draw(renderer_.texture(texName), e.pos.x, e.pos.y, 1.0f,
+                           tint);
+        }
         if (hull && texName.find("airfield") != std::string::npos) {
             airHullOn = true;
             airHullX = e.pos.x;
@@ -1427,6 +1438,7 @@ struct HelpPageDef {
     int boxW;   // icon fit-box: longest displayed edge, px
     int boxH;
     float rowH;
+    float textX;  // description column x
 };
 
 // Page 2: enemy aircraft.
@@ -1445,22 +1457,26 @@ const HelpSpriteEntry kHelpGround[] = {
     {"boat_patrol", "PATROL BOAT - FAST, LIGHTLY ARMED"},
     {"ship_destroyer", "DESTROYER - THREE-GUN SALVOS"},
 };
-// Page 4: enemy flagships (boss hulls, shown scaled down).
+// Page 4 & 5: enemy flagships (boss hulls), five rows per page maximum.
 const HelpSpriteEntry kHelpBosses[] = {
     {"boss_battleship_hull", "BATTLESHIP - HEAVY SHELL BARRAGES"},
-    {"boss_bomber_hull", "SKY FORTRESS - TURRETED BOMBING GIANT"},
+    {"boss_bomber_hull", "SKY FORTRESS - TURRETED BOMBER"},
     {"boss_destroyer_hull", "DESTROYER - RAPID-FIRE GUN FLAGSHIP"},
     {"boss_carrier_hull", "CARRIER - LAUNCHES FIGHTERS"},
     {"boss_fortress_hull", "COASTAL FORTRESS - ISLAND GUNS"},
+};
+const HelpSpriteEntry kHelpBosses2[] = {
     {"boss_cruiser_hull", "HEAVY CRUISER - DEADLIEST FLEET GUN"},
     {"boss_airfield_hull", "AIRFIELD COMMAND - ENDLESS ZEROES"},
     {"boss_drydock_hull", "DRYDOCK - SAILS WHEN STRIPPED"},
+    {"boss_yamato_hull", "SUPER BATTLESHIP - TRIPLE TURRETS"},
 };
 
 const HelpPageDef kHelpPages[] = {
-    {"ENEMY AIRCRAFT", kHelpAircraft, 5, 34, 34, 46.0f},
-    {"SEA AND GROUND TARGETS", kHelpGround, 5, 34, 40, 46.0f},
-    {"ENEMY FLAGSHIPS", kHelpBosses, 8, 44, 40, 40.0f},
+    {"ENEMY AIRCRAFT", kHelpAircraft, 5, 34, 34, 46.0f, 76.0f},
+    {"SEA AND GROUND TARGETS", kHelpGround, 5, 34, 40, 46.0f, 76.0f},
+    {"ENEMY FLAGSHIPS", kHelpBosses, 5, 56, 56, 56.0f, 88.0f},
+    {"ENEMY FLAGSHIPS II", kHelpBosses2, 4, 56, 56, 56.0f, 88.0f},
 };
 }  // namespace
 
@@ -1488,7 +1504,7 @@ void Application::renderHelpCatalog(int page) {
                                  static_cast<float>(tw) * s,
                                  static_cast<float>(th) * s);
         }
-        renderer_.text(pg.entries[i].desc, 76.0f, y, 1, white, false);
+        renderer_.text(pg.entries[i].desc, pg.textX, y, 1, white, false);
     }
     renderer_.text("LEFT / RIGHT: PAGE", 192.0f, 444.0f, 1, dim, true);
     const std::string pn = std::to_string(page + 1) + " / " +

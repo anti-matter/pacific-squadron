@@ -175,6 +175,9 @@ struct BossComponentDef {
     float fireInterval = 1.5f;
     float firstFireDelay = 1.0f;
     bool destructibleTarget = true;   // counts toward boss defeat
+    // Predictive turret: the sprite rotates to track the player (lead for
+    // shell flight time included), barrel-down at angle 0.
+    bool aimAtPlayer = false;
 };
 
 struct BossPhaseDef {

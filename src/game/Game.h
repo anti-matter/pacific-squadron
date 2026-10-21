@@ -109,7 +109,7 @@ public:
     // HELP screen paging: page 0 is the original help page; pages 1+
     // catalog the sprites. Left/right arrows move between pages.
     int helpPage() const { return helpPage_; }
-    static constexpr int kHelpPages = 4;
+    static constexpr int kHelpPages = 5;
     int stageIndex() const { return stageIndex_; }
     std::string stageName() const;
     float stateTimer() const { return stateTimer_; }

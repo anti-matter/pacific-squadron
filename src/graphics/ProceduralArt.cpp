@@ -5197,6 +5197,380 @@ PixelBuf makeDrydockPontoon() {
     return p;
 }
 
+// SUPER BATTLESHIP (level 9 finale): a Yamato-inspired capital ship, bow
+// down. Long and sleek — a heavily armored stretched hull barely larger
+// than the Heavy Cruiser, not a broad barge. Two triple main turrets,
+// sponsoned AA and predictive wing guns ride on as components; the deck
+// carries the aft catapult, funnel, wooden bow deck and battle scarring.
+PixelBuf makeYamatoHull(int damage) {
+    constexpr int W = 160, H = 256;
+    const int cx = W / 2, cy = H / 2;
+    PixelBuf p(W, H);
+    auto mix = [](std::uint32_t a, std::uint32_t b, float t) -> std::uint32_t {
+        auto ch = [](std::uint32_t v, int s) { return static_cast<float>((v >> s) & 0xFFu); };
+        const float r  = ch(a, 24) + (ch(b, 24) - ch(a, 24)) * t;
+        const float g  = ch(a, 16) + (ch(b, 16) - ch(a, 16)) * t;
+        const float bl = ch(a, 8)  + (ch(b, 8)  - ch(a, 8))  * t;
+        const float al = ch(a, 0)  + (ch(b, 0)  - ch(a, 0))  * t;
+        return (static_cast<std::uint32_t>(r + 0.5f) << 24) |
+               (static_cast<std::uint32_t>(g + 0.5f) << 16) |
+               (static_cast<std::uint32_t>(bl + 0.5f) << 8) |
+               static_cast<std::uint32_t>(al + 0.5f);
+    };
+    auto hash = [](int x, int y, int s) {
+        std::uint32_t h = static_cast<std::uint32_t>(x * 374761393 + y * 668265263 +
+                                                     s * 1274126177);
+        h = (h ^ (h >> 13)) * 1274126177u;
+        return (h ^ (h >> 16)) & 0xFFFFu;
+    };
+    auto frand = [&](int x, int y, int s) { return static_cast<float>(hash(x, y, s)) / 65535.0f; };
+    auto softDisc = [&](float ex, float ey, float rx, float ry, std::uint32_t c) {
+        for (int y = static_cast<int>(ey - ry) - 1; y <= static_cast<int>(ey + ry) + 1; ++y)
+            for (int x = static_cast<int>(ex - rx) - 1; x <= static_cast<int>(ex + rx) + 1; ++x) {
+                const float dx = (x + 0.5f - ex) / rx, dy = (y + 0.5f - ey) / ry;
+                const float q2 = dx * dx + dy * dy;
+                if (q2 > 1.0f) continue;
+                if (q2 > 0.68f) {
+                    const float f = 1.0f - (q2 - 0.68f) / 0.32f;
+                    const int a = static_cast<int>(static_cast<float>(c & 0xFFu) * f);
+                    p.blend(x, y, (c & 0xFFFFFF00u) | static_cast<std::uint32_t>(a));
+                } else {
+                    p.blend(x, y, c);
+                }
+            }
+    };
+    const float yTop = 4.0f, yBot = 252.0f, L = yBot - yTop;
+    // Long, lean hull: 0 = stern (top) .. 1 = bow tip (bottom). Full beam
+    // only 96 px over a 248 px length — the sleek, armored razor profile.
+    auto half = [&](float t) {
+        if (t < 0.05f) return 38.0f + 10.0f * (t / 0.05f);
+        if (t < 0.60f) return 48.0f + 1.5f * std::sin(t * 9.0f);
+        if (t < 0.80f) return 48.0f - 22.0f * ((t - 0.60f) / 0.20f);
+        if (t < 1.0f) return 26.0f * (1.0f - (t - 0.80f) / 0.20f);
+        return 0.0f;
+    };
+    auto halfAt = [&](float y) { return half((y - yTop) / L); };
+
+    // --- deck plating (coverage-AA'd silhouette) ---------------------------
+    for (int y = static_cast<int>(yTop); y <= static_cast<int>(yBot); ++y)
+        for (int x = 0; x < W; ++x) {
+            const float cov = halfAt(y + 0.5f) - std::fabs(x + 0.5f - cx) + 0.5f;
+            if (cov <= 0.0f) continue;
+            const float t = (y + 0.5f - yTop) / L;
+            std::uint32_t c;
+            if (t > 0.66f && t < 0.84f) {
+                // wooden forecastle
+                c = mix(col(0x6E5636), col(0x7E6644), frand(x, y / 3, 2));
+                if ((x + y / 2) % 9 < 1) c = mix(c, col(0x4E3A22), 0.6f);
+            } else {
+                // steel deck with anti-slip grit
+                c = mix(col(0x666C72), col(0x747A80), frand(x, y, 3));
+                if ((x + y) % 7 < 1) c = mix(c, col(0x565C62), 0.5f);
+            }
+            // sun from top-left
+            c = mix(c, col(0x9AA0A6), std::max(0.0f, 0.10f - t * 0.06f));
+            // low-contrast camo splotches
+            if (hash(x / 6, y / 6, 4) % 11 == 0) c = mix(c, col(0x5C6656), 0.35f);
+            if (cov >= 1.0f) p.set(x, y, c);
+            else p.set(x, y, (c & 0xFFFFFF00u) |
+                                static_cast<std::uint32_t>(cov * 255.0f + 0.5f));
+        }
+    // --- armored belt edge + porthole line ----------------------------------
+    // A heavier 3-tone belt than the cruiser's: this is the heaviest armor afloat.
+    for (int y = 0; y < H; ++y)
+        for (int s = -1; s <= 1; s += 2) {
+            const float hw = halfAt(y + 0.5f);
+            if (hw < 6.0f) continue;
+            const int ex = cx + static_cast<int>(s * (hw - 2.0f));
+            p.set(ex, y, col(0x363C42));
+            p.set(ex - s, y, col(0x2C3238));
+            p.set(ex - s * 2, y, mix(col(0x50565C), col(0x262C32), 0.55f));
+            if (y % 11 == 4 && hw > 16.0f)
+                p.set(ex - s * 4, y, col(0x1E242A));  // porthole
+        }
+    // stern transom line
+    for (int x = cx - 34; x <= cx + 34; ++x)
+        if (halfAt(yTop + 3.5f) > std::fabs(x + 0.5f - cx))
+            p.set(x, static_cast<int>(yTop) + 3, col(0x4A5056));
+
+    // --- aft catapult deck (two rails inboard of the AA sponsons) -----------
+    for (int rail = -1; rail <= 1; rail += 2)
+        for (int y = 18; y < 62; ++y) {
+            p.set(cx + rail * 16, y, col(0x4E545A));
+            p.set(cx + rail * 16 + 1, y, col(0x3E444A));
+        }
+    for (int y = 16; y < 64; y += 2)
+        for (int rail = -1; rail <= 1; rail += 2)
+            p.set(cx + rail * 16, y, mix(p.get(cx + rail * 16, y), col(0x8A9096), 0.25f));
+    // one floatplane on the port catapult (the starboard one has launched)
+    {
+        const int fx = cx - 16, fy = 40;
+        softDisc(fx, fy, 3.2f, 8.5f, col(0x8A8F94));
+        softDisc(fx, fy - 1.0f, 8.0f, 2.4f, col(0x7E8388));
+        softDisc(fx - 1.0f, fy - 3.5f, 1.3f, 1.1f, col(0x30363C));
+    }
+    // deck crane (starboard, amidships)
+    for (int y = 92; y < 112; y += 3) p.set(cx + 32, y, col(0x565C62));
+    softDisc(cx + 32, 112, 4.0f, 3.0f, col(0x666C72));
+    for (int k = 0; k < 5; ++k) p.set(cx + 32 - k, 92 - k * 2, col(0x4E545A));
+
+    // --- funnel (between aft main turret and the bridge) ---------------------
+    for (int y = cy - 40; y < cy - 24; ++y)
+        for (int x = cx - 10; x <= cx + 10; ++x) {
+            const float dx = (x + 0.5f - cx) / 10.5f, dy = (y + 0.5f - (cy - 32)) / 8.5f;
+            const float q = dx * dx + dy * dy;
+            if (q > 1.0f) continue;
+            std::uint32_t c = col(0x3C4248);
+            if (q > 0.62f) c = mix(col(0x6E747A), col(0x2A3036), (q - 0.62f) / 0.38f);
+            else if ((x + y) % 5 < 2) c = col(0x23292F);  // grill
+            p.set(x, y, c);
+        }
+
+    // --- anchor details on the bow -------------------------------------------
+    for (int s = -1; s <= 1; s += 2) {
+        softDisc(cx + s * 17.0f, 194.0f, 2.8f, 2.6f, col(0x3E444A));
+        softDisc(cx + s * 17.0f - 1.0f, 193.0f, 1.2f, 1.0f, col(0x8A9096));
+        for (int k = 0; k < 4; ++k)
+            softDisc(cx + s * (14 - k * 3), 199 + k * 4, 1.3f, 1.3f, col(0x4A5056));
+    }
+
+    // --- waterline foam (continuous band, gentle deterministic shimmer) ------
+    for (int y = 0; y < H; ++y)
+        for (int s = -1; s <= 1; s += 2) {
+            const float hw = halfAt(y + 0.5f);
+            if (hw < 3.0f) continue;
+            const float w = 0.62f + 0.38f * std::sin(y * 0.31f + s * 1.7f);
+            const int ex = cx + static_cast<int>(s * (hw + 1.0f));
+            p.blend(ex, y, col(0xD8E4E8, static_cast<std::uint32_t>(95.0f + 110.0f * w)));
+            p.blend(ex + s, y, col(0xD8E4E8, static_cast<std::uint32_t>(40.0f + 70.0f * w)));
+        }
+
+    // --- battle damage ---------------------------------------------------------
+    const auto crater = [&](float sx, float sy, float r) {
+        softDisc(sx, sy, r * 1.3f, r * 1.15f, col(0x35332E, 170));
+        softDisc(sx, sy, r, r * 0.9f, col(0x14120F, 230));
+        softDisc(sx - r * 0.25f, sy - r * 0.3f, r * 0.5f, r * 0.4f, col(0x55524B));
+    };
+    if (damage >= 1) {
+        crater(cx - 26.0f, 22.0f, 5.0f);
+        softDisc(cx + 20.0f, 148.0f, 8.0f, 6.0f, col(0x2A2620, 140));
+    }
+    if (damage >= 2) {
+        crater(cx + 30.0f, 118.0f, 6.0f);
+        crater(cx - 20.0f, 96.0f, 5.0f);
+        crater(cx + 10.0f, 206.0f, 5.0f);
+        // main-gun blast scours around the barbette rings
+        softDisc(cx - 17.0f, 40.0f, 11.0f, 8.0f, col(0x26221C, 130));
+        softDisc(cx + 17.0f, 176.0f, 11.0f, 8.0f, col(0x26221C, 130));
+    }
+    if (damage >= 3) {
+        crater(cx - 30.0f, 60.0f, 6.5f);
+        crater(cx + 26.0f, 66.0f, 6.0f);
+        crater(cx, 138.0f, 6.0f);
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x)
+                if ((x * 7 + y * 11) % 13 < 4 && halfAt(y + 0.5f) > std::fabs(x + 0.5f - cx))
+                    p.blend(x, y, col(0x141311, 95));
+        // flooding along one flank
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x)
+                if (halfAt(y + 0.5f) > std::fabs(x + 0.5f - cx) &&
+                    x < cx - halfAt(y + 0.5f) + 10.0f && hash(x, y, 9) % 6 == 0)
+                    p.set(x, y, mix(p.get(x, y), col(0x2A4E5E), 0.6f));
+    }
+    return p;
+}
+// 46 cm triple main turret, 48x54 — same gun-metal language as the Heavy
+// Cruiser's big turret (lit rails, muzzle brakes, deck shadows) and long
+// barrels that clearly overhang the barbette. bowDown=false: barrels point
+// screen-up (aft turret); bowDown=true: barrels point screen-down.
+PixelBuf makeYamatoTurretMain(bool bowDown) {
+    constexpr int W = 48, H = 54;
+    const int cx = W / 2;
+    PixelBuf p(W, H);
+    const auto setO = [&](int x, int yy, std::uint32_t c) {
+        const int y = bowDown ? yy : (H - 1 - yy);
+        if (x >= 0 && x < W && y >= 0 && y < H) p.set(x, y, c);
+    };
+    // Barbette collar riding in its ring (compact: barrels outshine it).
+    for (int y = 6; y < 38; ++y)
+        for (int x = 4; x < W - 4; ++x) {
+            const float dx = (x + 0.5f - cx) / 19.5f, dy = (y + 0.5f - 22.0f) / 15.5f;
+            const float q = dx * dx + dy * dy;
+            if (q > 1.0f) continue;
+            std::uint32_t c = col(0x33383D);
+            if (q > 0.86f) c = col(0x23282C);
+            else if (q > 0.72f) c = col(0x4A5056);
+            p.set(x, y, c);
+        }
+    // Octagonal turret body, faceted: lit top-left, shaded bottom-right.
+    const int oct[16] = {6, 10, 13, 15, 16, 16, 16, 15,
+                         15, 16, 16, 16, 15, 13, 10, 6};
+    for (int r = 0; r < 16; ++r) {
+        const int yy = 12 + r;
+        const int hw = oct[static_cast<std::size_t>(r)];
+        for (int x = -hw; x <= hw; ++x) {
+            std::uint32_t c = col(0x666D73);
+            const int dEdge = hw - std::abs(x);
+            if (dEdge <= 1) c = col(0x1E2226);
+            else if (x <= 0 && r <= 8) c = col(0x8F979E);
+            else if (x >= 0 && r > 8) c = col(0x3E4449);
+            p.set(cx + x, yy, c);
+        }
+    }
+    // Roof hatch + rangefinder pod.
+    for (int y = 17; y < 23; ++y)
+        for (int x = cx - 5; x <= cx + 4; ++x) {
+            const float dx = (x + 0.5f - (cx - 0.5f)) / 5.0f, dy = (y + 0.5f - 20.0f) / 3.0f;
+            if (dx * dx + dy * dy <= 1.0f) p.set(x, y, col(0x51575C));
+        }
+    p.set(cx - 14, 13, col(0x1B1E21));  // rangefinder pod
+    p.set(cx - 13, 13, col(0x1B1E21));
+    // Mantlet bar across the barrel bases.
+    for (int x = 7; x <= 40; ++x) {
+        setO(x, 27, col(0x8A9094));
+        setO(x, 28, col(0x3C4247));
+        setO(x, 29, col(0x3C4247));
+        setO(x, 30, col(0x3C4247));
+        setO(x, 31, col(0x1B1E21));
+    }
+    // Long triple 46 cm barrels past the mantlet: bright gunmetal with a
+    // lit rail, dark edge and muzzle brakes — clearly overhanging the ring.
+    for (const int bx : {7, 22, 37}) {
+        for (int yy = 32; yy < H; ++yy) {
+            setO(bx + 5, yy, col(0x000000, 80));    // deck shadow
+            setO(bx, yy, col(0x9AA2A8));            // lit rail
+            setO(bx + 1, yy, col(0x41474D));        // barrel body
+            setO(bx + 2, yy, col(0x41474D));
+            setO(bx + 3, yy, col(0x41474D));
+            setO(bx + 4, yy, col(0x23272B));        // dark edge
+        }
+        for (int x = bx - 1; x <= bx + 5; ++x) {   // muzzle brake
+            setO(x, 49, col(0x7C838A));
+            if (x > bx - 1 && x < bx + 5) setO(x, 50, col(0x0A0E12));
+            else setO(x, 50, col(0x23272B));
+        }
+        setO(bx + 2, 51, col(0x0A0E12));            // bore shadow
+        setO(bx + 3, 51, col(0x0A0E12));
+    }
+    outlineSilhouette(p, col(0x0E1216, 150));
+    return p;
+}
+
+// 12.7 cm wing turret, 30x36: round drum with twin long barrels screen-down
+// (lit rails + muzzle brakes, cruiser contour language). Rotates as a whole
+// about the sprite centre (aimAtPlayer) — drum centred at (15,18), which is
+// exactly the canvas centre, so no wobble while tracking.
+PixelBuf makeYamatoWingTurret() {
+    constexpr int W = 30, H = 36;
+    const int cx = W / 2, cy = H / 2;
+    PixelBuf p(W, H);
+    const auto setO = [&](int x, int y, std::uint32_t c) {
+        if (x >= 0 && x < W && y >= 0 && y < H) p.set(x, y, c);
+    };
+    // Barbette collar + rotating drum.
+    for (int y = 3; y < 33; ++y)
+        for (int x = 1; x < W - 1; ++x) {
+            const float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
+            const float q = dx * dx + dy * dy;
+            if (q > 12.5f * 12.5f) continue;
+            std::uint32_t c = col(0x666D73);
+            if (q > 10.5f * 10.5f) c = col(0x23282C);
+            else if (dx + dy < -8.0f) c = col(0x8F979E);
+            else if (dx + dy > 9.0f) c = col(0x3E4449);
+            setO(x, y, c);
+        }
+    // Traverse ring + hatch.
+    for (int y = 10; y < 15; ++y)
+        for (int x = cx - 3; x <= cx + 2; ++x) {
+            const float ddx = (x + 0.5f - (cx - 0.5f)) / 3.0f, ddy = (y + 0.5f - 12.5f) / 2.5f;
+            if (ddx * ddx + ddy * ddy <= 1.0f) setO(x, y, col(0x51575C));
+        }
+    // Twin barrels screen-down, clearly past the drum edge: lit rail, dark
+    // edge, muzzle brake.
+    for (const int bx : {7, 19}) {
+        for (int y = 18; y < H; ++y) {
+            setO(bx, y, col(0x9AA2A8));             // lit rail
+            setO(bx + 1, y, col(0x41474D));         // barrel body
+            setO(bx + 2, y, col(0x41474D));
+            setO(bx + 3, y, col(0x23272B));         // dark edge
+        }
+        for (int x = bx - 1; x <= bx + 4; ++x) {   // muzzle brake
+            setO(x, 32, col(0x7C838A));
+            setO(x, 33, (x > bx - 1 && x < bx + 4) ? col(0x0A0E12) : col(0x23272B));
+        }
+    }
+    outlineSilhouette(p, col(0x0E1216, 150));
+    return p;
+}
+// Pagoda bridge / fire-control tower seen from above: stacked command
+// decks around the armoured conning tower.
+PixelBuf makeYamatoBridge() {
+    constexpr int W = 40, H = 48;
+    const int cx = W / 2, cy = H / 2;
+    PixelBuf p(W, H);
+    auto mix = [](std::uint32_t a, std::uint32_t b, float t) -> std::uint32_t {
+        auto ch = [](std::uint32_t v, int s) { return static_cast<float>((v >> s) & 0xFFu); };
+        const float r  = ch(a, 24) + (ch(b, 24) - ch(a, 24)) * t;
+        const float g  = ch(a, 16) + (ch(b, 16) - ch(a, 16)) * t;
+        const float bl = ch(a, 8)  + (ch(b, 8)  - ch(a, 8))  * t;
+        const float al = ch(a, 0)  + (ch(b, 0)  - ch(a, 0))  * t;
+        return (static_cast<std::uint32_t>(r + 0.5f) << 24) |
+               (static_cast<std::uint32_t>(g + 0.5f) << 16) |
+               static_cast<std::uint32_t>(bl + 0.5f) << 8 |
+               static_cast<std::uint32_t>(al + 0.5f);
+    };
+    const auto setO = [&](int x, int y, std::uint32_t c) {
+        if (x >= 0 && x < W && y >= 0 && y < H) p.set(x, y, c);
+    };
+    // three stacked decks, shrinking toward the top (screen-up)
+    const struct { int hw, h0, h1; } decks[] = {
+        {19, 6, 44}, {14, 10, 40}, {9, 14, 36},
+    };
+    for (const auto& d : decks)
+        for (int y = d.h0; y <= d.h1; ++y)
+            for (int x = cx - d.hw; x <= cx + d.hw; ++x) {
+                const int ax = std::abs(x - cx), ay = std::abs(y - (d.h0 + d.h1) / 2);
+                if (ax + ay > d.hw + (d.h1 - d.h0) / 2 - 2) continue;
+                std::uint32_t c = mix(col(0x8A9096), col(0x5A6066),
+                                      static_cast<float>(ax) / (d.hw + 2));
+                if (x == cx - d.hw || y == d.h0) c = mix(c, col(0xC6CCD2), 0.5f);
+                if (x == cx + d.hw || y == d.h1) c = mix(c, col(0x282E34), 0.6f);
+                setO(x, y, c);
+            }
+    // conning tower: armoured cylinder + fire-control top
+    for (int y = cy - 8; y <= cy + 8; ++y)
+        for (int x = cx - 8; x <= cx + 8; ++x) {
+            const float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
+            const float q = dx * dx + dy * dy;
+            if (q > 8.5f * 8.5f) continue;
+            std::uint32_t c = mix(col(0x9AA0A6), col(0x4E545A), std::sqrt(q) / 9.5f);
+            if (q > 6.5f * 6.5f) c = mix(c, col(0x33393F), 0.7f);
+            if (dx + dy < -6.0f) c = mix(c, col(0xD2D8DE), 0.5f);
+            setO(x, y, c);
+        }
+    for (int y = cy - 4; y <= cy + 4; ++y)  // fire-control dome + slit
+        for (int x = cx - 4; x <= cx + 4; ++x) {
+            const float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
+            if (dx * dx + dy * dy > 4.5f * 4.5f) continue;
+            setO(x, y, y == cy ? col(0x101418) : col(0xAAB0B6));
+        }
+    // outline
+    std::vector<std::pair<int, int>> edge;
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            if ((p.get(x, y) & 0xFFu) != 0u) continue;
+            const bool near =
+                (x + 1 < W && (p.get(x + 1, y) & 0xFFu) != 0u) ||
+                (x - 1 >= 0 && (p.get(x - 1, y) & 0xFFu) != 0u) ||
+                (y + 1 < H && (p.get(x, y + 1) & 0xFFu) != 0u) ||
+                (y - 1 >= 0 && (p.get(x, y - 1) & 0xFFu) != 0u);
+            if (near) edge.push_back({x, y});
+        }
+    for (const auto [x, y] : edge) p.set(x, y, col(0x181C20));
+    return p;
+}
+
 // Sawn-off arch (Quonset) hangar, seen from above: capsule roof with the
 // bright ridge along the spine and corrugation ribs running down the slopes.
 PixelBuf makeAirfieldHangar() {
@@ -5387,7 +5761,7 @@ namespace {
 constexpr std::uint32_t kArtCacheMagic = 0x50534152u;  // "PSAR"
 // Bump whenever any generated art changes (v10: A6M Zero redesign of the
 // primary enemy fighter and interceptor).
-constexpr std::uint32_t kArtCacheVersion = 27u;
+constexpr std::uint32_t kArtCacheVersion = 32u;
 
 void wr32(std::ostream& o, std::uint32_t v) {
     o.write(reinterpret_cast<const char*>(&v), 4);
@@ -5623,6 +5997,15 @@ bool generateAllArt(Renderer& r, const std::string& cachePath,
     add("boss_drydock_hull_flash", toFlashSilhouette(makeDrydockHull(0)));
     add("boss_drydock_crane", makeDrydockCrane());
     add("boss_drydock_pontoon", makeDrydockPontoon());
+    add("boss_yamato_hull", makeYamatoHull(0));
+    add("boss_yamato_hull_light", makeYamatoHull(1));
+    add("boss_yamato_hull_dmg", makeYamatoHull(2));
+    add("boss_yamato_hull_wreck", makeYamatoHull(3));
+    add("boss_yamato_hull_flash", toFlashSilhouette(makeYamatoHull(0)));
+    add("boss_yamato_turret_fore", makeYamatoTurretMain(true));
+    add("boss_yamato_turret_aft", makeYamatoTurretMain(false));
+    add("boss_yamato_wing", makeYamatoWingTurret());
+    add("boss_yamato_bridge", makeYamatoBridge());
     add("boss_airfield_hangar", makeAirfieldHangar());
     add("boss_airfield_tower", makeAirfieldTower());
     add("boss_cruiser_hull", makeCruiserHull(0));

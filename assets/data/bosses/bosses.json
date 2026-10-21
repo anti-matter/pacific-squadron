@@ -988,5 +988,165 @@
         "extraInterval": 1.5
       }
     ]
+  },
+  {
+    "name": "SUPER BATTLESHIP",
+    "hullSprite": "boss_yamato_hull",
+    "hullWidth": 160,
+    "hullHeight": 256,
+    "hullHp": 560,
+    "hullScore": 16000,
+    "entryY": 150,
+    "hoverAmp": 26,
+    "hoverFreq": 0.04,
+    "deathEffect": 2,
+    "defeatDrop": "powerup_p",
+    "components": [
+      {
+        "name": "AFT TRIPLE TURRET",
+        "sprite": "boss_yamato_turret_aft",
+        "offsetX": 0,
+        "offsetY": -78,
+        "width": 48,
+        "height": 54,
+        "hp": 90,
+        "score": 1600,
+        "weapon": "b_big_turret",
+        "fireInterval": 2.3,
+        "firstFireDelay": 2.0
+      },
+      {
+        "name": "BOW TRIPLE TURRET",
+        "sprite": "boss_yamato_turret_fore",
+        "offsetX": 0,
+        "offsetY": 66,
+        "width": 48,
+        "height": 54,
+        "hp": 90,
+        "score": 1600,
+        "weapon": "b_big_turret",
+        "fireInterval": 2.4,
+        "firstFireDelay": 2.2
+      },
+      {
+        "name": "PORT 12.7 TURRET",
+        "sprite": "boss_yamato_wing",
+        "offsetX": -40,
+        "offsetY": -28,
+        "width": 30,
+        "height": 36,
+        "hp": 75,
+        "score": 1200,
+        "weapon": "b_dp_gun",
+        "fireInterval": 1.9,
+        "firstFireDelay": 2.6,
+        "aimAtPlayer": true
+      },
+      {
+        "name": "STARBOARD 12.7 TURRET",
+        "sprite": "boss_yamato_wing",
+        "offsetX": 40,
+        "offsetY": -28,
+        "width": 30,
+        "height": 36,
+        "hp": 75,
+        "score": 1200,
+        "weapon": "b_dp_gun",
+        "fireInterval": 2.0,
+        "firstFireDelay": 2.8,
+        "aimAtPlayer": true
+      },
+      {
+        "name": "AA SPONSON PORT-AFT",
+        "sprite": "boss_fort_aa",
+        "offsetX": -40,
+        "offsetY": -92,
+        "width": 26,
+        "height": 26,
+        "hp": 30,
+        "score": 500,
+        "weapon": "b_aa_flak",
+        "fireInterval": 2.5,
+        "firstFireDelay": 3.0
+      },
+      {
+        "name": "AA SPONSON STBD-AFT",
+        "sprite": "boss_fort_aa",
+        "offsetX": 40,
+        "offsetY": -92,
+        "width": 26,
+        "height": 26,
+        "hp": 30,
+        "score": 500,
+        "weapon": "b_aa_flak",
+        "fireInterval": 2.6,
+        "firstFireDelay": 3.2
+      },
+      {
+        "name": "AA SPONSON PORT-FWD",
+        "sprite": "boss_fort_aa",
+        "offsetX": -38,
+        "offsetY": 44,
+        "width": 26,
+        "height": 26,
+        "hp": 30,
+        "score": 500,
+        "weapon": "b_aa_flak",
+        "fireInterval": 2.7,
+        "firstFireDelay": 3.4
+      },
+      {
+        "name": "AA SPONSON STBD-FWD",
+        "sprite": "boss_fort_aa",
+        "offsetX": 38,
+        "offsetY": 44,
+        "width": 26,
+        "height": 26,
+        "hp": 30,
+        "score": 500,
+        "weapon": "b_aa_flak",
+        "fireInterval": 2.8,
+        "firstFireDelay": 3.6
+      },
+      {
+        "name": "PAGODA BRIDGE",
+        "sprite": "boss_yamato_bridge",
+        "offsetX": 0,
+        "offsetY": 4,
+        "width": 38,
+        "height": 46,
+        "hp": 70,
+        "score": 1800,
+        "weapon": "b_big_turret",
+        "fireInterval": 2.6,
+        "firstFireDelay": 3.0
+      }
+    ],
+    "phases": [
+      {
+        "hpFraction": 0.7,
+        "rateMul": 0.86,
+        "extraWeapon": "b_dp_gun",
+        "extraInterval": 3.6
+      },
+      {
+        "hpFraction": 0.45,
+        "rateMul": 0.74,
+        "extraWeapon": "b_spray5",
+        "extraInterval": 2.2
+      },
+      {
+        "hpFraction": 0.25,
+        "rateMul": 0.62,
+        "extraWeapon": "b_radial12",
+        "extraInterval": 2.6
+      },
+      {
+        "hpFraction": 0.1,
+        "rateMul": 0.5,
+        "extraWeapon": "b_big_turret",
+        "extraInterval": 1.9
+      }
+    ]
   }
 ]

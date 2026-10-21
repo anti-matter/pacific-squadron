@@ -669,10 +669,36 @@ void Simulation::updateEnemies(float dt) {
     // Same clock the terrain is rendered from: guarantees solo ground
     // units stay welded to the terrain at any difficulty.
     const float scroll = director_.scrollRate();
+    std::vector<int> rammed;  // ships that sail into an engaged capital ship
     for (std::size_t i = 0; i < pool_.size(); ++i) {
         Entity& e = pool_[i];
         if (!e.alive || e.kind != EKind::Enemy) continue;
         e.age += dt;
+
+        // Ships that run into an engaged capital ship are rammed under and
+        // explode: a destroyer sliding beneath the boss hull reads as a
+        // rendering bug. The test is "overlaps the hull box but did not
+        // start life inside it", which catches escorts sinking in from
+        // above and the hull descending onto ships during entry, while
+        // boats launched from a boss's own well pass through freely.
+        if (data_.enemies[static_cast<std::size_t>(e.enemyDef)].ship) {
+            for (const auto& b : bosses_) {
+                if (b.state != 1) continue;
+                const BossDef& bd =
+                    data_.bosses[static_cast<std::size_t>(b.defRef)];
+                const float hw2 = static_cast<float>(bd.hullWidth) * 0.5f;
+                const float hh2 = static_cast<float>(bd.hullHeight) * 0.5f;
+                const bool inNow = std::fabs(e.pos.x - b.pos.x) < hw2 &&
+                                   std::fabs(e.pos.y - b.pos.y) < hh2;
+                const bool bornInside =
+                    std::fabs(e.move.origin.x - b.pos.x) < hw2 &&
+                    std::fabs(e.move.origin.y - b.pos.y) < hh2;
+                if (inNow && !bornInside) {
+                    rammed.push_back(static_cast<int>(i));
+                    break;
+                }
+            }
+        }
 
         const PathDef* path = e.move.pathRef >= 0
             ? &data_.paths[static_cast<std::size_t>(e.move.pathRef)]
@@ -747,6 +773,9 @@ void Simulation::updateEnemies(float dt) {
             if (spawnedLongAgo) kill(static_cast<int>(i));  // don't kill at spawn
         }
     }
+
+    // Ram kills happen after the pool loop (killEnemy can grow the pool).
+    for (int idx : rammed) killEnemy(idx, false);
 
     // Formation anchor cleanup.
     formations_.erase(std::remove_if(formations_.begin(), formations_.end(),
@@ -1052,6 +1081,14 @@ void Simulation::updateBosses(float dt) {
             e.pos = b.pos + Vec2{static_cast<float>(def.components[c].offsetX),
                                  static_cast<float>(def.components[c].offsetY)};
             e.flashTimer = std::max(0.0f, e.flashTimer - dt);
+            // Predictive turret: track the player with lead for shell
+            // flight time (deterministic; barrel-down at angle 0).
+            if (def.components[c].aimAtPlayer && player_.alive) {
+                const float dist = length(player_.pos - e.pos);
+                const float lead = clamp(dist / 300.0f, 0.0f, 0.7f);
+                const Vec2 tgt = player_.pos + player_.vel * lead;
+                e.angle = std::atan2(-(tgt.x - e.pos.x), tgt.y - e.pos.y);
+            }
             if (b.state != 1) continue;
             if (e.weaponDef >= 0) {
                 e.fireTimer -= dt;

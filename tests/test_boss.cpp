@@ -497,3 +497,166 @@ void test_boss_slot_pinning() {
     CHECK(defeated);                // armor gate opened: the hull died
     CHECK(sim.bossView().active == false);
 }
+
+void test_yamato_turrets_track_player() {
+    const char* weaponsJson = R"([
+      { "name": "gun_l1", "pattern": "forward", "damage": 5, "fireInterval": 0.05,
+        "speed": 800, "count": 1, "lifetime": 1.2 }
+    ])";
+    const char* powerupsJson = R"([
+      { "name": "powerup_p", "effect": "weapon_up", "sprite": "powerup_p" }
+    ])";
+    const char* bossesJson = R"([
+      {
+        "name": "TEST YAMATO", "hullSprite": "boss_yamato_hull",
+        "hullWidth": 200, "hullHeight": 220, "hullHp": 400, "hullScore": 9000,
+        "entryY": 120, "hoverAmp": 0, "hoverFreq": 0.05, "defeatDrop": "powerup_p",
+        "components": [
+          { "name": "TRACKER", "sprite": "boss_yamato_wing", "offsetX": 0, "offsetY": 0,
+            "width": 40, "height": 40, "hp": 60, "score": 1200,
+            "firstFireDelay": 999, "aimAtPlayer": true },
+          { "name": "STATIC", "sprite": "boss_yamato_bridge", "offsetX": 0,
+            "offsetY": 60, "width": 38, "height": 46, "hp": 60, "score": 1200,
+            "firstFireDelay": 999 }
+        ]
+      }
+    ])";
+    GameData data;
+    std::string err;
+    CHECK(parseWeaponsJson(weaponsJson, data.weapons, err));
+    CHECK(parsePowerupsJson(powerupsJson, data.powerups, err));
+    CHECK(parseBossesJson(bossesJson, data.bosses, err));
+    StageDef stage;
+    stage.name = "aim test";
+    stage.duration = 600;
+    stage.bossTime = 1e9f;  // boss spawned manually
+    data.stages.push_back(stage);
+    CHECK(data.linkReferences(err));
+
+    Simulation sim(data, 9);
+    sim.startStage(0, {});
+    sim.setGodMode(true);
+    sim.debugSpawnBoss(0);
+
+    const auto angleOf = [&sim](const char* sprite) {
+        for (const auto& e : sim.entities())
+            if (e.alive && e.kind == EKind::BossComponent && e.sprite == sprite)
+                return e.angle;
+        return 999.0f;
+    };
+    SimEvent ev;
+    // Settle: let the hull finish its entry descent, player parked centred.
+    for (int f = 0; f < 60 * 6; ++f) {
+        sim.setPlayerIntent({0, 0}, false, false);
+        sim.update();
+        while (sim.popEvent(ev)) {}
+    }
+    CHECK(sim.bossView().active);
+    CHECK(angleOf("boss_yamato_bridge") == 0.0f);  // non-tracking turret never turns
+
+    // Glide hard left, settle, and read the tracked turret's angle.
+    for (int f = 0; f < 60 * 3; ++f) {
+        sim.setPlayerIntent({-1, 0}, false, false);
+        sim.update();
+        while (sim.popEvent(ev)) {}
+    }
+    for (int f = 0; f < 30; ++f) {  // stop so velocity lead vanishes
+        sim.setPlayerIntent({0, 0}, false, false);
+        sim.update();
+        while (sim.popEvent(ev)) {}
+    }
+    CHECK(sim.player().pos.x < 150.0f);
+    const float leftAngle = angleOf("boss_yamato_wing");
+    CHECK(leftAngle > 0.05f);  // barrel swung toward the port side
+
+    // Then hard right: the angle must cross over to the other sign.
+    for (int f = 0; f < 60 * 5; ++f) {
+        sim.setPlayerIntent({1, 0}, false, false);
+        sim.update();
+        while (sim.popEvent(ev)) {}
+    }
+    for (int f = 0; f < 30; ++f) {
+        sim.setPlayerIntent({0, 0}, false, false);
+        sim.update();
+        while (sim.popEvent(ev)) {}
+    }
+    CHECK(sim.player().pos.x > 230.0f);
+    const float rightAngle = angleOf("boss_yamato_wing");
+    CHECK(rightAngle < -0.05f);  // ...and back to starboard
+    CHECK(angleOf("boss_yamato_bridge") == 0.0f);
+}
+
+void test_ships_are_rammed_by_capital_ships() {
+    const char* weaponsJson = R"([
+      { "name": "gun_l1", "pattern": "forward", "damage": 5, "fireInterval": 0.05,
+        "speed": 800, "count": 1, "lifetime": 1.2 }
+    ])";
+    const char* powerupsJson = R"([
+      { "name": "powerup_p", "effect": "weapon_up", "sprite": "powerup_p" }
+    ])";
+    const char* enemiesJson = R"([
+      { "name": "test_boat", "sprite": "boat_patrol", "width": 22, "height": 44,
+        "hp": 4, "score": 150, "speed": 40, "ship": true, "ground": true,
+        "deathEffect": 1 }
+    ])";
+    const char* bossesJson = R"([
+      {
+        "name": "TEST CAPITAL SHIP", "hullSprite": "boss_yamato_hull",
+        "hullWidth": 200, "hullHeight": 220, "hullHp": 9999, "hullScore": 9000,
+        "entryY": 120, "hoverAmp": 0, "hoverFreq": 0.05, "defeatDrop": "powerup_p",
+        "components": []
+      }
+    ])";
+    GameData data;
+    std::string err;
+    CHECK(parseWeaponsJson(weaponsJson, data.weapons, err));
+    CHECK(parsePowerupsJson(powerupsJson, data.powerups, err));
+    CHECK(parseEnemiesJson(enemiesJson, data.enemies, err));
+    CHECK(parseBossesJson(bossesJson, data.bosses, err));
+    StageDef stage;
+    stage.name = "ram test";
+    stage.duration = 600;
+    stage.bossTime = 1e9f;  // boss spawned manually
+    TerrainSegment sea;
+    sea.fromY = 0.0f;
+    sea.toY = 1e9f;
+    sea.kind = TerrainKind::Ocean;
+    stage.terrain.push_back(sea);
+    SpawnEvent boatWave;
+    boatWave.trigger = 4.5f;
+    boatWave.enemy = "test_boat";
+    boatWave.count = 1;
+    boatWave.x = 192.0f;
+    boatWave.y = -40.0f;
+    stage.events.push_back(boatWave);
+    data.stages.push_back(stage);
+    CHECK(data.linkReferences(err));
+
+    Simulation sim(data, 9);
+    sim.startStage(0, {});
+    sim.setGodMode(true);
+    sim.debugSpawnBoss(0);
+
+    SimEvent ev;
+    bool sawBoat = false, boatDeepInside = false, boatGone = false;
+    for (int f = 0; f < 60 * 12; ++f) {
+        sim.setPlayerIntent({0, 0}, false, false);
+        sim.update();
+        while (sim.popEvent(ev)) {}
+        bool aliveNow = false;
+        for (const auto& e : sim.entities()) {
+            if (!e.alive || e.kind != EKind::Enemy) continue;
+            if (e.enemyDef != 0) continue;  // our test_boat
+            aliveNow = true;
+            sawBoat = true;
+            if (std::fabs(e.pos.y - 120.0f) < 102.0f &&  // deep in the hull box
+                std::fabs(e.pos.x - 192.0f) < 92.0f)
+                boatDeepInside = true;
+        }
+        if (sawBoat && !aliveNow && f > 60 * 5) boatGone = true;
+    }
+    CHECK(sim.bossView().active);   // the capital ship is still fighting
+    CHECK(sawBoat);                 // the escort did sail in
+    CHECK(!boatDeepInside);         // ...but never slid underneath the hull
+    CHECK(boatGone);                // ...it was rammed and destroyed
+}

@@ -92,7 +92,7 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
 - **Kill-difficulty budget**: each boss's total HP (hull + components) is
   ~1.31–1.37× the previous boss's total, and `test_data.cpp` pins the exact
   number plus the band. Chain so far: destroyer 194 → carrier 252 →
-  fortress 338 → cruiser 448 → airfield 596 → drydock 800.
+  fortress 338 → cruiser 448 → airfield 596 → drydock 800 → battleship 1080.
 - `test_data.cpp` pins per-stage boss identity/composition/HP/phases. Any
   data change must update the pins deliberately, never by accident.
 - Boss JSON: `arenaOcean: true` = boss carries its own ground and the world
@@ -104,6 +104,10 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
   splash on launch.
   Top-level `boss` + `bossTime` select the stage boss; event-level `"boss"`
   is broken, top-level stage `hpMul` is ignored.
+  Component `"aimAtPlayer": true` = predictive turret: its `Entity.angle`
+  tracks the player (with lead for shell flight time, deterministic) and the
+  renderer rotates the sprite about its centre — barrel points **screen-down**
+  at angle 0, so draw such turret art symmetric around that pose.
 - Component `"weapon": ""` = destructible structure that never fires
   (hangars). Weapons resolved by name: unknown name ⇒ never fires.
 - Terrain segments are keyed by **world Y** (`worldY ≈ t × scrollSpeed`);
@@ -113,7 +117,11 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
 - Scroll freezes while a boss is engaged (`setScrollFrozen`). Ground units
   are held/dropped when they'd spawn on the wrong surface
   (`groundSpawnMismatch`), and all terrain-borne spawns are dropped during
-  an `arenaOcean` fight (`seaArenaActive`). Post-`bossTime` events DO fire
+  an `arenaOcean` fight (`seaArenaActive`). Enemy **ships that overlap an
+  engaged boss's hull box are rammed under** (killed, no score) unless they
+  spawned inside it (a boss's own well-boats pass through) — escorts should
+  spawn in side lanes clear of the hull box (see stage 9's edge columns).
+  Post-`bossTime` events DO fire
   during the boss window — use them for in-fight bomber/elite waves.
 
 ## Help screen
@@ -121,8 +129,11 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
 `renderHelp()` / `renderHelpCatalog()` in `Application.cpp`; pages defined
 by `kHelpPages` (sprite catalog rows: icon fit-box + one-line description),
 page count by `Game::kHelpPages`. **Add new bosses/sprites to the catalog
-pages when you create them.** The stroke font is ASCII-only (no `&`, no
-em-dashes); at scale 1 budget ≈7 px/char and test screenshots for overflow.
+pages when you create them.** Flagship catalogs hold at most 5 rows per page
+(56×56 icons, 56 px rows); descriptions start at the page's `textX` — keep
+them ≤ 36 chars at the boss pages' textX 88. The stroke font is ASCII-only
+(no `&`, no em-dashes); at scale 1 budget ≈7 px/char and test screenshots
+for overflow.
 
 ## Art direction
 
@@ -154,12 +165,12 @@ problems with blur or generic smoothing filters. Concretely:
 
 ## Content roadmap
 
-Levels 1–8 shipped (stage 8 FLOATING DRYDOCK: crane guns, separate-HP
-pontoon sections, patrol-boat sorties from the well, and `sailSpeed` — once
-its last mount dies the dock undocks and maneuvers sideways, bouncing
-inside hull-width margins; `BossView.sailing/sailDir` drive the wake).
-Remaining per the design sheet: **9 SUPER BATTLESHIP** (Yamato: triple
-turrets, predictive rotating turrets, multiple damage phases), **10 SKY
+Levels 1–9 shipped (stage 9 TRUK LAGOON: SUPER BATTLESHIP — a Yamato-class
+giant with fore/aft triple main turrets, two predictive rotating 12.7 cm
+wing turrets (`aimAtPlayer`), four AA sponsons, a pagoda fire-control
+bridge, and FOUR damage phases; continuous escort waves hammer in through
+the whole boss window. Too big to undock — it fights at anchor).
+Remaining per the design sheet: **10 SKY
 FORTRESS** (multi-stage flying fortress, bomb bays open with extra guns,
 final core-exposed phase; boss index 1 already holds an older Sky Fortress —
 the finale supersedes or reuses it).

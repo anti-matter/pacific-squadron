@@ -257,4 +257,51 @@ void test_shipped_data() {
         if (ev.trigger > st8.bossTime) ++dockLateWaves;
     CHECK(dockLateWaves >= 6);
     CHECK(dock.phases.size() == 3);
+
+    // Stage 9: the super battleship at anchor in the lagoon.
+    CHECK(data.stages.size() >= 9);
+    const StageDef& st9 = data.stages[8];
+    CHECK(st9.name == "TRUK LAGOON");
+    CHECK(st9.bossTime > 0.0f && st9.bossTime < st9.duration);
+    // Open-water arena tail: the giant lies at anchor in the anchorage.
+    CHECK(!st9.terrain.empty());
+    CHECK(st9.terrain.back().kind == TerrainKind::Ocean);
+    const BossDef& yamato = data.bosses[static_cast<std::size_t>(st9.bossRef)];
+    CHECK(yamato.name == "SUPER BATTLESHIP");
+    CHECK(yamato.hullSprite == "boss_yamato_hull");
+    CHECK(!yamato.arenaOcean);
+    CHECK(yamato.sailSpeed == 0.0f);  // too big to bother undocking
+    // Two triple main turrets + two predictive wing turrets + four AA
+    // sponsons + the pagoda bridge.
+    CHECK(yamato.components.size() == 9);
+    int mainTurrets = 0, wingTurrets = 0, yamatoAa = 0;
+    bool bridge = false;
+    for (const auto& c : yamato.components) {
+        if (c.sprite == "boss_yamato_turret_fore" ||
+            c.sprite == "boss_yamato_turret_aft") {
+            ++mainTurrets;
+            CHECK(!c.aimAtPlayer);  // the big guns train, they do not swing
+        } else if (c.sprite == "boss_yamato_wing") {
+            ++wingTurrets;
+            CHECK(c.aimAtPlayer);   // the wing guns track the player
+        } else if (c.sprite == "boss_fort_aa") ++yamatoAa;
+        else if (c.sprite == "boss_yamato_bridge") bridge = true;
+    }
+    CHECK(mainTurrets == 2);
+    CHECK(wingTurrets == 2);
+    CHECK(yamatoAa == 4);
+    CHECK(bridge);
+    for (const auto& c : yamato.components) CHECK(!c.weapon.empty());
+    // Kill-difficulty budget: ~35% above the drydock's 800 hp.
+    int yamatoHp = yamato.hullHp;
+    for (const auto& c : yamato.components) yamatoHp += c.hp;
+    CHECK(yamatoHp == 1080);
+    CHECK(yamatoHp * 100 >= 800 * 131 && yamatoHp * 100 <= 800 * 137);
+    // Continuous escort waves hammer in for the whole boss window, and the
+    // fight grinds through FOUR damage phases - the longest fight afloat.
+    int yamatoLateWaves = 0;
+    for (const auto& ev : st9.events)
+        if (ev.trigger > st9.bossTime) ++yamatoLateWaves;
+    CHECK(yamatoLateWaves >= 8);
+    CHECK(yamato.phases.size() == 4);
 }

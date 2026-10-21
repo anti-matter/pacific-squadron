@@ -342,6 +342,7 @@ bool parseBossesJson(const std::string& text, std::vector<BossDef>& out, std::st
                 cd.fireInterval = std::max(0.1f, getF(c, "fireInterval", 1.5f));
                 cd.firstFireDelay = getF(c, "firstFireDelay", 1.0f);
                 cd.destructibleTarget = getB(c, "destructibleTarget", true);
+                cd.aimAtPlayer = getB(c, "aimAtPlayer", false);
                 b.components.push_back(std::move(cd));
             }
         }
