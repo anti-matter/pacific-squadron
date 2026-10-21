@@ -17,8 +17,9 @@ into `assets/` to override the procedural content.
   turrets/gun emplacements, hp-based attack phases, death chains, and victory
   power-up drops.
 - **Four player weapon classes** (gun / spread / cannon / rocket) with level
-  progression, plus the LOOP special: an evasive aerobatic barrel that
-  grants brief invincibility and clears all enemy fire on screen.
+  progression, plus the BOMB special: destroys every enemy aircraft, ship and
+  ground target on screen and erases all enemy fire (flagship bosses only
+  lose 20% of their hull/components), with brief invincibility.
 - Four complete stages with distinct terrain, wave scripts, and flagship bosses
   (*Battleship Yamashiro-class*, *Sky Fortress GX-7*).
 - Configurable keyboard **and** gamepad controls (persisted to disk), three
@@ -110,7 +111,7 @@ stage 3 and runs through its boss fight.
 | ------------- | --------------------- | ------------------------------ |
 | Move          | WASD / Arrows         | Left stick                     |
 | Fire          | Space                 | A (South) / Right shoulder     |
-| Loop (special)| Shift / Ctrl          | B (East) / Left shoulder       |
+| Bomb (special)| Shift / Ctrl          | B (East) / Left shoulder       |
 | Pause         | Esc / P               | Start                          |
 | Confirm / Back| Enter / Space, Esc    | A / B, Select                  |
 | Debug overlay | F3                    | —                              |
@@ -130,7 +131,7 @@ scaling. Fullscreen (Options) uses the desktop resolution.
 
 Player-feel constants live in one file: **`src/game/Tuning.h`**
 (movement speed, hitbox size, invulnerability windows, special duration,
-respawn behaviour, loop-charge cap). Per-weapon fire intervals/damage/speed and
+respawn behaviour, bomb-charge cap). Per-weapon fire intervals/damage/speed and
 per-stage scroll speed are data-driven:
 `assets/data/weapons/*.json` and `assets/data/stages/*.json`.
 
@@ -169,7 +170,7 @@ the generated content cost nearly nothing at startup.
 
 - **F3** toggles the debug overlay (FPS/frame time, entity/enemy/projectile
   /particle counts, player position & speed, scroll position, stage/state,
-  weapon, HP/loop charges/lives, and every live collider: cyan player hitbox,
+  weapon, HP/bomb charges/lives, and every live collider: cyan player hitbox,
   red enemy hitboxes, magenta boss hull, yellow boss components, projectile
   boxes). Also enable at launch with `WWII_DEBUG=1`.
 - `WWII_KEYLOG=1` logs received key events and periodic FPS/frame counts to

@@ -132,6 +132,136 @@ void test_boss_natural_spawn() {
     CHECK(sim.bossView().active == true);
 }
 
+// The BOMB special: one press must wipe every on-screen enemy (air, sea,
+// ground) and all enemy fire, while a boss only loses 20% of max hp per
+// part - and the hull stays armor-gated while destructible components live.
+void test_bomb_sweep_and_boss_20pct() {
+    const char* weaponsJson = R"([
+      { "name": "gun_l1", "pattern": "forward", "damage": 5, "fireInterval": 0.05,
+        "speed": 800, "count": 1, "lifetime": 1.2 },
+      { "name": "e_gun", "pattern": "forward", "damage": 1, "fireInterval": 0.3,
+        "speed": 90, "count": 1, "lifetime": 8 }
+    ])";
+    const char* powerupsJson = R"([
+      { "name": "powerup_p", "effect": "weapon_up", "sprite": "powerup_p" }
+    ])";
+    const char* enemiesJson = R"([
+      { "name": "popper", "sprite": "enemy_fighter_light",
+        "width": 28, "height": 24, "hitbox": [0, 0, 14, 12],
+        "hp": 2, "score": 100, "speed": 40, "path": "straight",
+        "weapon": "e_gun", "fireInterval": 0.4 }
+    ])";
+    const char* bossesJson = R"([
+      {
+        "name": "TEST BOAT", "hullSprite": "boss_battleship_hull",
+        "hullWidth": 160, "hullHeight": 96, "hullHp": 100, "hullScore": 3000,
+        "entryY": 120, "hoverAmp": 0, "hoverFreq": 0.1,
+        "defeatDrop": "powerup_p",
+        "components": [
+          { "name": "TURRET", "sprite": "boss_big_turret", "offsetX": 0, "offsetY": 0,
+            "width": 40, "height": 40, "hp": 10, "score": 500,
+            "firstFireDelay": 999 }
+        ]
+      }
+    ])";
+    GameData data;
+    std::string err;
+    CHECK(parseWeaponsJson(weaponsJson, data.weapons, err));
+    CHECK(parsePowerupsJson(powerupsJson, data.powerups, err));
+    CHECK(parseEnemiesJson(enemiesJson, data.enemies, err));
+    CHECK(parseBossesJson(bossesJson, data.bosses, err));
+    StageDef stage;
+    stage.name = "bomb test";
+    stage.duration = 600;
+    stage.bossTime = 1e9f;  // boss spawned manually
+    SpawnEvent ev;
+    ev.trigger = 1.0f;
+    ev.enemy = "popper";
+    ev.formation = "single";
+    ev.x = 192.0f;
+    ev.y = 200.0f;
+    stage.events.push_back(ev);
+    data.stages.push_back(stage);
+    CHECK(data.linkReferences(err));
+
+    Simulation sim(data, 7);
+    sim.startStage(0, {});
+    sim.setGodMode(true);
+    sim.debugSpawnBoss(0);
+
+    // Run 4 s: the popper is on screen and has fired; boss has settled.
+    for (int f = 0; f < 60 * 4; ++f) {
+        sim.setPlayerIntent({0, 0}, false, false);
+        sim.update();
+        SimEvent e;
+        while (sim.popEvent(e)) {}
+    }
+    int enemiesBefore = 0, shotsBefore = 0;
+    for (const auto& e : sim.entities()) {
+        if (!e.alive) continue;
+        if (e.kind == EKind::Enemy) ++enemiesBefore;
+        if (e.kind == EKind::Shot && e.team == Team::Enemy) ++shotsBefore;
+    }
+    CHECK(enemiesBefore == 1);
+    CHECK(shotsBefore >= 1);
+
+    // One BOMB frame.
+    sim.setPlayerIntent({0, 0}, false, true);
+    sim.update();
+    sim.setPlayerIntent({0, 0}, false, false);
+    sim.update();
+
+    int enemiesAfter = 0, shotsAfter = 0, turretHp = -1, hullHp = -1;
+    for (const auto& e : sim.entities()) {
+        if (!e.alive) continue;
+        if (e.kind == EKind::Enemy) ++enemiesAfter;
+        if (e.kind == EKind::Shot && e.team == Team::Enemy) ++shotsAfter;
+        if (e.kind == EKind::BossComponent) turretHp = e.hp;
+        if (e.kind == EKind::BossHull) hullHp = e.hp;
+    }
+    CHECK(enemiesAfter == 0);                       // sweep killed the popper
+    CHECK(shotsAfter == 0);                         // enemy fire erased
+    CHECK(turretHp == 8);                           // 20% of 10 off the turret
+    CHECK(hullHp == 100);                           // hull armored while turret lives
+
+    // Strip the armor with guns, then bomb again: hull must lose exactly
+    // 20% of max (4 of 20), and only from the bomb.
+    int hullAtStrip = -1;
+    for (int f = 0; f < 60 * 30 && hullAtStrip < 0; ++f) {
+        sim.setPlayerIntent({0, 0}, true, false);
+        sim.update();
+        SimEvent e;
+        while (sim.popEvent(e)) {}
+        for (const auto& en : sim.entities())
+            if (en.alive && en.kind == EKind::BossHull && hullAtStrip < 0) {
+                bool comps = false;
+                for (const auto& c : sim.entities())
+                    if (c.alive && c.kind == EKind::BossComponent) comps = true;
+                if (!comps) hullAtStrip = en.hp;
+            }
+    }
+    CHECK(hullAtStrip >= 0);  // turret eventually destroyed
+    // Let all in-flight player shots land before testing the bomb, so the
+    // hull delta is attributable to the bomb alone.
+    for (int f = 0; f < 60 * 2; ++f) {
+        sim.setPlayerIntent({0, 0}, false, false);
+        sim.update();
+        SimEvent e;
+        while (sim.popEvent(e)) {}
+    }
+    int hullPreBomb = -1;
+    for (const auto& e : sim.entities())
+        if (e.alive && e.kind == EKind::BossHull) hullPreBomb = e.hp;
+    CHECK(hullPreBomb >= 0);
+    sim.setPlayerIntent({0, 0}, false, true);
+    sim.update();
+    sim.setPlayerIntent({0, 0}, false, false);
+    int hullAfterBomb = -1;
+    for (const auto& e : sim.entities())
+        if (e.alive && e.kind == EKind::BossHull) hullAfterBomb = e.hp;
+    CHECK(hullAfterBomb == hullPreBomb - 20);  // 20% of the 100 hp hull
+}
+
 // Regression: formation members must never get stuck off-screen. The
 // enteredView clamp used to fight the formation controller (pinning
 // members at the edge as a group drifted past it), and the off-screen

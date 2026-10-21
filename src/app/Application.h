@@ -94,7 +94,8 @@ private:
     bool smokeNoAuto_ = false;  // idle manual player (no autopilot fire/weave)
     int smokeBossIdx_ = 0;
     // Boss presentation timers.
-    float flashT_ = 0.0f;        // white screen flash on boss detonation
+    float flashT_ = 0.0f;        // white screen flash on boss detonation / bomb
+    int lastBombCount_ = -1;     // bomb charge watcher (presentation)
     float armorFlashT_ = 0.0f;   // armor-break silhouette pulse
     int lastBossBoom_ = 0;
     Rng boomRng_{0x800D5u};  // variant/pitch/pan variation for explosions

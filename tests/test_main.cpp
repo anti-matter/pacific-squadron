@@ -9,6 +9,7 @@ int main() {
     test_levelscript();
     test_boss();
     test_boss_natural_spawn();
+    test_bomb_sweep_and_boss_20pct();
     test_boss_slot_pinning();
     test_formation_edge_despawn();
     test_ground_scroll_anchor();

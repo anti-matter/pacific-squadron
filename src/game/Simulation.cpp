@@ -322,7 +322,9 @@ void Simulation::updatePlayer(float dt) {
                 kPlayH - tuning::kPlayerMarginBottom);
     p.bank = lerp(p.bank, dir.x, smoothFactor(14.0f, dt));
 
-    // Special / evasive loop.
+    // Special / BOMB. Clears every enemy bullet on screen and destroys all
+    // enemy aircraft, ships and ground targets within reach; bosses only
+    // lose 20% of max hp per part (the hull stays armor-gated like bullets).
     const bool specialPressed = (specialHeld_ || playerBombWanted_) && !prevSpecialHeld_;
     prevSpecialHeld_ = specialHeld_;
     playerBombWanted_ = false;
@@ -347,6 +349,65 @@ void Simulation::updatePlayer(float dt) {
                                       rgba(255, 220, 120, 255), 3.0f});
             }
             kill(static_cast<int>(i));
+        }
+        // Sweep the field: every on-screen enemy (air, sea and ground) dies
+        // for its full score. Collect indices first — killEnemy can spawn
+        // drops, and a growth of pool_ would invalidate held references.
+        std::vector<int> blast;
+        for (std::size_t i = 0; i < pool_.size(); ++i) {
+            const Entity& e = pool_[i];
+            if (!e.alive || e.kind != EKind::Enemy) continue;
+            if (e.pos.x < -24 || e.pos.x > kPlayW + 24 || e.pos.y < -24 ||
+                e.pos.y > kPlayH + 24)
+                continue;  // only what the blast can actually reach
+            blast.push_back(static_cast<int>(i));
+        }
+        for (int i : blast) killEnemy(i, true);
+        // Bosses: 20% of max hp off every living component, and off the
+        // hull only once its armor is stripped (same gate as bullets).
+        for (auto& b : bosses_) {
+            if (b.state >= 3) continue;
+            const BossDef& bdef = data_.bosses[static_cast<std::size_t>(b.defRef)];
+            for (std::size_t c = 0; c < b.components.size(); ++c) {
+                if (!bdef.components[c].destructibleTarget) continue;
+                const int ci = static_cast<int>(b.components[c]);
+                Entity& ce = pool_[static_cast<std::size_t>(ci)];
+                if (!ce.alive) continue;
+                ce.hp -= (ce.maxHp + 4) / 5;
+                ce.flashTimer = 0.12f;
+                if (ce.hp <= 0) {
+                    addScore(bdef.components[c].score);
+                    explosions_.push_back({ce.pos, 0.0f, 1, false});
+                    events_.push_back({SimEvent::Type::BossComponentDestroyed,
+                                       bdef.components[c].name,
+                                       bdef.components[c].score, ce.pos});
+                    emitSoundAt("explosion_medium", ce.pos);
+                    kill(ci);
+                }
+            }
+            if (b.hull >= 0 && b.state == 1) {
+                Entity& he = pool_[static_cast<std::size_t>(b.hull)];
+                bool compsLeft = false;
+                for (std::size_t c = 0; c < b.components.size(); ++c)
+                    if (bdef.components[c].destructibleTarget &&
+                        pool_[static_cast<std::size_t>(b.components[c])].alive) {
+                        compsLeft = true;
+                        break;
+                    }
+                if (he.alive && !compsLeft) {
+                    he.hp -= (he.maxHp + 4) / 5;
+                    he.flashTimer = 0.12f;
+                    if (he.hp <= 0) {
+                        b.state = 2;
+                        b.stateTimer = 0.0f;
+                        b.deathChain = 0.0f;
+                        addScore(bdef.hullScore);
+                        emitSoundAt("explosion_large", he.pos);
+                        emitSoundAt("boss_breakup", b.pos);
+                    }
+                }
+            }
+            explosions_.push_back({b.pos, 0.0f, 2, false});
         }
     }
 

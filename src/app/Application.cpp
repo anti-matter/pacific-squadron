@@ -1191,7 +1191,10 @@ void Application::renderWorld() {
         renderer_.drawRegion(tid, frame * ad->frameW, 0, ad->frameW, ad->frameH,
                              ex.pos.x, ex.pos.y);
     }
-    // Boss detonation: new class-4 blast => full-playfield white flash.
+    // Bomb detonation: player spent a charge => white flash (the existing
+    // boss-detonation overlay, triggered on the charge count dropping).
+    if (const auto pv = sim.player(); pv.bombs < lastBombCount_) flashT_ = 0.3f;
+    lastBombCount_ = sim.player().bombs;
     if (bossBooms > lastBossBoom_) flashT_ = 0.45f;
     lastBossBoom_ = bossBooms;
     if (flashT_ > 0.0f) {
@@ -1251,7 +1254,7 @@ void Application::renderTitle() {
                        sel ? gold : white, true);
     }
     if (std::fmod(t * 2.0f, 1.0f) < 0.6f)
-        renderer_.text("WASD/ARROWS MOVE   SPACE FIRE   SHIFT LOOP",
+        renderer_.text("WASD/ARROWS MOVE   SPACE FIRE   SHIFT BOMB",
                        192.0f, 466.0f, 1, Color::rgb(0x7A90A8), true);
     renderer_.text("ESC PAUSE   GAMEPAD SUPPORTED", 192.0f, 482.0f, 1,
                    Color::rgb(0x50687E), true);
@@ -1465,7 +1468,7 @@ void Application::renderHelp() {
     const ControlRow rows[] = {
         {"WASD / ARROWS", "MOVE", "STICK"},
         {"SPACE", "FIRE", "PAD A / RB"},
-        {"SHIFT / CTRL", "LOOP", "PAD B / LB"},
+        {"SHIFT / CTRL", "BOMB", "PAD B / LB"},
         {"ESC / P", "PAUSE", "PAD START"},
     };
     constexpr float kKeyEndX = 152.0f, kActX = 168.0f, kPadX = 252.0f;
@@ -1478,9 +1481,9 @@ void Application::renderHelp() {
     }
     renderer_.text("PICKED-UP GUNS REPLACE YOUR GUN", 192.0f, 252.0f, 1,
                    dim, true);
-    renderer_.text("AND FIRE WITH SPACE. LOOP CLEARS ALL", 192.0f, 266.0f,
+    renderer_.text("AND FIRE WITH SPACE. BOMB WIPES OUT", 192.0f, 266.0f,
                    1, dim, true);
-    renderer_.text("ENEMY FIRE AND MAKES YOU INVINCIBLE", 192.0f, 280.0f, 1,
+    renderer_.text("ALL ENEMIES - FLAGSHIPS TAKE 20%", 192.0f, 280.0f, 1,
                    dim, true);
 
     renderer_.text("SUPPLY DROPS", 192.0f, 304.0f, 2, gold, true);
@@ -1499,7 +1502,7 @@ void Application::renderHelp() {
     };
     const LegendRow rightCol[] = {
         {"powerup_cannon", "HEAVY CANNON"},
-        {"powerup_bomb", "+1 LOOP CHARGE"},
+        {"powerup_bomb", "+1 BOMB"},
         {"powerup_life", "EXTRA LIFE"},
     };
     constexpr float kIconX1 = 74.0f, kDescX1 = 94.0f;
