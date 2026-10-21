@@ -90,6 +90,7 @@ private:
     float smokeTime_ = 0.0f;
     float smokeElapsed_ = 0.0f;
     bool smokeBoss_ = false;
+    bool smokeNoAuto_ = false;  // idle manual player (no autopilot fire/weave)
     int smokeBossIdx_ = 0;
     // Boss presentation timers.
     float flashT_ = 0.0f;        // white screen flash on boss detonation

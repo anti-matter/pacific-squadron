@@ -192,6 +192,13 @@ void Simulation::update() {
             if (it->bossRef >= 0) {
                 spawnBoss(it->bossRef);
                 it = spawnQueue_.erase(it);
+            } else if (seaArenaActive() &&
+                       data_.enemies[static_cast<std::size_t>(it->enemyRef)].ground) {
+                // Open-sea boss arena: the fight is over one fixed location,
+                // so terrain-borne escorts (gun emplacements AND ships, which
+                // would slide across the frozen ocean like stray turrets) are
+                // dropped from the queue while the arena boss is alive.
+                it = spawnQueue_.erase(it);
             } else {
                 int formationId = -1;
                 auto fit = std::find_if(formations_.begin(), formations_.end(),
@@ -718,6 +725,13 @@ void Simulation::updatePowerups(float dt) {
 // ---------------------------------------------------------------------------
 // Bosses
 // ---------------------------------------------------------------------------
+bool Simulation::seaArenaActive() const {
+    for (const auto& b : bosses_) {
+        if (b.state >= 3) continue;
+        if (data_.bosses[static_cast<std::size_t>(b.defRef)].arenaOcean) return true;
+    }
+    return false;
+}
 void Simulation::spawnBoss(int defRef) {
     if (defRef < 0 || defRef >= static_cast<int>(data_.bosses.size())) return;
     const BossDef& def = data_.bosses[static_cast<std::size_t>(defRef)];
@@ -812,10 +826,16 @@ void Simulation::updateBosses(float dt) {
                 b.stateTimer = 0.0f;
             }
         } else if (b.state == 1) {
-            // Hover sway.
-            b.pos.x = 192.0f + def.hoverAmp *
-                std::sin(2.0f * kPi * def.hoverFreq * b.stateTimer);
-            b.pos.y = def.entryY + 8.0f * std::sin(2.0f * kPi * 0.07f * b.stateTimer);
+            // Hover sway. hoverAmp 0 means the boss is anchored (an island
+            // fortress stands on rock: no sway, no bob).
+            if (def.hoverAmp > 0.0f) {
+                b.pos.x = 192.0f + def.hoverAmp *
+                    std::sin(2.0f * kPi * def.hoverFreq * b.stateTimer);
+                b.pos.y = def.entryY + 8.0f * std::sin(2.0f * kPi * 0.07f * b.stateTimer);
+            } else {
+                b.pos.x = 192.0f;
+                b.pos.y = def.entryY;
+            }
         } else if (b.state == 2) {
             // Death chain: the ship tears itself apart visually while the
             // continuous boss_breakup bed (started when the hull went down)

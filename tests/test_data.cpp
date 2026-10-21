@@ -115,7 +115,7 @@ void test_shipped_data() {
     CHECK(fort.components.size() == 8);
     int mains = 0;
     for (const auto& c : fort.components)
-        if (c.sprite == "boss_big_turret") ++mains;
+        if (c.sprite == "boss_fort_main") ++mains;
     CHECK(mains == 3);
     // Kill-difficulty budget: ~34% above the carrier's 252 hp.
     int fortHp = fort.hullHp;

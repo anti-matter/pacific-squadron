@@ -252,12 +252,15 @@ bool Application::init() {
             smokeShotAt_ = SDL_getenv("WWII_SMOKE_SHOT_AT")
                 ? SDL_atof(SDL_getenv("WWII_SMOKE_SHOT_AT")) : 10.0f;
         }
+        if (startStageIdx >= 0) game_->debugStartAtStage(startStageIdx);
+        else game_->debugStart();
+        if (SDL_getenv("WWII_SMOKE_GOD"))
+            game_->sim().setGodMode(true);
         if (!SDL_getenv("WWII_SMOKE_NOAUTO")) {
-            if (startStageIdx >= 0) game_->debugStartAtStage(startStageIdx);
-            else game_->debugStart();
             game_->sim().setPlayerIntent({0, 0}, true, false);
-            if (SDL_getenv("WWII_SMOKE_GOD"))
-                game_->sim().setGodMode(true);
+            smokeNoAuto_ = false;
+        } else {
+            smokeNoAuto_ = true;  // idle manual player: no auto-fire, no weave
         }
         if (SDL_getenv("WWII_SMOKE_HELP"))
             game_->debugSetState(GameState::Help);
@@ -592,7 +595,7 @@ int Application::run() {
         int steps = 0;
         while (acc_ >= kSimDt && steps < 4) {
             GameInput gi = buildGameInput();
-            if (smokeTime_ > 0.0f) {
+            if (smokeTime_ > 0.0f && !smokeNoAuto_) {
                 // Autopilot: hold fire, weave, occasionally loop.
                 gi.fire = true;
                 gi.moveX = std::sin(smokeElapsed_ * 1.3f);
@@ -901,14 +904,20 @@ void Application::renderWorld() {
     }
 
     // Pass 3: boss hull & components (sprites carried on the entities).
+    // Hulls draw BEFORE components so the mounts always sit on the deck:
+    // the entity pool's free-list can hand a late-spawned boss hull an
+    // index higher than its components, and a single pool-order pass would
+    // then bury the whole fortress under its own opaque island sprite.
     int compAlive = 0;
     bool hullAlive = false;
-    for (const auto& e : sim.entities()) {
+    for (int pass = 0; pass < 2; ++pass) {
+      for (const auto& e : sim.entities()) {
         if (!e.alive) continue;
         if (e.kind != EKind::BossHull && e.kind != EKind::BossComponent) continue;
+        const bool hull = e.kind == EKind::BossHull;
+        if ((pass == 0) != hull) continue;
         const Color tint = e.flashTimer > 0.0f ? Color::rgb(0xFF9090)
                                                : Color::rgb(0xFFFFFF);
-        const bool hull = e.kind == EKind::BossHull;
         if (hull) hullAlive = true; else ++compAlive;
         const float frac = e.maxHp > 0
             ? static_cast<float>(e.hp) / static_cast<float>(e.maxHp) : 1.0f;
@@ -984,6 +993,7 @@ void Application::renderWorld() {
                                  8.0f + rise * 0.3f, 8.0f + rise * 0.3f,
                                  0.9f - rise / 40.0f);
         }
+      }
     }
     // Armored again? No: once the last mount dies, flash the hull once.
     if (hullAlive && prevCompAlive_ > 0 && compAlive == 0)

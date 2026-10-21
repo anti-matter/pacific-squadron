@@ -2564,155 +2564,620 @@ PixelBuf makeCruiserHull(int damage) {
 }
 
 // --- COASTAL FORTRESS boss hull ----------------------------------------------
-// A concrete island fortress: sand beach ring, jungle scrub fringe, breaker
-// foam, octagonal seawall with corner bastions, and an inner courtyard whose
-// barbettes/pads MUST mirror the component offsets in bosses.json (main guns
-// (0,34) (-44,18) (44,18); secondaries (±52,-34); AA nests (±24,-58); keep
-// (0,-10)). damage: 0 pristine, 2 cracked & scorching, 3 wreck (dark, holes).
+// A heavily fortified island stronghold rendered with soft alpha-blended
+// shading (reef shallows, breaker foam, gradient sand, rocky edge, a dense
+// palm/jungle ring, concrete seawall + inner court, radial supply roads,
+// gun pads, fuel farm, sandbag arcs and a west-side dock). The pad centres
+// MUST mirror the component offsets in bosses.json (mains (0,58) (±62,4);
+// secondaries (±46,-46); AA (±24,-70); keep (0,-6)).
+// damage: 0 pristine, 2 cracked & burning, 3 wreck.
+namespace ffort {
+constexpr int W = 224, H = 214;
+// Island shoreline ellipse (sand), seawall ellipse and inner court ellipse.
+constexpr float RX = 101.0f, RY = 96.0f;
+constexpr float WX = 82.0f,  WY = 77.0f;
+constexpr float CX = 74.0f,  CY = 68.0f;
+}  // namespace ffort
+
 PixelBuf makeFortressHull(int damage) {
-    constexpr int W = 150, H = 140;
+    using namespace ffort;
     const int cx = W / 2, cy = H / 2;
     PixelBuf p(W, H);
 
-    const std::uint32_t sand = col(0xC9B283);
-    const std::uint32_t sandDk = col(0xAE9A6C);
-    const std::uint32_t rock = col(0x6E6455);
-    const std::uint32_t jungle = col(0x3E6B34);
-    const std::uint32_t jungleDk = col(0x2C5026);
-    const std::uint32_t conc = col(0x8F8B7E);
-    const std::uint32_t concHi = col(0x9D998B);
-    const std::uint32_t concSeam = col(0x6E6A5E);
+    // --- palettes ------------------------------------------------------------
+    const std::uint32_t sandHi  = col(0xDCC698);
+    const std::uint32_t sandMid = col(0xC6AF7F);
+    const std::uint32_t sandDk  = col(0xA8916A);
+    const std::uint32_t sandWet = col(0x8C7A55);
+    const std::uint32_t jgDark  = col(0x2B5527);
+    const std::uint32_t jgMid   = col(0x3D7A33);
+    const std::uint32_t jgHi    = col(0x59963F);
+    const std::uint32_t concHi  = col(0x9D998B);
+    const std::uint32_t concMid = col(0x8B877A);
+    const std::uint32_t concLo  = col(0x767265);
     const std::uint32_t concRim = col(0x494539);
-    const std::uint32_t court = col(0x7E7A6D);
+    const std::uint32_t concSeam= col(0x6A665A);
 
-    // Cast shadow on the water.
-    p.fillEllipse(cx + 4.0f, cy + 6.0f, 71.0f, 65.0f, col(0x050F1A, 90));
-
-    // Island base: sand with rock rim, dithered shading and scrub fringe.
-    p.fillEllipse(cx, cy, 71.0f, 65.0f, sand);
-    for (int y = -66; y <= 66; ++y)
-        for (int x = -72; x <= 72; ++x) {
-            const float q = std::sqrt((x * x) / (71.0f * 71.0f) +
-                                      (y * y) / (65.0f * 65.0f));
-            if (q > 1.0f) continue;
-            const int h = (x * 7 + y * 13) & 7;
-            if (q > 0.94f)
-                p.set(cx + x, cy + y, (h & 1) ? rock : sandDk);
-            else if (q > 0.86f && h == 0)
-                p.set(cx + x, cy + y, sandDk);
-            else if (q > 0.72f && (h == 3 || h == 6) && ((x + 2 * y) & 3) == 0)
-                p.set(cx + x, cy + y, h == 3 ? jungle : jungleDk);
-        }
-
-    // Breaker foam around the shore edge.
-    for (int k = 0; k < 96; ++k) {
-        const float a = static_cast<float>(k) / 96.0f * 6.2832f;
-        const int fx = cx + static_cast<int>(73.5f * std::cos(a));
-        const int fy = cy + static_cast<int>(67.5f * std::sin(a));
-        p.set(fx, fy, col(0xE8F2FA, 190));
-        if (k % 3) p.set(fx, fy + 1, col(0xC8DCF0, 110));
-    }
-
-    // Octagonal concrete seawall platform.
-    auto inOct = [](int x, int y, int hx, int hy, int cut) {
-        const int ax = std::abs(x), ay = std::abs(y);
-        return ax <= hx && ay <= hy && ax + ay <= hx + hy - cut;
+    auto mix = [](std::uint32_t a, std::uint32_t b, float t) -> std::uint32_t {
+        auto ch = [](std::uint32_t v, int s) { return static_cast<float>((v >> s) & 0xFFu); };
+        const float r  = ch(a, 24) + (ch(b, 24) - ch(a, 24)) * t;
+        const float g  = ch(a, 16) + (ch(b, 16) - ch(a, 16)) * t;
+        const float bl = ch(a, 8)  + (ch(b, 8)  - ch(a, 8))  * t;
+        const float al = ch(a, 0)  + (ch(b, 0)  - ch(a, 0))  * t;
+        return (static_cast<std::uint32_t>(r + 0.5f) << 24) |
+               (static_cast<std::uint32_t>(g + 0.5f) << 16) |
+               (static_cast<std::uint32_t>(bl + 0.5f) << 8) |
+               static_cast<std::uint32_t>(al + 0.5f);
     };
-    for (int y = -54; y <= 54; ++y)
-        for (int x = -60; x <= 60; ++x) {
-            if (!inOct(x, y, 60, 54, 22)) continue;
-            std::uint32_t c = conc;
-            if (!inOct(x + 1, y, 60, 54, 22) || !inOct(x - 1, y, 60, 54, 22) ||
-                !inOct(x, y + 1, 60, 54, 22) || !inOct(x, y - 1, 60, 54, 22))
-                c = concRim;
-            else if ((x - y) % 14 == 0 || (x + y) % 17 == 0)
-                c = concSeam;
-            else if (x < -10 && (x + 4 * y) % 9 != 0)
-                c = concHi;  // sun side of the wall
-            p.set(cx + x, cy + y, c);
+    auto hash = [](int x, int y, int s) {
+        std::uint32_t h = static_cast<std::uint32_t>(x * 374761393 + y * 668265263 +
+                                                     s * 1274126177);
+        h = (h ^ (h >> 13)) * 1274126177u;
+        return (h ^ (h >> 16)) & 0xFFFFu;
+    };
+    auto frand = [&](int x, int y, int s) { return static_cast<float>(hash(x, y, s)) / 65535.0f; };
+    // Soft-edged disc: near-solid core with a 2-pixel anti-aliased rim,
+    // composited with per-pixel alpha. The key to the smoother look.
+    auto softDisc = [&](float ex, float ey, float rx, float ry, std::uint32_t c) {
+        for (int y = static_cast<int>(ey - ry) - 1; y <= static_cast<int>(ey + ry) + 1; ++y)
+            for (int x = static_cast<int>(ex - rx) - 1; x <= static_cast<int>(ex + rx) + 1; ++x) {
+                const float dx = (x + 0.5f - ex) / rx, dy = (y + 0.5f - ey) / ry;
+                const float q2 = dx * dx + dy * dy;
+                if (q2 > 1.0f) continue;
+                if (q2 > 0.68f) {
+                    const float f = 1.0f - (q2 - 0.68f) / 0.32f;
+                    const int a = static_cast<int>(static_cast<float>(c & 0xFFu) * f);
+                    p.blend(x, y, (c & 0xFFFFFF00u) | static_cast<std::uint32_t>(a));
+                } else {
+                    p.blend(x, y, c);
+                }
+            }
+    };
+    // Ellipse radius along a direction, for ring/edge maths.
+    auto qAt = [&](float x, float y, float rx, float ry) {
+        const float dx = (x + 0.5f - cx) / rx, dy = (y + 0.5f - cy) / ry;
+        return std::sqrt(dx * dx + dy * dy);
+    };
+    // Gun pads: {x, y, r} — mirrors bosses.json offsets.
+    struct Pad { float x, y, r; };
+    const Pad pads[] = {{0, 58, 31},   {62, 4, 31},   {-62, 4, 31},
+                        {46, -46, 21}, {-46, -46, 21}, {24, -70, 16},
+                        {-24, -70, 16}};
+    auto nearPad = [&](float x, float y, float extra) {
+        for (const Pad& pd : pads) {
+            const float dx = x - (cx + pd.x), dy = y - (cy + pd.y);
+            if (dx * dx + dy * dy < (pd.r + extra) * (pd.r + extra)) return true;
+        }
+        // Keep plinth zone.
+        const float kx = (x - cx) / 38.0f, ky = (y - (cy - 4.0f)) / 31.0f;
+        return kx * kx + ky * ky < 1.0f;
+    };
+
+    // --- layered soft shadow on the sea ---------------------------------------
+    softDisc(cx + 8.0f, cy + 11.0f, RX + 5.0f, RY + 4.0f, col(0x050F1A, 34));
+    softDisc(cx + 6.0f, cy + 8.0f,  RX + 3.0f, RY + 2.0f, col(0x050F1A, 46));
+    softDisc(cx + 4.0f, cy + 6.0f,  RX + 1.0f, RY + 1.0f, col(0x050F1A, 60));
+
+    // --- reef shallows: two-tone turquoise haze around the island ---------------
+    softDisc(cx, cy, RX + 10.0f, RY + 9.0f, col(0x2E7E96, 70));
+    softDisc(cx, cy, RX + 6.0f,  RY + 5.0f, col(0x3E93A8, 80));
+
+    // --- sand body: radial gradient + speckle + wet edge -------------------------
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const float q = qAt(static_cast<float>(x), static_cast<float>(y), RX, RY);
+            if (q > 1.0f) continue;
+            std::uint32_t c = mix(sandHi, sandMid, q * 1.05f);
+            if (q > 0.72f) c = mix(c, sandDk, (q - 0.72f) / 0.28f * 0.85f);
+            if (hash(x, y, 3) % 9 == 0) c = mix(c, col(0x8F7C52), 0.30f);   // grit
+            if (hash(x, y, 9) % 23 == 0) c = mix(c, col(0xE4D2A6), 0.45f);  // bright flecks
+            if (q > 0.90f) c = mix(c, sandWet, (q - 0.90f) / 0.10f * 0.55f);  // wet band
+            p.set(x, y, c);
+        }
+    // Sun-bright inner beach sheen (light from the top-left).
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
+            const float q = qAt(static_cast<float>(x), static_cast<float>(y), RX, RY);
+            if (q < 0.98f && dx + dy < -30.0f && hash(x, y, 5) % 3 == 0)
+                p.blend(x, y, col(0xF0E2BC, 28));
         }
 
-    // Corner bastions.
-    for (int sx : {-1, 1})
-        for (int sy : {-1, 1}) {
-            const int bx = cx + sx * 40, by = cy + sy * 36;
-            p.fillRect(bx - 7, by - 7, 14, 14, concRim);
-            p.fillRect(bx - 6, by - 6, 12, 12, sx * sy > 0 ? concHi : conc);
-            p.hline(bx - 6, bx + 6, by, concSeam);
-            p.vline(bx, by - 6, by + 6, concSeam);
+    // --- breaker foam rings (inner dense, outer sparse with gaps) ----------------
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
+            const float q = qAt(static_cast<float>(x), static_cast<float>(y), RX, RY);
+            if (q < 0.99f || q > 1.09f) continue;
+            const float ang = std::atan2(dy, dx);
+            const float wob = 0.55f + 0.45f * std::sin(ang * 7.0f + 1.7f);
+            if (wob < 0.30f) continue;
+            const float band = 1.0f - std::fabs((q - 1.0f) / 0.09f - 0.4f) / 0.6f;
+            const int a = static_cast<int>(200.0f * band * wob);
+            if (a > 12) p.blend(x, y, col(0xE8F2FA, a));
         }
+    for (int k = 0; k < 46; ++k) {  // foam sparkles just outside the breakers
+        const float ang = static_cast<float>(k) * 0.1364f + 0.31f;
+        const float q = 1.06f + frand(k, 17, 4) * 0.05f;
+        const float fx = cx + std::cos(ang) * q * RX;
+        const float fy = cy + std::sin(ang) * q * RY;
+        softDisc(fx, fy, 1.6f, 1.2f, col(0xFFFFFF, 120));
+    }
 
-    // Inner courtyard with panel seams and camo splotches.
-    for (int y = -34; y <= 34; ++y)
-        for (int x = -40; x <= 40; ++x) {
-            if (!inOct(x, y, 40, 34, 14)) continue;
-            std::uint32_t c = court;
-            if ((x + 2 * y) % 11 == 0) c = col(0x6E6A5E);
-            else if ((x * 5 + y * 3) % 29 == 0) c = col(0x8A867A);
-            else if ((x * 7 + y * 11) % 37 < 3 && x * x + 2 * y * y < 2100)
-                c = jungleDk;  // netting over stores
-            p.set(cx + x, cy + y, c);
+    // --- rocks along the shoreline ------------------------------------------------
+    for (int k = 0; k < 26; ++k) {
+        const float ang = static_cast<float>(k) * 0.2417f + 0.62f;
+        const float q = 0.99f + frand(k, 23, 6) * 0.05f;
+        const float rx = cx + std::cos(ang) * q * RX;
+        const float ry = cy + std::sin(ang) * q * RY;
+        const float s = 2.2f + frand(k, 5, 8) * 2.4f;
+        softDisc(rx + 1.0f, ry + 1.6f, s * 1.05f, s * 0.8f, col(0x0A141C, 90));
+        softDisc(rx, ry, s, s * 0.78f, col(0x5F5A4E));
+        softDisc(rx - s * 0.28f, ry - s * 0.3f, s * 0.5f, s * 0.4f, col(0x837E70));
+    }
+
+    // --- jungle ring: dark base then dense palms/bushes (avoids walls & pads) ----
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const float qs = qAt(static_cast<float>(x), static_cast<float>(y), WX - 2, WY - 2);
+            const float qb = qAt(static_cast<float>(x), static_cast<float>(y), RX - 1, RY - 1);
+            if (qs < 1.0f || qb > 1.0f) continue;
+            const float t = hash(x, y, 11) / 65535.0f;
+            const std::uint32_t c = mix(col(0x234A1F), col(0x1B3A18), t);
+            p.blend(x, y, (c & 0xFFFFFF00u) | 205u);
         }
-
-    // Main-gun barbettes (mirror bosses.json offsets).
-    for (int i = 0; i < 3; ++i) {
-        const int ox = (i == 0 ? 0 : (i == 1 ? -44 : 44));
-        const int oy = (i == 0 ? 34 : 18);
-        p.fillEllipse(static_cast<float>(cx + ox) + 3.0f,
-                      static_cast<float>(cy + oy) + 4.0f, 22.0f, 22.0f,
-                      col(0x0A0806, 90));
-        p.fillEllipse(static_cast<float>(cx + ox), static_cast<float>(cy + oy),
-                      20.5f, 20.5f, concRim);
-        p.fillEllipse(static_cast<float>(cx + ox), static_cast<float>(cy + oy),
-                      17.5f, 17.5f, col(0x777368));
-        p.fillEllipse(static_cast<float>(cx + ox),
-                      static_cast<float>(cy + oy) - 1.0f, 12.0f, 12.0f,
-                      col(0x55524A));
-        for (int r = 0; r < 12; ++r) {  // collar bolts
-            const float a = r * 0.5236f;
-            p.set(cx + ox + static_cast<int>(19.0f * std::cos(a)),
-                  cy + oy + static_cast<int>(19.0f * std::sin(a)), concHi);
+    for (int k = 0; k < 150; ++k) {
+        const float ang = static_cast<float>(k) * 2.39996f;
+        const float qq = 0.83f + 0.13f * frand(k, 7, 1);
+        const float tx = cx + std::cos(ang) * qq * RX;
+        const float ty = cy + std::sin(ang) * qq * RY;
+        if (qAt(tx, ty, WX + 5, WY + 5) < 1.0f) continue;  // inside the seawall
+        if (nearPad(tx, ty, 4.0f)) continue;
+        if (tx < cx - 56.0f && ty > cy + 12.0f && ty < cy + 44.0f) continue;  // dock
+        const float s = 4.2f + frand(k, 3, 2) * 2.8f;
+        if (frand(k, 13, 12) < 0.78f) {  // palm cluster
+            softDisc(tx + s * 0.55f, ty + s * 0.55f, s * 1.0f, s * 0.66f, col(0x08130A, 85));
+            for (int f = 0; f < 6; ++f) {
+                const float a = static_cast<float>(f) * 1.0472f + frand(k, f, 14) * 0.5f;
+                const float fx = tx + std::cos(a) * s * 0.62f;
+                const float fy = ty + std::sin(a) * s * 0.56f;
+                softDisc(fx, fy, s * 0.64f, s * 0.44f, mix(col(0x254D1F), jgMid, frand(f, k, 15)));
+            }
+            softDisc(tx, ty, s * 0.58f, s * 0.48f, mix(jgDark, jgMid, 0.55f));
+            softDisc(tx - s * 0.24f, ty - s * 0.26f, s * 0.30f, s * 0.24f, jgHi);
+            softDisc(tx + s * 0.1f, ty + s * 0.08f, s * 0.14f, s * 0.12f, col(0x6B4E2E));
+        } else {  // bush clump
+            softDisc(tx, ty, s * 0.95f, s * 0.72f, col(0x21451D));
+            softDisc(tx - s * 0.25f, ty - s * 0.3f, s * 0.6f, s * 0.45f, jgDark);
+            softDisc(tx - s * 0.4f, ty - s * 0.4f, s * 0.28f, s * 0.2f, jgMid);
         }
     }
 
-    // Secondary-turret pads and AA nests.
+    // --- concrete seawall: gradient body, dark rim, sun highlight ------------------
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const float q = qAt(static_cast<float>(x), static_cast<float>(y), WX, WY);
+            if (q > 1.0f) continue;
+            const float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
+            std::uint32_t c = mix(concMid, concLo, q);
+            if (q > 0.88f) c = mix(c, concRim, (q - 0.88f) / 0.12f);
+            else if ((x - y) % 19 == 0 || (x + y) % 23 == 0) c = mix(c, concSeam, 0.55f);
+            if (dx + dy < -18.0f) c = mix(c, concHi, 0.35f);   // sun side
+            if (dx + dy > 26.0f) c = mix(c, col(0x5E5A4E), 0.4f);  // shade side
+            p.set(x, y, c);
+        }
+    // Wall outer shadow cast onto jungle/sand (bottom-right).
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const float q1 = qAt(static_cast<float>(x), static_cast<float>(y), WX + 3, WY + 3);
+            const float q2 = qAt(static_cast<float>(x), static_cast<float>(y), WX + 7, WY + 6);
+            if (q1 >= 1.0f || q2 <= 1.0f) continue;
+            const float dx = x + 0.5f - cx;
+            if (dx > -20.0f) p.blend(x, y, col(0x1A160F, 90));
+        }
+
+    // --- inner court: lighter concrete floor, grid seams, stains -------------------
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const float q = qAt(static_cast<float>(x), static_cast<float>(y), CX, CY);
+            if (q > 1.0f) continue;
+            const float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
+            std::uint32_t c = mix(mix(concMid, concLo, q), col(0x8E8A7D), 0.45f);
+            if ((x - y) % 15 == 0 || (x + y) % 17 == 0) c = mix(c, concSeam, 0.45f);
+            if (dx + dy < -14.0f) c = mix(c, col(0xA8A496), 0.3f);
+            if (dx + dy > 22.0f) c = mix(c, concLo, 0.28f);
+            if (hash(x, y, 21) % 29 == 0) c = mix(c, col(0x6E5A3E), 0.30f);  // rust stain
+            p.set(x, y, c);
+        }
+
+    // --- radial supply roads from the keep to every gun pad -------------------------
+    const float kx = static_cast<float>(cx), ky = static_cast<float>(cy - 6);
+    for (const Pad& pd : pads) {
+        const float ex = cx + pd.x, ey = cy + pd.y;
+        const float len = std::sqrt((ex - kx) * (ex - kx) + (ey - ky) * (ey - ky));
+        const int steps = static_cast<int>(len);
+        for (int i = 0; i < steps; ++i) {
+            const float t = static_cast<float>(i) / static_cast<float>(steps);
+            const float rx = kx + (ex - kx) * t, ry = ky + (ey - ky) * t;
+            const float rw = 6.5f - 2.0f * std::fabs(t - 0.5f);
+            softDisc(rx, ry, rw, rw, col(0x9A968A, 120));
+        }
+    }
+
+    // --- gun pads: rim, deck, bolt ring (mirrors the JSON offsets) -------------------
+    for (const Pad& pd : pads) {
+        const float px = cx + pd.x, py = cy + pd.y;
+        softDisc(px + 2.0f, py + 3.0f, pd.r + 2.0f, pd.r + 2.0f, col(0x1A160F, 80));
+        softDisc(px, py, pd.r, pd.r, col(0x7A7669));
+        softDisc(px, py, pd.r - 4.0f, pd.r - 4.0f, col(0x8A867A));
+        const int bolts = pd.r > 25 ? 14 : 10;
+        for (int b = 0; b < bolts; ++b) {
+            const float a = static_cast<float>(b) * 6.2832f / static_cast<float>(bolts);
+            p.set(static_cast<int>(px + std::cos(a) * (pd.r - 2.0f)),
+                  static_cast<int>(py + std::sin(a) * (pd.r - 2.0f)), col(0x59554A));
+        }
+    }
+
+    // --- keep plinth: raised central platform with steps ------------------------------
+    softDisc(kx + 2.0f, ky + 4.0f, 36.0f, 30.0f, col(0x1A160F, 90));
+    softDisc(kx, ky, 35.0f, 29.0f, concRim);
+    softDisc(kx, ky - 1.0f, 33.0f, 27.0f, concMid);
+    softDisc(kx - 6.0f, ky - 8.0f, 20.0f, 14.0f, col(0xA39F92, 120));
+    for (int s = 0; s < 3; ++s)  // front steps
+        p.fillRect(static_cast<int>(kx - 10), static_cast<int>(ky + 24) + s, 20, 1,
+                   s == 0 ? col(0xA8A496) : concSeam);
+
+    // --- fuel farm (two camo'd tanks on each shoulder of the court) --------------------
     for (int sx : {-1, 1}) {
-        const float px = static_cast<float>(cx + sx * 52);
-        const float py = static_cast<float>(cy - 34);
-        p.fillEllipse(px, py, 14.0f, 14.0f, concRim);
-        p.fillEllipse(px, py, 11.5f, 11.5f, col(0x777368));
-        const float ax = static_cast<float>(cx + sx * 24);
-        const float ay = static_cast<float>(cy - 58);
-        p.fillEllipse(ax, ay, 12.5f, 12.5f, concRim);
-        p.fillEllipse(ax, ay, 10.0f, 10.0f, col(0x777368));
+        const float fx = cx + sx * 68.0f, fy = cy - 30.0f;
+        softDisc(fx + 2.0f, fy + 2.5f, 8.0f, 7.0f, col(0x1A160F, 80));
+        softDisc(fx, fy, 7.5f, 6.5f, col(0x6F7A5E));
+        softDisc(fx - 1.5f, fy - 1.5f, 5.0f, 4.0f, col(0x87927A));
+        softDisc(fx + 2.0f, fy + 2.0f, 3.0f, 2.2f, col(0x4C5A3E, 150));  // camo patch
+        p.vline(static_cast<int>(fx), static_cast<int>(fy - 6.0f), static_cast<int>(fy + 6.0f),
+                col(0x55604A));
     }
 
-    // Command keep pad (bridge component sits here).
-    p.fillRect(cx - 22, cy - 36, 44, 52, concRim);
-    p.fillRect(cx - 20, cy - 34, 40, 48, conc);
-    for (int y = cy - 34; y <= cy + 14; y += 6)
-        p.hline(cx - 20, cx + 20, y, concSeam);
-    p.fillRect(cx - 20, cy - 34, 4, 48, concHi);
+    // --- sandbag arcs facing the player around the three main emplacements -------------
+    for (int pi = 0; pi < 3; ++pi) {
+        const Pad& pd = pads[pi];
+        const float px = cx + pd.x, py = cy + pd.y;
+        for (int b = 0; b < 11; ++b) {
+            const float a = 0.32f + static_cast<float>(b) * 0.24f;  // lower arc
+            const float bx = px + std::cos(a) * (pd.r + 4.0f);
+            const float by = py + std::sin(a) * (pd.r + 4.0f);
+            softDisc(bx, by, 2.4f, 1.9f, col(0x9A8A66));
+            softDisc(bx - 0.6f, by - 0.6f, 1.2f, 0.9f, col(0xB5A57E));
+        }
+    }
 
-    // Battle damage.
+    // --- west dock: timber pier, pilings, moored barge ----------------------------------
+    {
+        const int py0 = cy + 19, py1 = cy + 35;
+        for (int x = cx - 111; x <= cx - 58; ++x) {  // deck shadow
+            p.set(x, py1 + 1, col(0x0A141C, 90));
+            p.set(x, py1 + 2, col(0x0A141C, 50));
+        }
+        for (int x = cx - 111; x <= cx - 58; ++x) {  // plank deck
+            const int seam = ((x - (cx - 111)) % 4 == 0) ? 1 : 0;
+            for (int y = py0; y <= py1; ++y) {
+                std::uint32_t c = (y == py0 || y == py1) ? col(0x4A3B26)
+                                             : (seam ? col(0x54432B) : col(0x6B5636));
+                if (x > cx - 76 && (y + x) % 6 == 0) c = mix(c, sandMid, 0.5f);  // onto beach
+                p.set(x, y, c);
+            }
+        }
+        for (int x = cx - 110; x <= cx - 60; x += 10) {  // pilings
+            softDisc(static_cast<float>(x), static_cast<float>(py0 - 1), 1.6f, 1.4f, col(0x2E2415));
+            softDisc(static_cast<float>(x), static_cast<float>(py1 + 1), 1.6f, 1.4f, col(0x2E2415));
+        }
+        softDisc(cx - 110.0f, cy + 27.0f, 2.0f, 2.0f, col(0x33383D));  // bollard
+        // Moored barge just off the pier end.
+        const float bx = cx - 95.0f, by = cy + 48.0f;
+        softDisc(bx + 1.5f, by + 2.5f, 12.0f, 6.0f, col(0x0A141C, 80));
+        p.fillRect(static_cast<int>(bx - 11), static_cast<int>(by - 5), 22, 10, col(0x5A4830));
+        p.hline(static_cast<int>(bx - 11), static_cast<int>(bx + 10), static_cast<int>(by - 5),
+                col(0x7C6442));
+        p.hline(static_cast<int>(bx - 11), static_cast<int>(bx + 10), static_cast<int>(by + 4),
+                col(0x3A2E1E));
+        p.fillRect(static_cast<int>(bx - 3), static_cast<int>(by - 3), 6, 6, col(0x46523A));
+        softDisc(bx - 13.0f, by, 1.6f, 3.2f, col(0xDDEAF4, 120));  // wake hint
+    }
+
+    // --- battle damage --------------------------------------------------------------
+    auto scorchBlob = [&](float sx, float sy, float r, bool ember) {
+        softDisc(sx, sy, r, r * 0.86f, col(0x241F18, 175));
+        softDisc(sx, sy, r * 0.5f, r * 0.44f, col(0x0E0B08, 220));
+        if (ember)
+            softDisc(sx + r * 0.15f, sy + r * 0.15f, r * 0.22f, r * 0.2f, col(0x8A3B12, 200));
+    };
     if (damage >= 2) {
-        p.fillEllipse(cx - 30.0f, cy + 26.0f, 9.0f, 7.0f, col(0x241F18, 160));
-        p.fillEllipse(cx + 36.0f, cy - 20.0f, 8.0f, 6.0f, col(0x241F18, 150));
-        for (int k = 0; k < 30; ++k) {  // cracks radiating from hits
-            const float a = k * 0.21f + 0.4f;
-            const float ox = (k % 2) ? -30.0f : 36.0f;
-            const float oy = (k % 2) ? 26.0f : -20.0f;
-            for (int d = 6; d < 6 + (k % 5) * 4; d += 2)
-                p.set(cx + static_cast<int>(ox + d * std::cos(a)),
-                      cy + static_cast<int>(oy + d * 0.7f * std::sin(a)),
-                      col(0x35322B, 220));
+        scorchBlob(cx + 24.0f, cy + 34.0f, 10.0f, true);
+        scorchBlob(cx - 40.0f, cy - 6.0f, 8.0f, false);
+        scorchBlob(cx + 8.0f, cy - 40.0f, 7.0f, true);
+        // Burned-out jungle patch on the north-east shore.
+        softDisc(cx + 56.0f, cy - 62.0f, 14.0f, 10.0f, col(0x3A3128, 170));
+        softDisc(cx + 56.0f, cy - 62.0f, 8.0f, 5.5f, col(0x211C15, 200));
+        // Cracks across the court.
+        for (int k = 0; k < 26; ++k) {
+            const float a = k * 0.24f + 0.5f;
+            for (int d = 8; d < 8 + (k % 5) * 5; d += 2)
+                p.blend(static_cast<int>(cx + 24.0f + d * std::cos(a)),
+                        static_cast<int>(cy + 34.0f + d * 0.7f * std::sin(a)),
+                        col(0x35322B, 200));
         }
     }
     if (damage >= 3) {
-        p.fillEllipse(cx, cy, 62.0f, 56.0f, col(0x24201A, 120));  // soot
-        p.fillEllipse(cx - 14.0f, cy - 6.0f, 12.0f, 10.0f, col(0x14110D));
-        p.fillEllipse(cx + 20.0f, cy + 30.0f, 10.0f, 8.0f, col(0x14110D));
+        scorchBlob(cx - 14.0f, cy + 12.0f, 11.0f, true);
+        scorchBlob(cx + 44.0f, cy + 18.0f, 8.0f, true);
+        scorchBlob(cx - 52.0f, cy - 44.0f, 9.0f, false);
+        scorchBlob(cx + 14.0f, cy - 70.0f, 7.0f, true);
+        // Soot wash over the whole fortification.
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x) {
+                if (qAt(static_cast<float>(x), static_cast<float>(y), WX + 8, WY + 8) > 1.0f)
+                    continue;
+                if ((x * 7 + y * 11) % 13 < 4) p.blend(x, y, col(0x171614, 95));
+            }
+        // Breached seawall section (south-west): rubble and a gap to the sand.
+        softDisc(cx - 46.0f, cy + 60.0f, 12.0f, 9.0f, col(0xB49E74, 210));
+        for (int k = 0; k < 8; ++k) {
+            const float rx = cx - 52.0f + frand(k, 31, 7) * 14.0f;
+            const float ry = cy + 54.0f + frand(k, 41, 9) * 12.0f;
+            softDisc(rx, ry, 2.0f + frand(k, 7, 3) * 1.8f, 1.6f, col(0x6E6A5E));
+        }
+        // Dead jungle: brown haze over the vegetation ring.
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x) {
+                const float qs = qAt(static_cast<float>(x), static_cast<float>(y), WX - 4, WY - 4);
+                const float qb = qAt(static_cast<float>(x), static_cast<float>(y), RX - 1, RY - 1);
+                if (qs < 1.0f || qb > 1.0f) continue;
+                if ((x * 5 + y * 3) % 11 < 6) p.blend(x, y, col(0x3A362A, 130));
+            }
     }
+    return p;
+}
+
+// --- fortress-exclusive component sprites --------------------------------------
+// Kept separate from the shared boss_big_turret / boss_aa / boss_bridge so the
+// fortress guns can grow without touching the battleship/carrier bosses.
+
+PixelBuf makeFortMain() {
+    constexpr int S = 64;
+    const int c = S / 2;
+    PixelBuf p(S, S);
+    auto mix = [](std::uint32_t a, std::uint32_t b, float t) -> std::uint32_t {
+        auto ch = [](std::uint32_t v, int s) { return static_cast<float>((v >> s) & 0xFFu); };
+        const float r  = ch(a, 24) + (ch(b, 24) - ch(a, 24)) * t;
+        const float g  = ch(a, 16) + (ch(b, 16) - ch(a, 16)) * t;
+        const float bl = ch(a, 8)  + (ch(b, 8)  - ch(a, 8))  * t;
+        const float al = ch(a, 0)  + (ch(b, 0)  - ch(a, 0))  * t;
+        return (static_cast<std::uint32_t>(r + 0.5f) << 24) |
+               (static_cast<std::uint32_t>(g + 0.5f) << 16) |
+               (static_cast<std::uint32_t>(bl + 0.5f) << 8) |
+               static_cast<std::uint32_t>(al + 0.5f);
+    };
+    auto soft = [&](float ex, float ey, float rx, float ry, std::uint32_t colr) {
+        for (int y = static_cast<int>(ey - ry) - 1; y <= static_cast<int>(ey + ry) + 1; ++y)
+            for (int x = static_cast<int>(ex - rx) - 1; x <= static_cast<int>(ex + rx) + 1; ++x) {
+                const float dx = (x + 0.5f - ex) / rx, dy = (y + 0.5f - ey) / ry;
+                const float q2 = dx * dx + dy * dy;
+                if (q2 > 1.0f) continue;
+                if (q2 > 0.68f) {
+                    const float f = 1.0f - (q2 - 0.68f) / 0.32f;
+                    const int a = static_cast<int>(static_cast<float>(colr & 0xFFu) * f);
+                    p.blend(x, y, (colr & 0xFFFFFF00u) | static_cast<std::uint32_t>(a));
+                } else p.blend(x, y, colr);
+            }
+    };
+    // Drop shadow + concrete barbette ring.
+    soft(c + 3.0f, c + 4.0f, 27.0f, 26.0f, col(0x0A0806, 90));
+    soft(static_cast<float>(c), static_cast<float>(c), 26.0f, 25.0f, col(0x565B52));
+    soft(static_cast<float>(c), static_cast<float>(c), 23.0f, 22.0f, col(0x454A42));
+    for (int b = 0; b < 16; ++b) {  // barbette bolts
+        const float a = b * 0.3927f;
+        p.set(c + static_cast<int>(24.5f * std::cos(a)), c + static_cast<int>(23.5f * std::sin(a)),
+              col(0x6E756C));
+    }
+    // Twin barrels (drawn before the housing so the mantel covers their roots).
+    for (int bx : {c - 5, c + 5}) {
+        p.fillRect(bx - 2, c + 2, 4, 26, col(0x23272A));
+        p.vline(bx - 1, c + 3, c + 26, col(0x4A4F53));
+        p.fillRect(bx - 3, c + 22, 6, 6, col(0x2C3033));  // muzzle brake
+        p.vline(bx - 2, c + 23, c + 27, col(0x565C61));
+        p.set(bx, c + 27, col(0x0A0C0E));                 // bore
+    }
+    // Octagonal armoured housing: vertical gradient body + bevelled rim.
+    for (int y = c - 20; y <= c + 10; ++y) {
+        const float t = static_cast<float>(y - (c - 20)) / 30.0f;
+        const bool taper = (t < 0.14f || t > 0.82f);
+        const int cut = taper ? 7 : 1;
+        for (int x = c - 19 + cut; x <= c + 18 - cut; ++x) {
+            const bool edge = x <= c - 19 + cut || x >= c + 18 - cut ||
+                              y <= c - 20 || y >= c + 10;
+            std::uint32_t colr = mix(col(0x727970), col(0x464B44), t);
+            if (edge) colr = mix(colr, col(0x2C302B), 0.75f);
+            else if (x < c - 4 && y < c - 6) colr = mix(colr, col(0x8A918A), 0.45f);  // sun face
+            p.set(x, y, colr);
+        }
+    }
+    // Faceplate (front slope) + mantel band over the barrels.
+    p.fillRect(c - 12, c + 4, 24, 7, col(0x565C54));
+    p.hline(c - 12, c + 11, c + 4, col(0x7C837B));
+    p.hline(c - 12, c + 11, c + 10, col(0x333833));
+    p.fillRect(c - 7, c + 6, 14, 4, col(0x2C3033));
+    // Roof details: hatch, vision slit, sight post.
+    soft(static_cast<float>(c), static_cast<float>(c - 12), 5.0f, 4.0f, col(0x3A3F3A));
+    soft(static_cast<float>(c), static_cast<float>(c - 13), 3.2f, 2.4f, col(0x565C61));
+    p.fillRect(c - 6, c - 19, 12, 2, col(0x2E322E));
+    p.set(c, c - 21, col(0x8A9094));
+    return p;
+}
+
+PixelBuf makeFortSecondary() {
+    constexpr int S = 36;
+    const int c = S / 2;
+    PixelBuf p(S, S);
+    auto mix = [](std::uint32_t a, std::uint32_t b, float t) -> std::uint32_t {
+        auto ch = [](std::uint32_t v, int s) { return static_cast<float>((v >> s) & 0xFFu); };
+        const float r  = ch(a, 24) + (ch(b, 24) - ch(a, 24)) * t;
+        const float g  = ch(a, 16) + (ch(b, 16) - ch(a, 16)) * t;
+        const float bl = ch(a, 8)  + (ch(b, 8)  - ch(a, 8))  * t;
+        const float al = ch(a, 0)  + (ch(b, 0)  - ch(a, 0))  * t;
+        return (static_cast<std::uint32_t>(r + 0.5f) << 24) |
+               (static_cast<std::uint32_t>(g + 0.5f) << 16) |
+               (static_cast<std::uint32_t>(bl + 0.5f) << 8) |
+               static_cast<std::uint32_t>(al + 0.5f);
+    };
+    auto soft = [&](float ex, float ey, float rx, float ry, std::uint32_t colr) {
+        for (int y = static_cast<int>(ey - ry) - 1; y <= static_cast<int>(ey + ry) + 1; ++y)
+            for (int x = static_cast<int>(ex - rx) - 1; x <= static_cast<int>(ex + rx) + 1; ++x) {
+                const float dx = (x + 0.5f - ex) / rx, dy = (y + 0.5f - ey) / ry;
+                const float q2 = dx * dx + dy * dy;
+                if (q2 > 1.0f) continue;
+                if (q2 > 0.68f) {
+                    const float f = 1.0f - (q2 - 0.68f) / 0.32f;
+                    const int a = static_cast<int>(static_cast<float>(colr & 0xFFu) * f);
+                    p.blend(x, y, (colr & 0xFFFFFF00u) | static_cast<std::uint32_t>(a));
+                } else p.blend(x, y, colr);
+            }
+    };
+    soft(c + 2.0f, c + 3.0f, 15.0f, 14.0f, col(0x0A0806, 80));
+    soft(static_cast<float>(c), static_cast<float>(c), 14.0f, 13.0f, col(0x51564E));
+    soft(static_cast<float>(c), static_cast<float>(c), 11.5f, 10.5f, col(0x43483F));
+    // Twin thin DP barrels.
+    for (int bx : {c - 2, c + 3}) {
+        p.fillRect(bx - 1, c, 2, 13, col(0x23272A));
+        p.set(bx, c + 12, col(0x0A0C0E));
+    }
+    // Small octagonal housing with gradient.
+    for (int y = c - 9; y <= c + 5; ++y) {
+        const float t = static_cast<float>(y - (c - 9)) / 14.0f;
+        const int cut = (y <= c - 8 || y >= c + 4) ? 4 : 2;
+        for (int x = c - 8 + cut; x <= c + 7 - cut; ++x) {
+            const bool edge = x <= c - 8 + cut || x >= c + 7 - cut || y <= c - 9 || y >= c + 5;
+            std::uint32_t colr = mix(col(0x6B726A), col(0x454A43), t);
+            if (edge) colr = mix(colr, col(0x2C302B), 0.7f);
+            p.set(x, y, colr);
+        }
+    }
+    p.fillRect(c - 4, c + 1, 9, 3, col(0x2C3033));  // mantel
+    soft(static_cast<float>(c), static_cast<float>(c - 5), 2.6f, 2.0f, col(0x565C61));  // sight
+    return p;
+}
+
+PixelBuf makeFortAa() {
+    constexpr int S = 32;
+    const int c = S / 2;
+    PixelBuf p(S, S);
+    auto soft = [&](float ex, float ey, float rx, float ry, std::uint32_t colr) {
+        for (int y = static_cast<int>(ey - ry) - 1; y <= static_cast<int>(ey + ry) + 1; ++y)
+            for (int x = static_cast<int>(ex - rx) - 1; x <= static_cast<int>(ex + rx) + 1; ++x) {
+                const float dx = (x + 0.5f - ex) / rx, dy = (y + 0.5f - ey) / ry;
+                const float q2 = dx * dx + dy * dy;
+                if (q2 > 1.0f) continue;
+                if (q2 > 0.68f) {
+                    const float f = 1.0f - (q2 - 0.68f) / 0.32f;
+                    const int a = static_cast<int>(static_cast<float>(colr & 0xFFu) * f);
+                    p.blend(x, y, (colr & 0xFFFFFF00u) | static_cast<std::uint32_t>(a));
+                } else p.blend(x, y, colr);
+            }
+    };
+    soft(c + 2.0f, c + 3.0f, 13.0f, 12.0f, col(0x0A0806, 75));
+    soft(static_cast<float>(c), static_cast<float>(c), 12.0f, 11.0f, col(0x4E534B));
+    soft(static_cast<float>(c), static_cast<float>(c), 9.5f, 8.5f, col(0x5A6058));
+    // Triple light AA barrels.
+    for (int bx : {c - 4, c, c + 4}) {
+        p.fillRect(bx - 1, c - 2, 1, 13, col(0x8A9094));
+        p.set(bx, c + 10, col(0x14181C));
+    }
+    p.fillRect(c - 6, c - 3, 12, 4, col(0x3A4038));  // mount block
+    p.hline(c - 6, c + 5, c - 3, col(0x6E757C));
+    // Gunner shield arc + seat.
+    soft(static_cast<float>(c), static_cast<float>(c - 6), 6.5f, 3.5f, col(0x63685F));
+    soft(static_cast<float>(c), static_cast<float>(c - 6), 4.5f, 2.2f, col(0x2E322E));
+    soft(static_cast<float>(c), static_cast<float>(c + 4), 2.4f, 2.0f, col(0x3A3F3A));
+    return p;
+}
+
+PixelBuf makeFortKeep() {
+    constexpr int W = 56, H = 64;
+    const int cx = W / 2;
+    PixelBuf p(W, H);
+    auto mix = [](std::uint32_t a, std::uint32_t b, float t) -> std::uint32_t {
+        auto ch = [](std::uint32_t v, int s) { return static_cast<float>((v >> s) & 0xFFu); };
+        const float r  = ch(a, 24) + (ch(b, 24) - ch(a, 24)) * t;
+        const float g  = ch(a, 16) + (ch(b, 16) - ch(a, 16)) * t;
+        const float bl = ch(a, 8)  + (ch(b, 8)  - ch(a, 8))  * t;
+        const float al = ch(a, 0)  + (ch(b, 0)  - ch(a, 0))  * t;
+        return (static_cast<std::uint32_t>(r + 0.5f) << 24) |
+               (static_cast<std::uint32_t>(g + 0.5f) << 16) |
+               (static_cast<std::uint32_t>(bl + 0.5f) << 8) |
+               static_cast<std::uint32_t>(al + 0.5f);
+    };
+    auto soft = [&](float ex, float ey, float rx, float ry, std::uint32_t colr) {
+        for (int y = static_cast<int>(ey - ry) - 1; y <= static_cast<int>(ey + ry) + 1; ++y)
+            for (int x = static_cast<int>(ex - rx) - 1; x <= static_cast<int>(ex + rx) + 1; ++x) {
+                const float dx = (x + 0.5f - ex) / rx, dy = (y + 0.5f - ey) / ry;
+                const float q2 = dx * dx + dy * dy;
+                if (q2 > 1.0f) continue;
+                if (q2 > 0.68f) {
+                    const float f = 1.0f - (q2 - 0.68f) / 0.32f;
+                    const int a = static_cast<int>(static_cast<float>(colr & 0xFFu) * f);
+                    p.blend(x, y, (colr & 0xFFFFFF00u) | static_cast<std::uint32_t>(a));
+                } else p.blend(x, y, colr);
+            }
+    };
+    // Big soft drop shadow — the keep is the tallest structure on the island.
+    soft(cx + 4.0f, 38.0f, 29.0f, 30.0f, col(0x0A0806, 95));
+    auto tier = [&](int x0, int y0, int tw, int th, std::uint32_t hi, std::uint32_t lo) {
+        for (int y = y0; y < y0 + th; ++y) {
+            const float t = static_cast<float>(y - y0) / static_cast<float>(th > 1 ? th : 1);
+            for (int x = x0; x < x0 + tw; ++x) {
+                std::uint32_t c = mix(hi, lo, t);
+                if (x == x0 || x == x0 + tw - 1 || y == y0 || y == y0 + th - 1)
+                    c = mix(c, col(0x2A2E28), 0.72f);  // dark bevel rim
+                p.set(x, y, c);
+            }
+        }
+        p.hline(x0 + 1, x0 + tw - 2, y0, col(0xB5B1A3, 200));  // sunlit top edge
+    };
+    // Tier 1: fortified base with windows and blast door.
+    tier(cx - 24, 26, 48, 34, col(0x8F8B7E), col(0x66625A));
+    for (int i = 0; i < 6; ++i) {  // windows
+        const int wx = cx - 19 + i * 8;
+        p.fillRect(wx, 34, 3, 5, col(0x1E2226));
+        p.set(wx, 34, col(0x6E7A84));
+        p.fillRect(wx, 44, 3, 5, col(0x1E2226));
+        p.set(wx, 44, col(0x6E7A84));
+    }
+    p.fillRect(cx - 5, 52, 10, 8, col(0x333833));  // blast door
+    p.hline(cx - 5, cx + 4, 52, col(0x7C837B));
+    p.vline(cx, 53, 59, col(0x22261F));
+    // Sandbag stacks flanking the door.
+    for (int s = 0; s < 3; ++s) {
+        soft(cx - 11.0f + s * 0.5f, 58.0f - s * 3.0f, 3.2f, 2.2f, col(0x9A8A66));
+        soft(cx + 11.0f - s * 0.5f, 58.0f - s * 3.0f, 3.2f, 2.2f, col(0x9A8A66));
+    }
+    // Tier 2: command deck with camo netting on one corner.
+    tier(cx - 19, 12, 38, 16, col(0x6E756A), col(0x4B5049));
+    for (int i = 0; i < 4; ++i) {
+        const int wx = cx - 13 + i * 8;
+        p.fillRect(wx, 18, 4, 4, col(0x1E2226));
+        p.set(wx, 18, col(0x6E7A84));
+    }
+    for (int k = 0; k < 10; ++k)  // camo net blobs
+        soft(cx - 17.0f + (k % 3) * 3.4f, 13.0f + (k / 3) * 2.6f, 2.6f, 1.8f, col(0x3D5A30, 190));
+    // Tier 3: fire direction with rotating hood.
+    tier(cx - 12, 4, 24, 10, col(0x84897C), col(0x5C6158));
+    p.fillRect(cx - 7, 7, 14, 3, col(0x22261F));  // slit windows
+    soft(static_cast<float>(cx), 5.0f, 5.0f, 3.6f, col(0x3E4238));  // director dome
+    soft(static_cast<float>(cx) - 1.0f, 4.0f, 2.6f, 1.8f, col(0x6E757C));
+    // Mast + flag.
+    p.vline(cx, 0, 4, col(0x565C61));
+    p.set(cx - 3, 1, col(0x565C61));
+    p.set(cx + 3, 1, col(0x565C61));
+    p.fillRect(cx + 1, 0, 5, 3, col(0xC0392B));
     return p;
 }
 
@@ -3532,7 +3997,7 @@ namespace {
 constexpr std::uint32_t kArtCacheMagic = 0x50534152u;  // "PSAR"
 // Bump whenever any generated art changes (v10: A6M Zero redesign of the
 // primary enemy fighter and interceptor).
-constexpr std::uint32_t kArtCacheVersion = 13u;
+constexpr std::uint32_t kArtCacheVersion = 15u;
 
 void wr32(std::ostream& o, std::uint32_t v) {
     o.write(reinterpret_cast<const char*>(&v), 4);
@@ -3757,6 +4222,10 @@ bool generateAllArt(Renderer& r, const std::string& cachePath,
     add("boss_cruiser_hull_dmg", makeCruiserHull(2));
     add("boss_cruiser_hull_wreck", makeCruiserHull(3));
     add("boss_cruiser_hull_flash", toFlashSilhouette(makeCruiserHull(0)));
+    add("boss_fort_main", makeFortMain());
+    add("boss_fort_secondary", makeFortSecondary());
+    add("boss_fort_aa", makeFortAa());
+    add("boss_fort_keep", makeFortKeep());
     add("boss_carrier_island", makeCarrierIsland());
     add("wake_foam", makeWake());
     add("fire_puff", makeFirePuff());
@@ -3799,6 +4268,8 @@ void loadPngOverrides(Renderer& renderer, const std::string& assetDir) {
         "boss_fortress_hull_wreck", "boss_fortress_hull_flash",
         "boss_cruiser_hull", "boss_cruiser_hull_dmg",
         "boss_cruiser_hull_wreck", "boss_cruiser_hull_flash",
+        "boss_fort_main", "boss_fort_secondary", "boss_fort_aa",
+        "boss_fort_keep",
         "wake_foam", "fire_puff", "smoke_puff",
     };
     for (const char* n : names) {

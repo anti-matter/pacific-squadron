@@ -243,6 +243,9 @@ private:
     void spawnVolley(int weaponRef, Vec2 pos, Team team, bool aimAtPlayerPos);
     void spawnPowerup(int defRef, Vec2 pos);
     void spawnBoss(int defRef);
+    // True while a boss whose arena is open sea (arenaOcean) is on screen:
+    // land installations must not spawn (they would slide across the water).
+    bool seaArenaActive() const;
 
     // systems
     void updatePlayer(float dt);
