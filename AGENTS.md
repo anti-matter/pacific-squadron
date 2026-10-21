@@ -50,6 +50,8 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
 ```
 
 - `WWII_SMOKE_NOAUTO=1` = idle player (keeps targets on screen).
+- `WWII_SMOKE_BOMB_AT=8,9.5` = press the BOMB special at those **sim** times
+  (comma-separated) — headless verification of bomb effects.
 - `WWII_SMOKE_SHOT_AT` is **real elapsed time**, not stage time (~2–3 s
   offset; the splash gate + intro eat a few seconds).
 - `WWII_BOSS_NOW` skips to the current stage's boss. Note it spawns the boss
@@ -157,6 +159,12 @@ final core-exposed phase; boss index 1 already holds an older Sky Fortress —
 the finale supersedes or reuses it).
 
 ## Gotchas
+
+- The **BOMB** special (Shift/Ctrl, `p.bombs` charges) wipes on-screen enemies
+  and enemy fire and takes 20% of max HP off every living boss part (hull only
+  once armor is stripped — same gate as bullets). During the AIRFIELD COMMAND
+  fight each detonation also leaves a persistent crater decal (`bomb_crater`,
+  presentation-only in `Application.cpp`, driven by the charge-count watcher).
 
 - `Hi::bake()` treats sub-pixel alpha as **coverage** (any nonzero fill
   counts solid, near-solid snaps to 255) — never encode translucency in

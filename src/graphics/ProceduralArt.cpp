@@ -4649,6 +4649,72 @@ PixelBuf makeAirfieldHull(int damage) {
     return p;
 }
 
+// Fresh bomb impact for the bombed airfield apron: scorched crater with a
+// sun-lit rim lip on the top-left, dark lip and thrown rubble to the
+// bottom-right. Drawn as a persistent decal over the hull while the AIRFIELD
+// COMMAND fight is raging. Straight into PixelBuf for true per-pixel alpha
+// (see makeShadow re: bake()'s coverage semantics).
+PixelBuf makeBombCrater() {
+    constexpr int W = 36, H = 30;
+    PixelBuf p(W, H);
+    auto hash = [](int x, int y, int s) {
+        std::uint32_t h = static_cast<std::uint32_t>(x * 374761393 + y * 668265263 +
+                                                     s * 1274126177);
+        h = (h ^ (h >> 13)) * 1274126177u;
+        return (h ^ (h >> 16)) & 0xFFFFu;
+    };
+    auto frand = [&](int x, int y, int s) { return static_cast<float>(hash(x, y, s)) / 65535.0f; };
+    auto fall = [](float d, float r, float w) {
+        const float v = (r - d) / w;
+        return v <= 0.0f ? 0.0f : (v >= 1.0f ? 1.0f : v);
+    };
+    // Approximate pixel distance to an ellipse boundary centred at (cx,cy).
+    auto ed = [](float cx, float cy, float rx, float ry, int x, int y) {
+        const float dx = (x + 0.5f - cx) / rx, dy = (y + 0.5f - cy) / ry;
+        return std::sqrt(dx * dx + dy * dy) * std::sqrt(rx * ry);
+    };
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const float s = fall(ed(18, 15, 17.0f, 13.5f, x, y), 13.0f, 4.5f);
+            if (s > 0.0f)
+                p.blend(x, y, col(0x2B2620, static_cast<std::uint32_t>(140.0f * s)));
+            const float h = fall(ed(18, 15, 10.5f, 8.0f, x, y), 6.5f, 3.0f);
+            if (h > 0.0f)
+                p.blend(x, y, col(0x110F0C, static_cast<std::uint32_t>(235.0f * h)));
+            // Rim lip: bright top-left arc catching the sun, dark far lip.
+            const float ring = fall(std::fabs(ed(18, 15, 11.5f, 9.0f, x, y) - 8.5f),
+                                    2.2f, 1.7f);
+            if (ring > 0.0f) {
+                const float up = (18.0f - x) * 0.03f + (15.0f - y) * 0.035f;
+                if (up > 0.0f)
+                    p.blend(x, y, col(0x8B8579, static_cast<std::uint32_t>(
+                                      190.0f * ring * std::min(1.0f, up * 3.0f))));
+                else
+                    p.blend(x, y, col(0x1A1712, static_cast<std::uint32_t>(
+                                      150.0f * ring * std::min(1.0f, -up * 3.0f))));
+            }
+        }
+    // Rubble thrown toward the bottom-right (consistent sun from top-left).
+    for (int k = 0; k < 7; ++k) {
+        const float a = 0.9f + frand(k, 3, 11) * 2.6f;
+        const float rr = 12.0f + frand(k, 4, 12) * 7.0f;
+        const float cx = 18.0f + std::cos(a) * rr;
+        const float cy = 15.0f + std::sin(a) * rr * 0.8f;
+        const float rad = 1.1f + frand(k, 5, 13) * 1.2f;
+        for (int y = static_cast<int>(cy - rad) - 2; y <= static_cast<int>(cy + rad) + 2; ++y)
+            for (int x = static_cast<int>(cx - rad) - 2; x <= static_cast<int>(cx + rad) + 2; ++x) {
+                if (x < 0 || y < 0 || x >= W || y >= H) continue;
+                const float ddx = x + 0.5f - cx, ddy = y + 0.5f - cy;
+                const float c = fall(std::sqrt(ddx * ddx + ddy * ddy), rad, 1.2f);
+                if (c <= 0.0f) continue;
+                const bool lit = ddx + ddy < 0.0f;
+                p.blend(x, y, col(lit ? 0x6F6A5D : 0x3C382F,
+                                  static_cast<std::uint32_t>(215.0f * c)));
+            }
+    }
+    return p;
+}
+
 // Sawn-off arch (Quonset) hangar, seen from above: capsule roof with the
 // bright ridge along the spine and corrugation ribs running down the slopes.
 PixelBuf makeAirfieldHangar() {
@@ -4839,7 +4905,7 @@ namespace {
 constexpr std::uint32_t kArtCacheMagic = 0x50534152u;  // "PSAR"
 // Bump whenever any generated art changes (v10: A6M Zero redesign of the
 // primary enemy fighter and interceptor).
-constexpr std::uint32_t kArtCacheVersion = 25u;
+constexpr std::uint32_t kArtCacheVersion = 26u;
 
 void wr32(std::ostream& o, std::uint32_t v) {
     o.write(reinterpret_cast<const char*>(&v), 4);
@@ -5067,6 +5133,7 @@ bool generateAllArt(Renderer& r, const std::string& cachePath,
     add("boss_airfield_hull_dmg", makeAirfieldHull(2));
     add("boss_airfield_hull_wreck", makeAirfieldHull(3));
     add("boss_airfield_hull_flash", toFlashSilhouette(makeAirfieldHull(0)));
+    add("bomb_crater", makeBombCrater());
     add("boss_airfield_hangar", makeAirfieldHangar());
     add("boss_airfield_tower", makeAirfieldTower());
     add("boss_cruiser_hull", makeCruiserHull(0));

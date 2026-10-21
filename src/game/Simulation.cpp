@@ -885,6 +885,7 @@ Simulation::BossView Simulation::bossView() const {
         if (b.state >= 3) continue;
         const BossDef& def = data_.bosses[static_cast<std::size_t>(b.defRef)];
         v.arenaOcean = def.arenaOcean;
+        v.hullSprite = def.hullSprite.c_str();
         int hp = 0, maxHp = def.hullHp;
         if (b.hull >= 0 && pool_[static_cast<std::size_t>(b.hull)].alive)
             hp += pool_[static_cast<std::size_t>(b.hull)].hp;

@@ -252,6 +252,18 @@ bool Application::init() {
             smokeShotAt_ = SDL_getenv("WWII_SMOKE_SHOT_AT")
                 ? SDL_atof(SDL_getenv("WWII_SMOKE_SHOT_AT")) : 10.0f;
         }
+        // WWII_SMOKE_BOMB_AT=<t1,t2,...>: press the bomb at those sim times
+        // (useful for verifying bomb effects headlessly).
+        if (const char* bombAt = SDL_getenv("WWII_SMOKE_BOMB_AT")) {
+            const char* c = bombAt;
+            while (*c != '\0') {
+                char* end = nullptr;
+                const float v = std::strtof(c, &end);
+                if (end != c) smokeBombAt_.push_back(v);
+                if (end == c) ++c;  // skip garbage instead of spinning
+                else c = (*end == ',') ? end + 1 : end;
+            }
+        }
         if (startStageIdx >= 0) game_->debugStartAtStage(startStageIdx);
         else game_->debugStart();
         if (SDL_getenv("WWII_SMOKE_GOD"))
@@ -603,6 +615,11 @@ int Application::run() {
                 gi.fire = true;
                 gi.moveX = std::sin(smokeElapsed_ * 1.3f);
                 gi.moveY = std::sin(smokeElapsed_ * 0.7f) * 0.5f;
+            }
+            if (smokeTime_ > 0.0f && smokeBombSent_ < static_cast<int>(smokeBombAt_.size()) &&
+                smokeElapsed_ >= smokeBombAt_[static_cast<std::size_t>(smokeBombSent_)]) {
+                ++smokeBombSent_;
+                gi.special = true;  // one-step press: the edge triggers the bomb
             }
             game_->submitInput(gi);
             game_->update(kSimDt);
@@ -961,6 +978,8 @@ void Application::renderWorld() {
     // then bury the whole fortress under its own opaque island sprite.
     int compAlive = 0;
     bool hullAlive = false;
+    bool airHullOn = false;
+    float airHullX = 0.0f, airHullY = 0.0f;
     for (int pass = 0; pass < 2; ++pass) {
       for (const auto& e : sim.entities()) {
         if (!e.alive) continue;
@@ -990,6 +1009,11 @@ void Application::renderWorld() {
                                e.pos.y - 140.0f);
         }
         renderer_.draw(renderer_.texture(texName), e.pos.x, e.pos.y, 1.0f, tint);
+        if (hull && texName.find("airfield") != std::string::npos) {
+            airHullOn = true;
+            airHullX = e.pos.x;
+            airHullY = e.pos.y;
+        }
         // Armor-break pulse: white silhouette flashes over the hull for a
         // beat after the LAST destructible mount dies (hull now vulnerable).
         if (hull && armorFlashT_ > 0.0f) {
@@ -1045,6 +1069,21 @@ void Application::renderWorld() {
                                  0.9f - rise / 40.0f);
         }
       }
+    }
+    // Bomb scars: each BOMB spent during the AIRFIELD COMMAND fight leaves
+    // a fresh crater on the base (fixed apron spots clear of the mounts, so
+    // readability holds). Cleared when the flagship leaves the screen.
+    if (!hullAlive) bombCraters_ = 0;
+    if (airHullOn && bombCraters_ > 0) {
+        static constexpr float kCraterOff[kBombCraterMax][2] = {
+            {-30.0f, -20.0f}, {34.0f, 36.0f},  {-36.0f, 40.0f},
+            {28.0f, -46.0f},  {-24.0f, 86.0f}, {30.0f, 104.0f},
+        };
+        const int craterTex = renderer_.texture("bomb_crater");
+        if (craterTex >= 0)
+            for (int i = 0; i < bombCraters_; ++i)
+                renderer_.draw(craterTex, airHullX + kCraterOff[i][0],
+                               airHullY + kCraterOff[i][1]);
     }
     // Armored again? No: once the last mount dies, flash the hull once.
     if (hullAlive && prevCompAlive_ > 0 && compAlive == 0)
@@ -1193,7 +1232,13 @@ void Application::renderWorld() {
     }
     // Bomb detonation: player spent a charge => white flash (the existing
     // boss-detonation overlay, triggered on the charge count dropping).
-    if (const auto pv = sim.player(); pv.bombs < lastBombCount_) flashT_ = 0.3f;
+    // On the airfield, each detonation also scars the base (see pass 3).
+    if (const auto pv = sim.player(); pv.bombs < lastBombCount_) {
+        flashT_ = 0.3f;
+        const auto bv = sim.bossView();
+        if (bv.active && std::strstr(bv.hullSprite, "airfield") != nullptr)
+            bombCraters_ = std::min(bombCraters_ + 1, kBombCraterMax);
+    }
     lastBombCount_ = sim.player().bombs;
     if (bossBooms > lastBossBoom_) flashT_ = 0.45f;
     lastBossBoom_ = bossBooms;

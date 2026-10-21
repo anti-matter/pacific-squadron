@@ -154,6 +154,7 @@ public:
         std::string name;
         float hpFraction = 0.0f;
         bool arenaOcean = false;  // boss carries its own ground: sea below
+        const char* hullSprite = "";  // static def string, safe to keep briefly
     };
     BossView bossView() const;
 
