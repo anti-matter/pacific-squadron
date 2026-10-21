@@ -4397,6 +4397,364 @@ PixelBuf makeWake() {
     return p;
 }
 
+// --- Level 7 boss: AIRFIELD COMMAND ------------------------------------------
+// A fortified enemy air base. The hull sprite carries the runway section that
+// continues seamlessly into the stage's airfield terrain columns (the boss
+// holds station at x=192, exactly centred over the two runway lanes), with
+// apron, taxiways, parked aircraft and grassy margins around it. Hangars,
+// flak nests and the control tower are boss components drawn on top.
+
+PixelBuf makeAirfieldHull(int damage) {
+    constexpr int W = 224, H = 224;
+    const int cx = W / 2, cy = H / 2;
+    PixelBuf p(W, H);
+
+    auto mix = [](std::uint32_t a, std::uint32_t b, float t) -> std::uint32_t {
+        auto ch = [](std::uint32_t v, int s) { return static_cast<float>((v >> s) & 0xFFu); };
+        const float r  = ch(a, 24) + (ch(b, 24) - ch(a, 24)) * t;
+        const float g  = ch(a, 16) + (ch(b, 16) - ch(a, 16)) * t;
+        const float bl = ch(a, 8)  + (ch(b, 8)  - ch(a, 8))  * t;
+        const float al = ch(a, 0)  + (ch(b, 0)  - ch(a, 0))  * t;
+        return (static_cast<std::uint32_t>(r + 0.5f) << 24) |
+               (static_cast<std::uint32_t>(g + 0.5f) << 16) |
+               (static_cast<std::uint32_t>(bl + 0.5f) << 8) |
+               static_cast<std::uint32_t>(al + 0.5f);
+    };
+    auto hash = [](int x, int y, int s) {
+        std::uint32_t h = static_cast<std::uint32_t>(x * 374761393 + y * 668265263 +
+                                                     s * 1274126177);
+        h = (h ^ (h >> 13)) * 1274126177u;
+        return (h ^ (h >> 16)) & 0xFFFFu;
+    };
+    auto frand = [&](int x, int y, int s) { return static_cast<float>(hash(x, y, s)) / 65535.0f; };
+    auto softDisc = [&](float ex, float ey, float rx, float ry, std::uint32_t c) {
+        for (int y = static_cast<int>(ey - ry) - 1; y <= static_cast<int>(ey + ry) + 1; ++y)
+            for (int x = static_cast<int>(ex - rx) - 1; x <= static_cast<int>(ex + rx) + 1; ++x) {
+                const float dx = (x + 0.5f - ex) / rx, dy = (y + 0.5f - ey) / ry;
+                const float q2 = dx * dx + dy * dy;
+                if (q2 > 1.0f) continue;
+                if (q2 > 0.68f) {
+                    const float f = 1.0f - (q2 - 0.68f) / 0.32f;
+                    const int a = static_cast<int>(static_cast<float>(c & 0xFFu) * f);
+                    p.blend(x, y, (c & 0xFFFFFF00u) | static_cast<std::uint32_t>(a));
+                } else {
+                    p.blend(x, y, c);
+                }
+            }
+    };
+
+    const std::uint32_t jgDeep = col(0x163314);
+    const std::uint32_t jgDark = col(0x24501F);
+    const std::uint32_t jgMid  = col(0x3A7A31);
+    const std::uint32_t jgHi   = col(0x5C9940);
+
+    // --- poured apron concrete --------------------------------------------------
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            std::uint32_t c = mix(col(0x82827C), col(0x8E8E88), frand(x, y, 1));
+            if ((y % 16) == 0 || (x % 16) == 0) c = mix(c, col(0x6E6E68), 0.8f);  // slab seams
+            else if ((y % 16) == 1 || (x % 16) == 1) c = mix(c, col(0x94948E), 0.35f);
+            if (frand(x >> 3, y >> 3, 7) > 0.90f) c = mix(c, col(0x6F6F69), 0.5f);  // oil stains
+            const float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
+            if (dx + dy < -60.0f) c = mix(c, col(0x9C9C96), 0.16f);   // sun side
+            if (dx + dy > 60.0f) c = mix(c, col(0x72726C), 0.18f);    // shade side
+            p.set(x, y, c);
+        }
+
+    // --- grassy margins with irregular edges ------------------------------------
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const float leftB  = 20.0f + 8.0f * std::sin(y * 0.11f + 1.3f) +
+                                 5.0f * std::sin(y * 0.31f + 4.0f);
+            const float rightB = W - 20.0f + 8.0f * std::sin(y * 0.09f + 3.1f) +
+                                 5.0f * std::sin(y * 0.27f + 1.0f);
+            const bool inL = x < leftB, inR = x > rightB;
+            if (!inL && !inR) continue;
+            const float over = inL ? (leftB - x) : (x - rightB);   // depth into grass
+            if (over < 2.0f && frand(x, y, 2) > over * 0.5f) continue;  // ragged edge
+            std::uint32_t c = mix(jgDark, jgMid, frand(x, y, 3));
+            if (frand(x >> 1, y >> 1, 4) > 0.80f) c = mix(c, jgDeep, 0.6f);
+            if (frand(x, y, 5) > 0.90f) c = mix(c, jgHi, 0.5f);
+            p.set(x, y, c);
+        }
+
+    // --- runway: asphalt through the centre, matching the terrain lanes ----------
+    const int rxA0 = 76, rxA1 = 148;
+    for (int y = 0; y < H; ++y)
+        for (int x = rxA0; x < rxA1; ++x) {
+            std::uint32_t c = mix(col(0x4A4C50), col(0x54565A), frand(x, y, 6));
+            if ((y % 16) == 0) c = mix(c, col(0x404246), 0.85f);   // transverse seams
+            if (frand(x >> 2, y >> 2, 9) > 0.88f) c = mix(c, col(0x5E6064), 0.5f);  // wear
+            if (frand(x >> 3, y >> 3, 10) > 0.94f) c = mix(c, col(0x3A3C40), 0.6f); // patches
+            // weathered white edge lines
+            if ((x == 78 || x == 79 || x == 144 || x == 145) && (y + x) % 5 != 0)
+                c = mix(c, col(0xE8E8E2), 0.85f);
+            p.set(x, y, c);
+        }
+    // threshold ladder at the near (bottom) end of the base's runway section
+    for (int s = 0; s < 5; ++s) {
+        const int tx = 84 + s * 12;
+        for (int y = 206; y < 216; ++y)
+            for (int x = tx; x < tx + 5; ++x)
+                if ((x + y) % 6 != 0) p.set(x, y, mix(col(0xE8E8E2), col(0x54565A), 0.15f));
+    }
+
+    // --- taxiway stubs with yellow guide lines -----------------------------------
+    for (int side : {-1, 1}) {
+        const int y0 = 96, y1 = 104;
+        const int xs = side < 0 ? 24 : rxA1, xe = side < 0 ? rxA0 : W - 24;
+        for (int x = xs; x < xe; ++x)
+            for (int y = y0; y <= y1; ++y)
+                p.set(x, y, mix(col(0x7E7E78), col(0x8C8C86), frand(x, y, 11)));
+        for (int x = xs + 2; x < xe - 2; ++x)  // centre guide line
+            p.set(x, 100, mix(col(0xC9A23A), col(0x8C8C86), (x % 9 == 0) ? 0.5f : 0.0f));
+    }
+    // spur lines out to the hangar pads
+    for (int side : {-1, 1})
+        for (int yy : {56, 164})
+            for (int d = 0; d < 40; ++d) {
+                const int x = cx + side * (36 + d);
+                if ((x + yy) % 8 != 0) p.blend(x, yy, col(0xC9A23A, 170));
+            }
+
+    // --- hangar apron pads (lighter concrete, tie-downs) --------------------------
+    for (int sx : {-1, 1})
+        for (int sy : {-1, 1}) {
+            const int hx = cx + sx * 78, hy = cy + sy * 60;
+            for (int y = hy - 28; y <= hy + 28; ++y)
+                for (int x = hx - 40; x <= hx + 40; ++x) {
+                    if (x < 2 || x >= W - 2 || y < 1 || y >= H - 1) continue;
+                    if (x >= rxA0 - 2 && x <= rxA1 + 2) continue;  // keep runway clear
+                    const float ex = std::fabs(x - hx) / 40.0f, ey = std::fabs(y - hy) / 28.0f;
+                    if (ex * ex + ey * ey > 1.0f) continue;
+                    std::uint32_t c = mix(col(0x94948C), col(0x9E9E96), frand(x, y, 12));
+                    if ((y % 14) == 0) c = mix(c, col(0x7C7C76), 0.7f);
+                    p.set(x, y, c);
+                }
+            // tie-down marks
+            for (int t = -2; t <= 2; ++t)
+                p.fillRect(hx + t * 14 - 1, hy + 18, 2, 2, col(0xC9A23A, 190));
+        }
+
+    // --- parked aircraft on the central aprons ------------------------------------
+    auto parkPlane = [&](float px, float py, int k) {
+        softDisc(px + 2.0f, py + 3.0f, 12.0f, 9.0f, col(0x1A160F, 70));
+        // wings
+        softDisc(px, py - 1.0f, 13.0f, 4.2f, col(0x6E7460));
+        softDisc(px, py - 2.0f, 12.0f, 3.0f, col(0x7E8470));
+        // fuselage
+        softDisc(px, py, 3.2f, 11.0f, col(0x767C68));
+        softDisc(px - 1.0f, py - 2.0f, 1.6f, 8.0f, col(0x888E7A));
+        // tailplane
+        softDisc(px, py + 9.0f, 6.5f, 2.2f, col(0x6E7460));
+        // cowling + canopy
+        softDisc(px, py - 10.0f, 2.6f, 2.6f, col(0x3E4238));
+        softDisc(px, py - 3.0f, 1.8f, 3.0f, col(0x2E3A44));
+        // hinomaru on the wings
+        softDisc(px - 7.5f, py - 1.0f, 2.4f, 2.0f, col(0xC22A1E));
+        softDisc(px + 7.5f, py - 1.0f, 2.4f, 2.0f, col(0xC22A1E));
+        if (frand(k, 3, 13) < 0.5f)  // camo mottle
+            softDisc(px + 3.0f, py + 2.0f, 3.0f, 2.0f, col(0x565C48, 150));
+    };
+    parkPlane(static_cast<float>(cx) - 44.0f, static_cast<float>(cy) - 8.0f, 1);
+    parkPlane(static_cast<float>(cx) + 44.0f, static_cast<float>(cy) - 8.0f, 2);
+    parkPlane(static_cast<float>(cx) - 44.0f, static_cast<float>(cy) + 40.0f, 3);
+    parkPlane(static_cast<float>(cx) + 44.0f, static_cast<float>(cy) + 40.0f, 4);
+
+    // --- tree clusters along the grass margins ------------------------------------
+    for (int k = 0; k < 22; ++k) {
+        const float ty = 12.0f + static_cast<float>(k) * 9.4f + frand(k, 1, 14) * 6.0f;
+        if (ty > H - 10.0f) continue;
+        const float tx = (k % 2 == 0) ? 6.0f + frand(k, 2, 15) * 14.0f
+                                      : W - 20.0f + frand(k, 2, 15) * 14.0f;
+        const float s = 3.6f + frand(k, 3, 16) * 2.6f;
+        softDisc(tx + s * 0.4f, ty + s * 0.5f, s * 0.95f, s * 0.6f, col(0x08130A, 70));
+        softDisc(tx, ty, s * 0.8f, s * 0.66f, jgDeep);
+        softDisc(tx - s * 0.12f, ty - s * 0.14f, s * 0.55f, s * 0.44f,
+                 mix(jgDark, jgMid, 0.3f + frand(k, 4, 17) * 0.5f));
+        softDisc(tx - s * 0.26f, ty - s * 0.28f, s * 0.24f, s * 0.18f, mix(jgMid, jgHi, 0.5f));
+    }
+    // sand/weathering bleed from the apron edges (keeps the slab from floating)
+    for (int k = 0; k < 14; ++k) {
+        const float bx = 30.0f + frand(k, 5, 18) * (W - 60.0f);
+        const float by = 24.0f + frand(k, 6, 19) * (H - 48.0f);
+        const float qx = std::fabs(bx - cx);
+        if (qx > 34.0f && qx < 38.0f) continue;  // keep runway borders clean-ish
+        softDisc(bx, by, 3.0f + frand(k, 7, 20) * 4.0f, 2.2f + frand(k, 7, 21) * 3.0f,
+                 col(0xA8916A, 90));
+    }
+
+    // --- battle damage --------------------------------------------------------------
+    auto crater = [&](float sx, float sy, float r) {
+        softDisc(sx, sy, r * 1.3f, r * 1.15f, col(0x35332E, 170));   // scorch
+        softDisc(sx, sy, r, r * 0.9f, col(0x14120F, 230));           // hole
+        softDisc(sx - r * 0.25f, sy - r * 0.3f, r * 0.5f, r * 0.4f, col(0x55524B));
+        for (int k = 0; k < 6; ++k) {  // rim rubble
+            const float a = frand(k, 30 + static_cast<int>(sx), 7) * 6.2832f;
+            softDisc(sx + std::cos(a) * r * 1.15f, sy + std::sin(a) * r * 1.0f,
+                     1.6f + frand(k, 31, 8) * 1.4f, 1.2f, col(0x6E6A5E));
+        }
+    };
+    if (damage >= 2) {
+        crater(cx - 10.0f, cy - 34.0f, 7.0f);
+        crater(cx + 12.0f, cy + 40.0f, 8.0f);
+        // burned grass margin (west)
+        softDisc(14.0f, cy - 50.0f, 12.0f, 16.0f, col(0x35302A, 160));
+        softDisc(14.0f, cy - 50.0f, 7.0f, 10.0f, col(0x1E1B16, 190));
+        // shattered parked plane (east apron)
+        softDisc(cx + 44.0f, cy + 40.0f, 10.0f, 7.0f, col(0x2A261F, 180));
+        for (int k = 0; k < 5; ++k)
+            softDisc(cx + 40.0f + frand(k, 40, 9) * 12.0f, cy + 36.0f + frand(k, 41, 10) * 10.0f,
+                     1.6f, 1.2f, col(0x4E5346));
+    }
+    if (damage >= 3) {
+        crater(cx + 4.0f, cy - 66.0f, 9.0f);
+        crater(cx - 6.0f, cy + 92.0f, 8.0f);
+        crater(cx - 70.0f, cy + 10.0f, 6.0f);
+        // soot wash over the whole base
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x)
+                if ((x * 7 + y * 11) % 13 < 4) p.blend(x, y, col(0x171614, 85));
+        // runway split: cracked through the asphalt
+        for (int y = 0; y < H; ++y) {
+            const float jx = cx + 6.0f * std::sin(y * 0.09f + 2.0f);
+            for (int d = -1; d <= 1; ++d)
+                p.blend(static_cast<int>(jx) + d, y,
+                        col(d == 0 ? 0x14120F : 0x35332E, d == 0 ? 230 : 140));
+        }
+        // dead tree margins
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x) {
+                const bool edge = x < 26 || x > W - 26;
+                if (!edge) continue;
+                if ((x * 5 + y * 3) % 11 < 6) p.blend(x, y, col(0x3A362A, 150));
+            }
+    }
+    return p;
+}
+
+// Sawn-off arch (Quonset) hangar, seen from above: capsule roof with the
+// bright ridge along the spine and corrugation ribs running down the slopes.
+PixelBuf makeAirfieldHangar() {
+    constexpr int W = 80, H = 56;
+    const float cx = W / 2.0f, cy = H / 2.0f;
+    PixelBuf p(W, H);
+    auto mix = [](std::uint32_t a, std::uint32_t b, float t) -> std::uint32_t {
+        auto ch = [](std::uint32_t v, int s) { return static_cast<float>((v >> s) & 0xFFu); };
+        const float r  = ch(a, 24) + (ch(b, 24) - ch(a, 24)) * t;
+        const float g  = ch(a, 16) + (ch(b, 16) - ch(a, 16)) * t;
+        const float bl = ch(a, 8)  + (ch(b, 8)  - ch(a, 8))  * t;
+        const float al = ch(a, 0)  + (ch(b, 0)  - ch(a, 0))  * t;
+        return (static_cast<std::uint32_t>(r + 0.5f) << 24) |
+               (static_cast<std::uint32_t>(g + 0.5f) << 16) |
+               (static_cast<std::uint32_t>(bl + 0.5f) << 8) |
+               static_cast<std::uint32_t>(al + 0.5f);
+    };
+    // capsule distance field: segment x in [cx-14, cx+14] at y=cy, radius 20
+    auto capsuleD = [&](float x, float y) {
+        const float ex = std::fmax(std::fabs(x - cx) - 14.0f, 0.0f);
+        const float ey = std::fabs(y - cy);
+        return std::sqrt(ex * ex + ey * ey);
+    };
+    // cast shadow
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const float d = capsuleD(x - 3.0f, y - 4.0f);
+            if (d < 21.0f) p.blend(x, y, col(0x0A0806, 90));
+        }
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const float d = capsuleD(static_cast<float>(x), static_cast<float>(y));
+            if (d > 20.0f) continue;
+            const float slope = d / 20.0f;  // 0 at the ridge, 1 at the eaves
+            std::uint32_t c = mix(col(0xA6ABA0), col(0x565B52), slope * slope * 0.75f +
+                                  slope * 0.25f);
+            // upper-left of the ridge catches the sun
+            if (x < cx && y < cy) c = mix(c, col(0xC0C5BA), 0.22f * (1.0f - slope));
+            if (x % 3 == 0) c = mix(c, col(0x3E433C), 0.16f);       // corrugation ribs
+            const std::uint32_t hh = (static_cast<std::uint32_t>(x * 73856093u) ^
+                                      static_cast<std::uint32_t>(y * 19349663u));
+            if ((hh >> 8) % 23 == 0) c = mix(c, col(0x7A5A3E), 0.5f);  // rust
+            if ((hh >> 12) % 9 == 0) c = mix(c, col(0x5A6848), 0.4f);  // camo spatter
+            if (d > 18.6f) c = mix(c, col(0x2E332C), 0.75f);           // eave rim
+            p.set(x, y, c);
+        }
+    // ridge highlight + door seams at the ends
+    for (int x = static_cast<int>(cx) - 13; x <= static_cast<int>(cx) + 13; ++x) {
+        p.set(x, static_cast<int>(cy), col(0xC6CBBF, 200));
+        p.set(x, static_cast<int>(cy) + 1, col(0xB0B5A9, 140));
+    }
+    for (int yy = static_cast<int>(cy) - 12; yy <= static_cast<int>(cy) + 12; ++yy) {
+        if (capsuleD(cx - 30.0f, static_cast<float>(yy)) < 20.0f)
+            p.blend(static_cast<int>(cx) - 30, yy, col(0x3A3F38, 190));
+        if (capsuleD(cx + 30.0f, static_cast<float>(yy)) < 20.0f)
+            p.blend(static_cast<int>(cx) + 30, yy, col(0x3A3F38, 190));
+    }
+    outlineSilhouette(p, col(0x0E1216, 150));
+    return p;
+}
+
+// Control tower: concrete bunker base, tapered shaft, glazed octagon cab.
+PixelBuf makeAirfieldTower() {
+    constexpr int W = 44, H = 48;
+    PixelBuf p(W, H);
+    auto mix = [](std::uint32_t a, std::uint32_t b, float t) -> std::uint32_t {
+        auto ch = [](std::uint32_t v, int s) { return static_cast<float>((v >> s) & 0xFFu); };
+        const float r  = ch(a, 24) + (ch(b, 24) - ch(a, 24)) * t;
+        const float g  = ch(a, 16) + (ch(b, 16) - ch(a, 16)) * t;
+        const float bl = ch(a, 8)  + (ch(b, 8)  - ch(a, 8))  * t;
+        const float al = ch(a, 0)  + (ch(b, 0)  - ch(a, 0))  * t;
+        return (static_cast<std::uint32_t>(r + 0.5f) << 24) |
+               (static_cast<std::uint32_t>(g + 0.5f) << 16) |
+               (static_cast<std::uint32_t>(bl + 0.5f) << 8) |
+               static_cast<std::uint32_t>(al + 0.5f);
+    };
+    // shadow
+    for (int y = 30; y < 46; ++y)
+        for (int x = 10; x < 40; ++x)
+            p.blend(x, y, col(0x0A0806, 80));
+    // bunker base
+    for (int y = 30; y <= 43; ++y) {
+        const float t = (y - 30) / 13.0f;
+        for (int x = 7; x <= 36; ++x) {
+            std::uint32_t c = mix(col(0x9A968A), col(0x6E6A5E), t);
+            if (x == 7 || x == 36 || y == 30 || y == 43) c = mix(c, col(0x4A463C), 0.7f);
+            if ((x + y) % 9 == 0) c = mix(c, col(0x7E7A6E), 0.5f);
+            p.set(x, y, c);
+        }
+    }
+    p.fillRect(12, 34, 6, 4, col(0x3E3A32));   // door
+    p.fillRect(27, 34, 6, 4, col(0x3E3A32));
+    // shaft
+    for (int y = 16; y <= 30; ++y)
+        for (int x = 16; x <= 27; ++x) {
+            std::uint32_t c = mix(col(0x848A80), col(0x5E645A), (y - 16) / 14.0f);
+            if (x == 16 || x == 27) c = mix(c, col(0x3A3F38), 0.6f);
+            else if (x <= 19) c = mix(c, col(0x9AA096), 0.35f);   // sun side
+            p.set(x, y, c);
+        }
+    // glazed cab
+    for (int y = 6; y <= 19; ++y) {
+        const float t = (y - 6) / 13.0f;
+        const int cut = (y <= 7 || y >= 18) ? 3 : (y <= 8 || y >= 17 ? 1 : 0);
+        for (int x = 6 + cut; x <= 37 - cut; ++x) {
+            const bool edge = x <= 6 + cut || x >= 37 - cut || y <= 6 || y >= 19;
+            std::uint32_t c = mix(col(0x7E847A), col(0x565C52), t);
+            if (edge) c = mix(c, col(0x2E332C), 0.75f);
+            p.set(x, y, c);
+        }
+    }
+    p.fillRect(9, 8, 26, 6, col(0x2E4A5E));            // window band
+    for (int x = 12; x < 35; x += 6) p.vline(x, 8, 13, col(0x1E3444));  // mullions
+    p.fillRect(10, 9, 8, 2, col(0x6E9AB8, 200));       // glass glare
+    p.fillRect(22, 9, 4, 1, col(0x6E9AB8, 150));
+    p.fillRect(14, 1, 16, 3, col(0x4E544A));           // roof deck
+    p.vline(22, 0, 1, col(0x3A3F44));                  // antenna
+    p.set(22, 0, col(0xE8E8E2));
+    outlineSilhouette(p, col(0x0E1216, 150));
+    return p;
+}
+
 // Small defensive turret 28x28 for the Sky Fortress (nose/tail/engine
 // guns): glass-domed barrel base.
 PixelBuf makeTurretSmall() {
@@ -4465,7 +4823,7 @@ namespace {
 constexpr std::uint32_t kArtCacheMagic = 0x50534152u;  // "PSAR"
 // Bump whenever any generated art changes (v10: A6M Zero redesign of the
 // primary enemy fighter and interceptor).
-constexpr std::uint32_t kArtCacheVersion = 23u;
+constexpr std::uint32_t kArtCacheVersion = 24u;
 
 void wr32(std::ostream& o, std::uint32_t v) {
     o.write(reinterpret_cast<const char*>(&v), 4);
@@ -4689,6 +5047,12 @@ bool generateAllArt(Renderer& r, const std::string& cachePath,
     add("boss_fortress_hull_dmg", makeFortressHull(2));
     add("boss_fortress_hull_wreck", makeFortressHull(3));
     add("boss_fortress_hull_flash", toFlashSilhouette(makeFortressHull(0)));
+    add("boss_airfield_hull", makeAirfieldHull(0));
+    add("boss_airfield_hull_dmg", makeAirfieldHull(2));
+    add("boss_airfield_hull_wreck", makeAirfieldHull(3));
+    add("boss_airfield_hull_flash", toFlashSilhouette(makeAirfieldHull(0)));
+    add("boss_airfield_hangar", makeAirfieldHangar());
+    add("boss_airfield_tower", makeAirfieldTower());
     add("boss_cruiser_hull", makeCruiserHull(0));
     add("boss_cruiser_hull_dmg", makeCruiserHull(2));
     add("boss_cruiser_hull_wreck", makeCruiserHull(3));

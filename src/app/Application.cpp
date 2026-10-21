@@ -773,10 +773,12 @@ void Application::renderTerrain(const StageDef* stage, float scrollY) {
         case TerrainKind::Road:     return (h % 6 < 3) ? "tile_road_v"
                                          : (h % 3 == 0) ? "tile_sand" : "tile_jungle_a";
         // Airfield: two centre lanes are real runway (continuous centreline
-        // dashes); the rest is poured apron concrete with sand weathering.
+        // dashes); the rest is poured apron concrete with sparse sand
+        // weathering (too-frequent sand patches read as a yellow checkerboard
+        // when the boss freezes the scroll over one wide apron view).
         case TerrainKind::Airfield: return (col == 5 || col == 6)
                                          ? "tile_runway"
-                                         : (h % 5 == 0) ? "tile_sand" : "tile_airfield";
+                                         : (h % 11 == 0) ? "tile_sand" : "tile_airfield";
         case TerrainKind::Fortress: return (h % 7 == 0) ? "tile_sand" : "tile_fortress";
         case TerrainKind::Shore:    return "tile_sand";  // handled below
         }
@@ -1390,12 +1392,13 @@ const HelpSpriteEntry kHelpBosses[] = {
     {"boss_carrier_hull", "CARRIER - LAUNCHES FIGHTERS"},
     {"boss_fortress_hull", "COASTAL FORTRESS - ISLAND GUNS"},
     {"boss_cruiser_hull", "HEAVY CRUISER - DEADLIEST FLEET GUN"},
+    {"boss_airfield_hull", "AIRFIELD COMMAND - ENDLESS ZEROES"},
 };
 
 const HelpPageDef kHelpPages[] = {
     {"ENEMY AIRCRAFT", kHelpAircraft, 5, 34, 34, 46.0f},
     {"SEA AND GROUND TARGETS", kHelpGround, 5, 34, 40, 46.0f},
-    {"ENEMY FLAGSHIPS", kHelpBosses, 6, 44, 60, 50.0f},
+    {"ENEMY FLAGSHIPS", kHelpBosses, 7, 44, 46, 46.0f},
 };
 }  // namespace
 

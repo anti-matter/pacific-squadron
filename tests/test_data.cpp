@@ -163,4 +163,52 @@ void test_shipped_data() {
     // Higher speed & volume of fire than the fortress: three phases.
     CHECK(cruis.phases.size() == 3);
     CHECK(cruis.hoverFreq > fort.hoverFreq);
+
+    // Stage 7: the airfield complex.
+    CHECK(data.stages.size() >= 7);
+    const StageDef& st7 = data.stages[6];
+    CHECK(st7.name == "AIRFIELD COMPLEX");
+    CHECK(st7.bossTime > 0.0f && st7.bossTime < st7.duration);
+    // The arena is the base itself: the stage hands over to airfield terrain
+    // well before the boss arrives and holds it to the end of the world.
+    bool airfieldTail = false;
+    if (!st7.terrain.empty())
+        airfieldTail = st7.terrain.back().kind == TerrainKind::Airfield;
+    CHECK(airfieldTail);
+    const BossDef& air = data.bosses[static_cast<std::size_t>(st7.bossRef)];
+    CHECK(air.name == "AIRFIELD COMMAND");
+    CHECK(air.hullSprite == "boss_airfield_hull");
+    CHECK(!air.arenaOcean);  // stands on real ground, not carried over sea
+    // Tower + four destructible hangars + four flak nests + two defense guns.
+    CHECK(air.components.size() == 11);
+    int hangars = 0, flak = 0, defenses = 0;
+    bool tower = false;
+    for (const auto& c : air.components) {
+        if (c.sprite == "boss_airfield_hangar") ++hangars;
+        else if (c.sprite == "boss_airfield_tower") tower = true;
+        else if (c.sprite == "boss_fort_aa") ++flak;
+        else if (c.sprite == "boss_fort_secondary") ++defenses;
+    }
+    CHECK(hangars == 4);
+    CHECK(tower);
+    CHECK(flak == 4);
+    CHECK(defenses == 2);
+    // The hangars are pure structures: destructible, but they never fire.
+    for (const auto& c : air.components)
+        if (c.sprite == "boss_airfield_hangar") CHECK(c.weapon.empty());
+    // Kill-difficulty budget: ~33% above the cruiser's 448 hp.
+    int airHp = air.hullHp;
+    for (const auto& c : air.components) airHp += c.hp;
+    CHECK(airHp == 596);
+    CHECK(airHp * 100 >= 448 * 131 && airHp * 100 <= 448 * 137);
+    // The base scrambles Zero fighters almost non-stop; Betty bomber waves
+    // and (final phase) elite heavy fighters arrive via stage events inside
+    // the boss window, past bossTime.
+    CHECK(air.sortieEnemy == "fighter_light");
+    CHECK(air.sortieInterval > 0.0f && air.sortieInterval <= 5.0f);
+    int lateWaves = 0;
+    for (const auto& ev : st7.events)
+        if (ev.trigger > st7.bossTime) ++lateWaves;
+    CHECK(lateWaves >= 6);
+    CHECK(air.phases.size() == 3);
 }
