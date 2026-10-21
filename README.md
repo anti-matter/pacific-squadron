@@ -20,8 +20,8 @@ into `assets/` to override the procedural content.
   progression, plus the BOMB special: destroys every enemy aircraft, ship and
   ground target on screen and erases all enemy fire (flagship bosses only
   lose 20% of their hull/components), with brief invincibility.
-- Four complete stages with distinct terrain, wave scripts, and flagship bosses
-  (*Battleship Yamashiro-class*, *Sky Fortress GX-7*).
+- Eight complete stages with distinct terrain, wave scripts, and flagship
+  bosses (*Battleship Yamashiro-class* through *Floating Drydock*).
 - Configurable keyboard **and** gamepad controls (persisted to disk), three
   difficulty levels, high-score table with initials, pause, options, and
   settings screens.

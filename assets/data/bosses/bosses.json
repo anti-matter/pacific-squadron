@@ -858,5 +858,135 @@
         "extraInterval": 1.5
       }
     ]
+  },
+  {
+    "name": "FLOATING DRYDOCK",
+    "hullSprite": "boss_drydock_hull",
+    "hullWidth": 236,
+    "hullHeight": 212,
+    "hullHp": 420,
+    "hullScore": 12000,
+    "entryY": 158,
+    "hoverAmp": 0,
+    "hoverFreq": 0.05,
+    "sailSpeed": 46,
+    "deathEffect": 2,
+    "defeatDrop": "powerup_p",
+    "sortieEnemy": "boat_patrol",
+    "sortieCount": 2,
+    "sortieInterval": 6.0,
+    "components": [
+      {
+        "name": "DOCK CONTROL TOWER",
+        "sprite": "boss_airfield_tower",
+        "offsetX": 0,
+        "offsetY": -88,
+        "width": 30,
+        "height": 32,
+        "hp": 40,
+        "score": 1500,
+        "weapon": "b_aimed3",
+        "fireInterval": 1.9,
+        "firstFireDelay": 2.2
+      },
+      {
+        "name": "CRANE GUN PORT",
+        "sprite": "boss_drydock_crane",
+        "offsetX": -58,
+        "offsetY": -20,
+        "width": 42,
+        "height": 46,
+        "hp": 62,
+        "score": 900,
+        "weapon": "b_aimed3",
+        "fireInterval": 1.8,
+        "firstFireDelay": 1.6
+      },
+      {
+        "name": "CRANE GUN STARBOARD",
+        "sprite": "boss_drydock_crane",
+        "offsetX": 58,
+        "offsetY": -20,
+        "width": 42,
+        "height": 46,
+        "hp": 62,
+        "score": 900,
+        "weapon": "b_aimed3",
+        "fireInterval": 1.9,
+        "firstFireDelay": 1.8
+      },
+      {
+        "name": "PONTOON SECTION WEST",
+        "sprite": "boss_drydock_pontoon",
+        "offsetX": -96,
+        "offsetY": -6,
+        "width": 46,
+        "height": 132,
+        "hp": 88,
+        "score": 1200,
+        "weapon": "b_dp_gun",
+        "fireInterval": 2.4,
+        "firstFireDelay": 2.8
+      },
+      {
+        "name": "PONTOON SECTION EAST",
+        "sprite": "boss_drydock_pontoon",
+        "offsetX": 96,
+        "offsetY": -6,
+        "width": 46,
+        "height": 132,
+        "hp": 88,
+        "score": 1200,
+        "weapon": "b_dp_gun",
+        "fireInterval": 2.5,
+        "firstFireDelay": 3.0
+      },
+      {
+        "name": "AA PLATFORM PORT",
+        "sprite": "boss_fort_aa",
+        "offsetX": -30,
+        "offsetY": 84,
+        "width": 26,
+        "height": 26,
+        "hp": 20,
+        "score": 400,
+        "weapon": "b_aa_flak",
+        "fireInterval": 2.7,
+        "firstFireDelay": 3.2
+      },
+      {
+        "name": "AA PLATFORM STARBOARD",
+        "sprite": "boss_fort_aa",
+        "offsetX": 30,
+        "offsetY": 84,
+        "width": 26,
+        "height": 26,
+        "hp": 20,
+        "score": 400,
+        "weapon": "b_aa_flak",
+        "fireInterval": 2.8,
+        "firstFireDelay": 3.4
+      }
+    ],
+    "phases": [
+      {
+        "hpFraction": 0.65,
+        "rateMul": 0.84,
+        "extraWeapon": "b_radial12",
+        "extraInterval": 3.4
+      },
+      {
+        "hpFraction": 0.4,
+        "rateMul": 0.7,
+        "extraWeapon": "b_spray5",
+        "extraInterval": 2.1
+      },
+      {
+        "hpFraction": 0.2,
+        "rateMul": 0.55,
+        "extraWeapon": "b_aimed3",
+        "extraInterval": 1.5
+      }
+    ]
   }
 ]

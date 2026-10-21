@@ -1007,6 +1007,19 @@ void Application::renderWorld() {
                 renderer_.draw(renderer_.texture("wake_foam"),
                                e.pos.x + std::sin(time * 2.0f) * 2.0f,
                                e.pos.y - 140.0f);
+            // Sailing drydock: a horizontal wake streak off the stern.
+            if (texName.find("drydock") != std::string::npos) {
+                const auto dockView = sim.bossView();
+                if (dockView.sailing) {
+                    const int wake = renderer_.texture("wake_foam");
+                    if (wake >= 0)
+                        renderer_.drawScaled(
+                            wake, e.pos.x - dockView.sailDir * 150.0f,
+                            e.pos.y + std::sin(time * 3.0f) * 3.0f, 120.0f,
+                            64.0f, 0.85f, Color::rgb(0xFFFFFF), false,
+                            -90.0f * dockView.sailDir);
+                }
+            }
         }
         renderer_.draw(renderer_.texture(texName), e.pos.x, e.pos.y, 1.0f, tint);
         if (hull && texName.find("airfield") != std::string::npos) {
@@ -1441,12 +1454,13 @@ const HelpSpriteEntry kHelpBosses[] = {
     {"boss_fortress_hull", "COASTAL FORTRESS - ISLAND GUNS"},
     {"boss_cruiser_hull", "HEAVY CRUISER - DEADLIEST FLEET GUN"},
     {"boss_airfield_hull", "AIRFIELD COMMAND - ENDLESS ZEROES"},
+    {"boss_drydock_hull", "DRYDOCK - SAILS WHEN STRIPPED"},
 };
 
 const HelpPageDef kHelpPages[] = {
     {"ENEMY AIRCRAFT", kHelpAircraft, 5, 34, 34, 46.0f},
     {"SEA AND GROUND TARGETS", kHelpGround, 5, 34, 40, 46.0f},
-    {"ENEMY FLAGSHIPS", kHelpBosses, 7, 44, 46, 46.0f},
+    {"ENEMY FLAGSHIPS", kHelpBosses, 8, 44, 40, 40.0f},
 };
 }  // namespace
 

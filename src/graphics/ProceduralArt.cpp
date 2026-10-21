@@ -4715,6 +4715,488 @@ PixelBuf makeBombCrater() {
     return p;
 }
 
+// FLOATING DRYDOCK (level 8 flagship). Steel barge with twin side
+// pontoons, crane rails and a flooded dock basin holding a half-built
+// hull. Threats (crane guns, pontoon guns, AA) live on the component
+// sprites; the deck itself stays low-contrast per the art direction.
+PixelBuf makeDrydockHull(int damage) {
+    constexpr int W = 236, H = 212;
+    const int cx = W / 2;
+    PixelBuf p(W, H);
+    auto mix = [](std::uint32_t a, std::uint32_t b, float t) -> std::uint32_t {
+        auto ch = [](std::uint32_t v, int s) { return static_cast<float>((v >> s) & 0xFFu); };
+        const float r  = ch(a, 24) + (ch(b, 24) - ch(a, 24)) * t;
+        const float g  = ch(a, 16) + (ch(b, 16) - ch(a, 16)) * t;
+        const float bl = ch(a, 8)  + (ch(b, 8)  - ch(a, 8))  * t;
+        const float al = ch(a, 0)  + (ch(b, 0)  - ch(a, 0))  * t;
+        return (static_cast<std::uint32_t>(r + 0.5f) << 24) |
+               (static_cast<std::uint32_t>(g + 0.5f) << 16) |
+               (static_cast<std::uint32_t>(bl + 0.5f) << 8) |
+               static_cast<std::uint32_t>(al + 0.5f);
+    };
+    auto hash = [](int x, int y, int s) {
+        std::uint32_t h = static_cast<std::uint32_t>(x * 374761393 + y * 668265263 +
+                                                     s * 1274126177);
+        h = (h ^ (h >> 13)) * 1274126177u;
+        return (h ^ (h >> 16)) & 0xFFFFu;
+    };
+    auto frand = [&](int x, int y, int s) { return static_cast<float>(hash(x, y, s)) / 65535.0f; };
+    auto softDisc = [&](float ex, float ey, float rx, float ry, std::uint32_t c) {
+        for (int y = static_cast<int>(ey - ry) - 1; y <= static_cast<int>(ey + ry) + 1; ++y)
+            for (int x = static_cast<int>(ex - rx) - 1; x <= static_cast<int>(ex + rx) + 1; ++x) {
+                const float dx = (x + 0.5f - ex) / rx, dy = (y + 0.5f - ey) / ry;
+                const float q2 = dx * dx + dy * dy;
+                if (q2 > 1.0f) continue;
+                if (q2 > 0.68f) {
+                    const float f = 1.0f - (q2 - 0.68f) / 0.32f;
+                    const int a = static_cast<int>(static_cast<float>(c & 0xFFu) * f);
+                    p.blend(x, y, (c & 0xFFFFFF00u) | static_cast<std::uint32_t>(a));
+                } else {
+                    p.blend(x, y, c);
+                }
+            }
+    };
+    // Rounded barge silhouette.
+    const auto inside = [&](float x, float y) {
+        const float r = 14.0f;
+        const float x0 = 2.0f, x1 = W - 2.0f, y0 = 2.0f, y1 = H - 2.0f;
+        if (x < x0 || x > x1 || y < y0 || y > y1) return false;
+        // corner rounding
+        float ccx = 0.0f, ccy = 0.0f;
+        if (x < x0 + r && y < y0 + r) { ccx = x0 + r; ccy = y0 + r; }
+        else if (x > x1 - r && y < y0 + r) { ccx = x1 - r; ccy = y0 + r; }
+        else if (x < x0 + r && y > y1 - r) { ccx = x0 + r; ccy = y1 - r; }
+        else if (x > x1 - r && y > y1 - r) { ccx = x1 - r; ccy = y1 - r; }
+        else return true;
+        const float ddx = x - ccx, ddy = y - ccy;
+        return ddx * ddx + ddy * ddy <= r * r;
+    };
+
+    // --- steel deck ----------------------------------------------------------
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            if (!inside(x + 0.5f, y + 0.5f)) continue;
+            std::uint32_t c = mix(col(0x6E7276), col(0x7E8286), frand(x, y, 2));
+            // panel seams every 26 px: dark groove + top-left highlight
+            const int sx = (x + 4) % 26, sy = (y + 6) % 26;
+            if (sx == 0) c = mix(c, col(0x4E5256), 0.65f);
+            if (sx == 1) c = mix(c, col(0x8C9094), 0.40f);
+            if (sy == 0) c = mix(c, col(0x4E5256), 0.65f);
+            if (sy == 1) c = mix(c, col(0x8C9094), 0.40f);
+            // sun from top-left: subtle vertical gradient
+            c = mix(c, col(0x9A9EA2), std::max(0.0f, 0.10f - y * 0.0009f));
+            if (hash(x, y, 5) % 29 == 0) c = mix(c, col(0x565048), 0.35f);  // grime fleck
+            p.set(x, y, c);
+        }
+
+    // --- side pontoons (base rows; the armed sections are components) --------
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            for (int side = 0; side < 2; ++side) {
+                const int px0 = side == 0 ? 2 : W - 46;
+                if (x < px0 || x >= px0 + 44) continue;
+                if (!inside(x + 0.5f, y + 0.5f)) continue;
+                const float t = (x - px0) / 43.0f;  // 0 outer .. 1 inner
+                std::uint32_t c = mix(col(0x50545A), col(0x666A6E), 0.35f + 0.5f * t);
+                if (t < 0.10f) c = col(0x3A3E42);                       // outer rim
+                if (t > 0.82f) c = mix(c, col(0x7E8286), 0.5f);         // inner lip light
+                if (y % 27 < 1) c = mix(c, col(0x3C4044), 0.7f);        // segmentation
+                // orange boot stripe amidships
+                if (y > H / 2 - 4 && y < H / 2 + 4 && t < 0.45f)
+                    c = mix(c, col(0xB0642A), 0.85f);
+                p.set(x, y, c);
+            }
+        }
+    // pontoon flood vents (dark slots with bright lips), three per side
+    for (int side = 0; side < 2; ++side)
+        for (int k = 0; k < 3; ++k) {
+            const int vx = side == 0 ? 8 : W - 38;
+            const int vy = 40 + k * 52;
+            for (int y = vy; y < vy + 12; ++y)
+                for (int x = vx; x < vx + 26; ++x) {
+                    if (y >= 0 && y < H && x >= 0 && x < W) {
+                        if (y == vy || x == vx) p.set(x, y, col(0x7E8286));
+                        else p.set(x, y, col(0x141618));
+                    }
+                }
+        }
+
+    // --- dock basin ----------------------------------------------------------
+    // concrete wall ring, then the flooded well
+    const float bx0 = 60.0f, bx1 = 176.0f, by0 = 36.0f, by1 = 172.0f;
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const bool inRing = x >= bx0 - 6 && x < bx1 + 6 && y >= by0 - 6 && y < by1 + 6;
+            const bool inBasin = x >= bx0 && x < bx1 && y >= by0 && y < by1;
+            if (!inRing || inBasin) continue;
+            std::uint32_t c = mix(col(0x8A8A84), col(0x787872), frand(x, y, 7));
+            if (hash(x, y, 8) % 17 == 0) c = mix(c, col(0x5E5A52), 0.4f);
+            // inner edge shadow / outer edge light
+            if ((x == static_cast<int>(bx0)) || (y == static_cast<int>(by0)))
+                c = mix(c, col(0x3E4246), 0.8f);
+            p.set(x, y, c);
+        }
+    // hazard stripes on the basin lip
+    for (int x = static_cast<int>(bx0) - 3; x < static_cast<int>(bx1) + 3; ++x)
+        for (int yy : {static_cast<int>(by0) - 3, static_cast<int>(by1) - 3})
+            for (int y = yy; y < yy + 3; ++y)
+                if (((x + yy) / 8) % 2 == 0 && y >= 0 && y < H)
+                    p.set(x, y, mix(col(0xB8962E), col(0x2A2A28), frand(x, y, 9) * 0.15f));
+    for (int y = static_cast<int>(by0) - 3; y < static_cast<int>(by1) + 3; ++y)
+        for (int xx : {static_cast<int>(bx0) - 3, static_cast<int>(bx1) - 3})
+            for (int x = xx; x < xx + 3; ++x)
+                if (((x + y) / 8) % 2 == 0 && x >= 0 && x < W)
+                    p.set(x, y, mix(col(0xB8962E), col(0x2A2A28), frand(x, y, 9) * 0.15f));
+    // water: deep teal with horizontal ripple bands
+    for (int y = static_cast<int>(by0); y < static_cast<int>(by1); ++y)
+        for (int x = static_cast<int>(bx0); x < static_cast<int>(bx1); ++x) {
+            const float band = std::sin(y * 0.9f + frand(x / 8, y, 11) * 1.6f);
+            std::uint32_t c = mix(col(0x16333F), col(0x23485A), 0.5f + 0.5f * band);
+            if (hash(x, y, 12) % 33 == 0) c = mix(c, col(0x3C6A7E), 0.5f);  // glint flecks
+            // wall shadow inside the basin edges
+            if (x - bx0 < 4 || y - by0 < 4) c = mix(c, col(0x0C1C24), 0.55f);
+            p.set(x, y, c);
+        }
+
+    // --- half-built ship riding in the well ----------------------------------
+    // pointed bow up, blunt stern down; raw steel with red primer at the WL.
+    const float shipCx = (bx0 + bx1) * 0.5f;
+    const float bowY = by0 + 8.0f, sternY = by1 - 8.0f;
+    const float shipHalf = 33.0f;
+    for (int y = static_cast<int>(bowY); y < static_cast<int>(sternY); ++y) {
+        const float t = (y - bowY) / (sternY - bowY);  // 0 bow .. 1 stern
+        // hull outline: narrow at bow, full midships, squared stern
+        float hw = shipHalf * std::min(1.0f, 0.22f + 2.6f * t);
+        if (t > 0.92f) hw = shipHalf * 0.94f;
+        for (int x = static_cast<int>(shipCx - hw); x < static_cast<int>(shipCx + hw); ++x) {
+            const float edge = (shipHalf - std::fabs(x + 0.5f - shipCx)) / shipHalf;
+            std::uint32_t c = mix(col(0x86837B), col(0x96938B), frand(x, y, 13));
+            if (edge < 0.14f) c = mix(c, col(0x5E5B54), 0.7f);  // shell plating edge
+            if (edge > 0.75f) c = mix(c, col(0xA6A39B), 0.35f); // deck crown light
+            // keel line + transverse frames
+            if (std::fabs(x + 0.5f - shipCx) < 1.0f) c = mix(c, col(0x4E4B44), 0.8f);
+            if (y % 14 < 1) c = mix(c, col(0x605D56), 0.55f);
+            // red primer patches toward the bow waterline
+            if (t < 0.42f && frand(x / 4, y / 4, 14) > 0.72f)
+                c = mix(c, col(0x8C3A28), 0.55f);
+            p.set(x, y, c);
+        }
+        // stern face line
+        if (y == static_cast<int>(sternY) - 2)
+            for (int x = static_cast<int>(shipCx - shipHalf * 0.9f);
+                 x < static_cast<int>(shipCx + shipHalf * 0.9f); ++x)
+                p.set(x, y, col(0x4E4B44));
+    }
+    // a few superstructure blocks taking shape aft
+    for (int k = 0; k < 3; ++k) {
+        const float bxp = shipCx - 16.0f + static_cast<float>(k) * 11.0f;
+        const float byp = by1 - 34.0f - static_cast<float>(k % 2) * 16.0f;
+        for (int y = static_cast<int>(byp); y < static_cast<int>(byp) + 12; ++y)
+            for (int x = static_cast<int>(bxp); x < static_cast<int>(bxp) + 12; ++x) {
+                std::uint32_t c = mix(col(0x7A776F), col(0x8A877F), frand(x, y, 15));
+                if (y == static_cast<int>(byp) || x == static_cast<int>(bxp))
+                    c = mix(c, col(0xA6A39B), 0.6f);  // top-left light
+                if (y == static_cast<int>(byp) + 11 || x == static_cast<int>(bxp) + 11)
+                    c = mix(c, col(0x3E3B34), 0.6f);  // bottom-right shade
+                p.set(x, y, c);
+            }
+    }
+    // scaffolding timber along both hull flanks
+    for (int side = 0; side < 2; ++side)
+        for (int k = 0; k < 5; ++k) {
+            const float tx = shipCx + (side == 0 ? -1.0f : 1.0f) * (shipHalf + 5.0f);
+            const float ty = bowY + 26.0f + static_cast<float>(k) * 24.0f;
+            for (int y = static_cast<int>(ty); y < static_cast<int>(ty) + 4; ++y)
+                for (int x = static_cast<int>(tx) - 2; x < static_cast<int>(tx) + 3; ++x)
+                    if (x >= 0 && x < W && y >= 0 && y < H)
+                        p.set(x, y, mix(col(0x8A6A3E), col(0x6E5230), frand(x, y, 16)));
+        }
+
+    // --- crane rails (the crane components ride these) ------------------------
+    for (int side = 0; side < 2; ++side) {
+        const float rx = side == 0 ? 50.0f : W - 50.0f;
+        for (int y = 14; y < H - 14; ++y) {
+            p.set(static_cast<int>(rx) - 4, y, col(0x484C50));
+            p.set(static_cast<int>(rx) + 4, y, col(0x484C50));
+            p.set(static_cast<int>(rx) - 3, y, mix(col(0x8C9094), col(0x484C50), 0.4f));
+            p.set(static_cast<int>(rx) + 5, y, mix(col(0x8C9094), col(0x484C50), 0.4f));
+            if (y % 16 < 2) {  // sleepers
+                for (int x = static_cast<int>(rx) - 5; x <= static_cast<int>(rx) + 6; ++x)
+                    p.set(x, y, col(0x565048));
+            }
+        }
+    }
+
+    // --- deck fittings ---------------------------------------------------------
+    // bollards along the walkways
+    for (int k = 0; k < 12; ++k) {
+        const float bx = 52.0f + static_cast<float>(k % 2) * (W - 104.0f);
+        const float by = 24.0f + static_cast<float>(k / 2) * 34.0f;
+        softDisc(bx, by, 2.4f, 2.0f, col(0x30343A));
+        softDisc(bx - 0.5f, by - 0.6f, 1.1f, 0.9f, col(0x8C9094));
+    }
+    // aft machinery hut + generator grating
+    for (int y = H - 34; y < H - 16; ++y)
+        for (int x = cx - 16; x < cx + 16; ++x) {
+            std::uint32_t c = mix(col(0x5C5E58), col(0x6C6E68), frand(x, y, 17));
+            if ((x + y) % 6 < 1) c = mix(c, col(0x40423E), 0.7f);  // louvres
+            if (y == H - 34 || x == cx - 16) c = mix(c, col(0x8C9094), 0.5f);
+            p.set(x, y, c);
+        }
+    // rust streaks running aft from the pontoon corners
+    for (int k = 0; k < 8; ++k) {
+        const float rx = 44.0f + static_cast<float>(hash(k, 3, 18) % 148);
+        const float ry0 = 20.0f + static_cast<float>(hash(k, 5, 19) % 60);
+        for (int y = static_cast<int>(ry0); y < static_cast<int>(ry0) + 24; ++y)
+            if (y < H && (hash(k, y, 20) % 3 != 0))
+                p.set(static_cast<int>(rx), y,
+                      mix(col(0x7A543A), col(0x6E4A32), frand(k, y, 21)));
+    }
+    // waterline foam rim (baked, deterministic)
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const bool in = inside(x + 0.5f, y + 0.5f);
+            const bool inn = inside(x + 1.5f, y + 0.5f) && inside(x - 0.5f, y + 0.5f) &&
+                             inside(x + 0.5f, y + 1.5f) && inside(x + 0.5f, y - 0.5f);
+            if (!in || inn) continue;
+            if (hash(x, y, 22) % 3 != 0)
+                p.set(x, y, mix(p.get(x, y), col(0xD8E4E8), 0.55f));
+        }
+
+    // --- battle damage ---------------------------------------------------------
+    const auto crater = [&](float sx, float sy, float r) {
+        softDisc(sx, sy, r * 1.3f, r * 1.15f, col(0x35332E, 170));
+        softDisc(sx, sy, r, r * 0.9f, col(0x14120F, 230));
+        softDisc(sx - r * 0.25f, sy - r * 0.3f, r * 0.5f, r * 0.4f, col(0x55524B));
+    };
+    if (damage >= 1) {
+        crater(cx - 46.0f, 178.0f, 6.0f);
+        softDisc(cx + 60.0f, 24.0f, 9.0f, 7.0f, col(0x2A2620, 150));  // scorch
+    }
+    if (damage >= 2) {
+        crater(cx + 70.0f, 150.0f, 8.0f);
+        crater(24.0f, 90.0f, 6.0f);
+        // oil slick spreading across the well
+        for (int y = static_cast<int>(by0); y < static_cast<int>(by1); ++y)
+            for (int x = static_cast<int>(bx0); x < static_cast<int>(bx1); ++x)
+                if (frand(x / 3, y / 3, 23) > 0.86f)
+                    p.blend(x, y, col(0x120E0A, 110));
+        // bent rail stub
+        for (int y = 60; y < 96; ++y)
+            p.set(static_cast<int>(W - 50.0f) + (y % 7) / 2, y, col(0x8C9094));
+    }
+    if (damage >= 3) {
+        crater(cx - 70.0f, 120.0f, 9.0f);
+        crater(cx + 40.0f, 60.0f, 8.0f);
+        // blackened deck + breached, churning well
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x)
+                if ((x * 7 + y * 11) % 13 < 4) p.blend(x, y, col(0x171614, 90));
+        for (int y = static_cast<int>(by0); y < static_cast<int>(by1); ++y)
+            for (int x = static_cast<int>(bx0); x < static_cast<int>(bx1); ++x)
+                if (hash(x, y, 24) % 7 == 0) p.set(x, y, col(0x6E8A94));
+        // the half-built hull has broken in two
+        for (int x = static_cast<int>(shipCx - 6); x < static_cast<int>(shipCx + 6); ++x)
+            for (int y = static_cast<int>(bowY + (sternY - bowY) * 0.52f);
+                 y < static_cast<int>(bowY + (sternY - bowY) * 0.52f) + 5; ++y)
+                p.set(x, y, col(0x102830));
+    }
+    return p;
+}
+
+// Crane gun: lattice boom with a heavy gun mount, muzzle toward the player
+// (screen-down). Bright machined metal so the threat pops off the deck.
+PixelBuf makeDrydockCrane() {
+    constexpr int W = 56, H = 56;
+    const int cx = W / 2, cy = H / 2;
+    PixelBuf p(W, H);
+    auto mix = [](std::uint32_t a, std::uint32_t b, float t) -> std::uint32_t {
+        auto ch = [](std::uint32_t v, int s) { return static_cast<float>((v >> s) & 0xFFu); };
+        const float r  = ch(a, 24) + (ch(b, 24) - ch(a, 24)) * t;
+        const float g  = ch(a, 16) + (ch(b, 16) - ch(a, 16)) * t;
+        const float bl = ch(a, 8)  + (ch(b, 8)  - ch(a, 8))  * t;
+        const float al = ch(a, 0)  + (ch(b, 0)  - ch(a, 0))  * t;
+        return (static_cast<std::uint32_t>(r + 0.5f) << 24) |
+               (static_cast<std::uint32_t>(g + 0.5f) << 16) |
+               (static_cast<std::uint32_t>(bl + 0.5f) << 8) |
+               static_cast<std::uint32_t>(al + 0.5f);
+    };
+    const auto setO = [&](int x, int y, std::uint32_t c) {
+        if (x >= 0 && x < W && y >= 0 && y < H) p.set(x, y, c);
+    };
+    // travelling base on the rails: hazard-striped platform
+    for (int y = cy + 10; y < H - 2; ++y)
+        for (int x = cx - 18; x < cx + 18; ++x) {
+            std::uint32_t c = ((x + y) / 6) % 2 == 0 ? col(0xC0942C) : col(0x2C2A26);
+            if (y == cy + 10 || x == cx - 18) c = mix(c, col(0xE0E4E8), 0.4f);
+            setO(x, y, c);
+        }
+    // counterweight boom stub + weight block (screen-up)
+    for (int y = 8; y < cy - 8; ++y)
+        for (int x = cx - 5; x <= cx + 5; ++x)
+            setO(x, y, mix(col(0x7A7E82), col(0x4E5256), (y - 8) / 16.0f));
+    for (int y = 3; y < 11; ++y)
+        for (int x = cx - 8; x <= cx + 8; ++x) {
+            std::uint32_t c = col(0x40444A);
+            if (y == 3 || x == cx - 8) c = col(0x6E7276);
+            if (y == 10 || x == cx + 8) c = col(0x2A2E32);
+            setO(x, y, c);
+        }
+    // slewing pedestal
+    for (int y = cy - 13; y <= cy + 9; ++y)
+        for (int x = cx - 11; x <= cx + 11; ++x) {
+            const float dx = (x + 0.5f - cx) / 11.5f, dy = (y + 0.5f - (cy - 2.0f)) / 11.5f;
+            const float q = dx * dx + dy * dy;
+            if (q > 1.0f) continue;
+            std::uint32_t c = mix(col(0x9EA2A6), col(0x5E6268), q * 0.8f);
+            if (dx + dy < -0.55f) c = mix(c, col(0xC8CCD0), 0.6f);  // sunlit top-left
+            setO(x, y, c);
+        }
+    // lattice boom running screen-down OVER the platform to the gun end:
+    // two bright rails with open gaps so the lattice reads at gameplay size.
+    for (int y = cy - 4; y < H - 12; ++y) {
+        const float t = (y - (cy - 4)) / static_cast<float>(H - 16 - cy);
+        const int w = static_cast<int>(7.0f - 2.0f * t);  // taper to the muzzle
+        for (int s = -1; s <= 1; s += 2) {
+            setO(cx + s * w, y, col(0xAEB2B6));
+            setO(cx + s * w + s, y, col(0x565A5E));
+        }
+        if ((y - cy) % 4 == 0)  // cross brace
+            for (int x = cx - w + 1; x <= cx + w - 1; ++x)
+                setO(x, y, col(0x8E9296));
+        else if ((y - cy) % 4 == 2)  // zig-zag diagonal
+            setO(cx + (((y / 4) % 2) ? w - 2 : 2 - w), y, col(0x8E9296));
+    }
+    // gun mount at the boom end: mantlet + twin muzzles (screen-down)
+    for (int y = H - 18; y < H - 5; ++y)
+        for (int x = cx - 9; x <= cx + 9; ++x) {
+            std::uint32_t c = mix(col(0x8A9098), col(0x54585E), (y - (H - 18)) / 13.0f);
+            if (y == H - 18 || x == cx - 9) c = mix(c, col(0xC8CCD0), 0.5f);
+            if (y == H - 6 || x == cx + 9) c = mix(c, col(0x2A2E32), 0.6f);
+            setO(x, y, c);
+        }
+    for (int s = -1; s <= 1; s += 2)
+        for (int y = H - 8; y < H; ++y) {  // barrels + bore
+            setO(cx + s * 4, y, col(0x30343A));
+            setO(cx + s * 4 + 1, y, col(0x14181C));
+        }
+    // outline: gather first, then stamp (in-place growth would flood)
+    std::vector<std::pair<int, int>> edge;
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            if ((p.get(x, y) & 0xFFu) != 0u) continue;
+            const bool near =
+                (x + 1 < W && (p.get(x + 1, y) & 0xFFu) != 0u) ||
+                (x - 1 >= 0 && (p.get(x - 1, y) & 0xFFu) != 0u) ||
+                (y + 1 < H && (p.get(x, y + 1) & 0xFFu) != 0u) ||
+                (y - 1 >= 0 && (p.get(x, y - 1) & 0xFFu) != 0u);
+            if (near) edge.push_back({x, y});
+        }
+    for (const auto [x, y] : edge) p.set(x, y, col(0x1E2226));
+    return p;
+}
+
+// Armed pontoon section: tubular side float with flood ports and a twin
+// deck gun. Sits over the hull's pontoon rows (separate-HP side section).
+PixelBuf makeDrydockPontoon() {
+    constexpr int W = 56, H = 150;
+    const int cx = W / 2, cy = H / 2;
+    PixelBuf p(W, H);
+    auto mix = [](std::uint32_t a, std::uint32_t b, float t) -> std::uint32_t {
+        auto ch = [](std::uint32_t v, int s) { return static_cast<float>((v >> s) & 0xFFu); };
+        const float r  = ch(a, 24) + (ch(b, 24) - ch(a, 24)) * t;
+        const float g  = ch(a, 16) + (ch(b, 16) - ch(a, 16)) * t;
+        const float bl = ch(a, 8)  + (ch(b, 8)  - ch(a, 8))  * t;
+        const float al = ch(a, 0)  + (ch(b, 0)  - ch(a, 0))  * t;
+        return (static_cast<std::uint32_t>(r + 0.5f) << 24) |
+               (static_cast<std::uint32_t>(g + 0.5f) << 16) |
+               (static_cast<std::uint32_t>(bl + 0.5f) << 8) |
+               static_cast<std::uint32_t>(al + 0.5f);
+    };
+    auto hash = [](int x, int y, int s) {
+        std::uint32_t h = static_cast<std::uint32_t>(x * 374761393 + y * 668265263 +
+                                                     s * 1274126177);
+        h = (h ^ (h >> 13)) * 1274126177u;
+        return (h ^ (h >> 16)) & 0xFFFFu;
+    };
+    const auto setO = [&](int x, int y, std::uint32_t c) {
+        if (x >= 0 && x < W && y >= 0 && y < H) p.set(x, y, c);
+    };
+    // rounded tub silhouette, 46 wide
+    const auto inside = [&](float x, float y) {
+        const float hw = 23.0f, hh = 74.0f, r = 14.0f;
+        if (std::fabs(x - cx) > hw || std::fabs(y - cy) > hh) return false;
+        float ccx = 0, ccy = 0;
+        if (x < cx - hw + r && y < cy - hh + r) { ccx = cx - hw + r; ccy = cy - hh + r; }
+        else if (x > cx + hw - r && y < cy - hh + r) { ccx = cx + hw - r; ccy = cy - hh + r; }
+        else if (x < cx - hw + r && y > cy + hh - r) { ccx = cx - hw + r; ccy = cy + hh - r; }
+        else if (x > cx + hw - r && y > cy + hh - r) { ccx = cx + hw - r; ccy = cy + hh - r; }
+        else return true;
+        const float dx = x - ccx, dy = y - ccy;
+        return dx * dx + dy * dy <= r * r;
+    };
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            if (!inside(x + 0.5f, y + 0.5f)) continue;
+            const float t = (x + 0.5f - (cx - 23.0f)) / 46.0f;  // 0 left 1 right
+            std::uint32_t c = mix(col(0x565A5E), col(0x6A6E72), 0.3f + 0.6f * t);
+            if (t < 0.08f) c = col(0x3A3E42);
+            if (t > 0.9f) c = mix(c, col(0x82868A), 0.5f);
+            if (y % 22 < 1) c = mix(c, col(0x40444A), 0.7f);  // plate courses
+            if (hash(x, y, 6) % 23 == 0) c = mix(c, col(0x6E4A32), 0.4f);  // rust fleck
+            p.set(x, y, c);
+        }
+    // flood ports with bright lips, three down the outer edge
+    for (int k = 0; k < 3; ++k) {
+        const int py = 28 + k * 44;
+        for (int y = py; y < py + 13; ++y)
+            for (int x = 6; x < 28; ++x) {
+                std::uint32_t c = col(0x101418);
+                if (y == py || x == 6) c = col(0x8C9094);
+                if (y == py + 12 || x == 27) c = col(0x2A2E32);
+                p.set(x, y, c);
+            }
+    }
+    // twin deck gun amidships (the b_dp mount), barrels screen-down:
+    // octagonal barbette + mantlet so it reads as a turret, not a balloon.
+    for (int y = cy - 11; y <= cy + 7; ++y)
+        for (int x = cx - 10; x <= cx + 10; ++x) {
+            const int ax = std::abs(x - cx), ay = std::abs(y - (cy - 2));
+            if (ax > 10 || ay > 8 || ax + ay > 16) continue;  // octagon barbette
+            std::uint32_t c = mix(col(0x7E8286), col(0x54585E),
+                                  static_cast<float>(ay + ax / 2) / 18.0f);
+            if (y == cy - 11 || x == cx - 10) c = mix(c, col(0xBEC2C6), 0.55f);
+            if (y == cy + 7 || x == cx + 10) c = mix(c, col(0x2A2E32), 0.55f);
+            p.set(x, y, c);
+        }
+    for (int y = cy - 4; y <= cy + 4; ++y)  // mantlet
+        for (int x = cx - 7; x <= cx + 7; ++x) {
+            std::uint32_t c = mix(col(0x969AA0), col(0x60646A), (y - (cy - 4)) / 8.0f);
+            if (y == cy - 4) c = mix(c, col(0xD0D4D8), 0.5f);
+            p.set(x, y, c);
+        }
+    for (int s = -1; s <= 1; s += 2)
+        for (int y = cy + 2; y < cy + 26; ++y) {
+            setO(cx + s * 4, y, col(0x30343A));
+            setO(cx + s * 4 + 1, y, col(0x14181C));
+            if (y == cy + 25) setO(cx + s * 4, y, col(0x0A0E12));
+        }
+    // outline: gather first, then stamp (in-place growth would flood)
+    std::vector<std::pair<int, int>> edge;
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            if ((p.get(x, y) & 0xFFu) != 0u) continue;
+            const bool near =
+                (x + 1 < W && (p.get(x + 1, y) & 0xFFu) != 0u) ||
+                (x - 1 >= 0 && (p.get(x - 1, y) & 0xFFu) != 0u) ||
+                (y + 1 < H && (p.get(x, y + 1) & 0xFFu) != 0u) ||
+                (y - 1 >= 0 && (p.get(x, y - 1) & 0xFFu) != 0u);
+            if (near) edge.push_back({x, y});
+        }
+    for (const auto [x, y] : edge) p.set(x, y, col(0x1E2226));
+    return p;
+}
+
 // Sawn-off arch (Quonset) hangar, seen from above: capsule roof with the
 // bright ridge along the spine and corrugation ribs running down the slopes.
 PixelBuf makeAirfieldHangar() {
@@ -4905,7 +5387,7 @@ namespace {
 constexpr std::uint32_t kArtCacheMagic = 0x50534152u;  // "PSAR"
 // Bump whenever any generated art changes (v10: A6M Zero redesign of the
 // primary enemy fighter and interceptor).
-constexpr std::uint32_t kArtCacheVersion = 26u;
+constexpr std::uint32_t kArtCacheVersion = 27u;
 
 void wr32(std::ostream& o, std::uint32_t v) {
     o.write(reinterpret_cast<const char*>(&v), 4);
@@ -5134,6 +5616,13 @@ bool generateAllArt(Renderer& r, const std::string& cachePath,
     add("boss_airfield_hull_wreck", makeAirfieldHull(3));
     add("boss_airfield_hull_flash", toFlashSilhouette(makeAirfieldHull(0)));
     add("bomb_crater", makeBombCrater());
+    add("boss_drydock_hull", makeDrydockHull(0));
+    add("boss_drydock_hull_light", makeDrydockHull(1));
+    add("boss_drydock_hull_dmg", makeDrydockHull(2));
+    add("boss_drydock_hull_wreck", makeDrydockHull(3));
+    add("boss_drydock_hull_flash", toFlashSilhouette(makeDrydockHull(0)));
+    add("boss_drydock_crane", makeDrydockCrane());
+    add("boss_drydock_pontoon", makeDrydockPontoon());
     add("boss_airfield_hangar", makeAirfieldHangar());
     add("boss_airfield_tower", makeAirfieldTower());
     add("boss_cruiser_hull", makeCruiserHull(0));

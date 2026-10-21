@@ -92,11 +92,16 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
 - **Kill-difficulty budget**: each boss's total HP (hull + components) is
   ~1.31–1.37× the previous boss's total, and `test_data.cpp` pins the exact
   number plus the band. Chain so far: destroyer 194 → carrier 252 →
-  fortress 338 → cruiser 448 → airfield 596.
+  fortress 338 → cruiser 448 → airfield 596 → drydock 800.
 - `test_data.cpp` pins per-stage boss identity/composition/HP/phases. Any
   data change must update the pins deliberately, never by accident.
 - Boss JSON: `arenaOcean: true` = boss carries its own ground and the world
   renders open sea during the fight (fortress/airfield style set pieces).
+  `sailSpeed > 0` = mobile boss (drydock): anchored until its last
+  destructible mount dies, then it maneuvers sideways at that speed,
+  bouncing inside `hullWidth/2 + 6` margins (`BossView.sailing/sailDir`
+  drive the wake). Ship sorties (`sortieEnemy` is a `ship: true` enemy)
+  splash on launch.
   Top-level `boss` + `bossTime` select the stage boss; event-level `"boss"`
   is broken, top-level stage `hpMul` is ignored.
 - Component `"weapon": ""` = destructible structure that never fires
@@ -149,10 +154,11 @@ problems with blur or generic smoothing filters. Concretely:
 
 ## Content roadmap
 
-Levels 1–7 shipped. Remaining per the design sheet: **8 FLOATING DRYDOCK**
-(mobile drydock, crane guns, side sections with separate HP, launches a
-ship, final phase undocks and *moves* — moving a scroll-frozen boss needs a
-small director/`bossView` change), **9 SUPER BATTLESHIP** (Yamato: triple
+Levels 1–8 shipped (stage 8 FLOATING DRYDOCK: crane guns, separate-HP
+pontoon sections, patrol-boat sorties from the well, and `sailSpeed` — once
+its last mount dies the dock undocks and maneuvers sideways, bouncing
+inside hull-width margins; `BossView.sailing/sailDir` drive the wake).
+Remaining per the design sheet: **9 SUPER BATTLESHIP** (Yamato: triple
 turrets, predictive rotating turrets, multiple damage phases), **10 SKY
 FORTRESS** (multi-stage flying fortress, bomb bays open with extra guns,
 final core-exposed phase; boss index 1 already holds an older Sky Fortress —

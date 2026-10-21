@@ -886,6 +886,8 @@ Simulation::BossView Simulation::bossView() const {
         const BossDef& def = data_.bosses[static_cast<std::size_t>(b.defRef)];
         v.arenaOcean = def.arenaOcean;
         v.hullSprite = def.hullSprite.c_str();
+        v.sailing = b.sailing;
+        v.sailDir = b.sailDir;
         int hp = 0, maxHp = def.hullHp;
         if (b.hull >= 0 && pool_[static_cast<std::size_t>(b.hull)].alive)
             hp += pool_[static_cast<std::size_t>(b.hull)].hp;
@@ -917,13 +919,42 @@ void Simulation::updateBosses(float dt) {
                 b.stateTimer = 0.0f;
             }
         } else if (b.state == 1) {
-            // Hover sway. hoverAmp 0 means the boss is anchored (an island
-            // fortress stands on rock: no sway, no bob).
-            if (def.hoverAmp > 0.0f) {
+            // Undock check (mobile drydock): once the last destructible
+            // mount is gone the dock breaks loose and starts maneuvering.
+            // Deterministic: the initial heading is always screen-left.
+            if (def.sailSpeed > 0.0f && !b.sailing) {
+                bool compsLeft = false;
+                for (std::size_t c = 0; c < b.components.size(); ++c) {
+                    if (def.components[c].destructibleTarget &&
+                        pool_[static_cast<std::size_t>(b.components[c])].alive) {
+                        compsLeft = true;
+                        break;
+                    }
+                }
+                if (!compsLeft) {
+                    b.sailing = true;
+                    b.sailDir = -1.0f;
+                    emitSound("boss_phase");  // the undock alarm
+                }
+            }
+            if (b.sailing) {
+                // Sailing replaces the anchored position entirely; bounce
+                // off margins that keep the full hull on screen.
+                const float half =
+                    static_cast<float>(def.hullWidth) * 0.5f + 6.0f;
+                const float lo = half, hi = kPlayW - half;
+                b.pos.x += def.sailSpeed * b.sailDir * dt;
+                if (b.pos.x <= lo && b.sailDir < 0.0f) b.sailDir = 1.0f;
+                else if (b.pos.x >= hi && b.sailDir > 0.0f) b.sailDir = -1.0f;
+                b.pos.x = clamp(b.pos.x, lo, hi);
+                b.pos.y = def.entryY;
+            } else if (def.hoverAmp > 0.0f) {
+                // Hover sway.
                 b.pos.x = 192.0f + def.hoverAmp *
                     std::sin(2.0f * kPi * def.hoverFreq * b.stateTimer);
                 b.pos.y = def.entryY + 8.0f * std::sin(2.0f * kPi * 0.07f * b.stateTimer);
             } else {
+                // Anchored: an island fortress stands on rock (no sway).
                 b.pos.x = 192.0f;
                 b.pos.y = def.entryY;
             }
@@ -999,11 +1030,15 @@ void Simulation::updateBosses(float dt) {
             if (b.sortieTimer <= 0.0f) {
                 const int enemyRef = data_.findEnemy(def.sortieEnemy);
                 if (enemyRef >= 0) {
-                    for (int k = 0; k < def.sortieCount; ++k)
-                        spawnEnemy(enemyRef,
-                                   b.pos + Vec2{rng_.range(-30.0f, 30.0f),
-                                                rng_.range(-46.0f, -8.0f)},
-                                   1.0f, 1.0f, mods_.speedMul, -1, -1);
+                    for (int k = 0; k < def.sortieCount; ++k) {
+                        const Vec2 sp =
+                            b.pos + Vec2{rng_.range(-30.0f, 30.0f),
+                                         rng_.range(-46.0f, -8.0f)};
+                        spawnEnemy(enemyRef, sp, 1.0f, 1.0f, mods_.speedMul, -1, -1);
+                        // Ship launches (drydock) hit the water with a splash.
+                        if (data_.enemies[static_cast<std::size_t>(enemyRef)].ship)
+                            emitSoundAt("splash", sp);
+                    }
                 }
                 const float pmul = phase == 0 ? 1.0f : (phase == 1 ? 0.78f : 0.58f);
                 b.sortieTimer = def.sortieInterval * pmul * rng_.range(0.85f, 1.15f);

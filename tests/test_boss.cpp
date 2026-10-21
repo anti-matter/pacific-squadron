@@ -262,8 +262,103 @@ void test_bomb_sweep_and_boss_20pct() {
     CHECK(hullAfterBomb == hullPreBomb - 20);  // 20% of the 100 hp hull
 }
 
-// Regression: formation members must never get stuck off-screen. The
-// enteredView clamp used to fight the formation controller (pinning
+// The FLOATING DRYDOCK mechanic: anchored while any mount lives, then it
+// undocks (sailing flag) and maneuvers sideways at sailSpeed, bouncing
+// inside margins that keep the full hull on screen.
+void test_drydock_undocks_and_sails() {
+    const char* weaponsJson = R"([
+      { "name": "gun_l1", "pattern": "forward", "damage": 5, "fireInterval": 0.05,
+        "speed": 800, "count": 1, "lifetime": 1.2 }
+    ])";
+    const char* powerupsJson = R"([
+      { "name": "powerup_p", "effect": "weapon_up", "sprite": "powerup_p" }
+    ])";
+    const char* bossesJson = R"([
+      {
+        "name": "TEST DRYDOCK", "hullSprite": "boss_drydock_hull",
+        "hullWidth": 160, "hullHeight": 96, "hullHp": 500, "hullScore": 3000,
+        "entryY": 120, "hoverAmp": 0, "hoverFreq": 0.05, "sailSpeed": 60,
+        "defeatDrop": "powerup_p",
+        "components": [
+          { "name": "TURRET", "sprite": "boss_big_turret", "offsetX": 0, "offsetY": 0,
+            "width": 40, "height": 40, "hp": 5, "score": 500,
+            "firstFireDelay": 999 }
+        ]
+      }
+    ])";
+    GameData data;
+    std::string err;
+    CHECK(parseWeaponsJson(weaponsJson, data.weapons, err));
+    CHECK(parsePowerupsJson(powerupsJson, data.powerups, err));
+    CHECK(parseBossesJson(bossesJson, data.bosses, err));
+    StageDef stage;
+    stage.name = "sail test";
+    stage.duration = 600;
+    stage.bossTime = 1e9f;  // boss spawned manually
+    data.stages.push_back(stage);
+    CHECK(data.linkReferences(err));
+
+    Simulation sim(data, 9);
+    sim.startStage(0, {});
+    sim.setGodMode(true);
+    sim.debugSpawnBoss(0);
+    const auto hullX = [&sim]() {
+        for (const auto& e : sim.entities())
+            if (e.alive && e.kind == EKind::BossHull) return e.pos.x;
+        return -1.0f;
+    };
+    SimEvent ev;
+    // Wait for the entry descent to finish (hull settles at entryY 120).
+    for (int f = 0; f < 60 * 10; ++f) {
+        sim.setPlayerIntent({0, 0}, false, false);
+        sim.update();
+        while (sim.popEvent(ev)) {}
+        float y = -999.0f;
+        for (const auto& e : sim.entities())
+            if (e.alive && e.kind == EKind::BossHull) y = e.pos.y;
+        if (y >= 119.5f) break;
+    }
+    CHECK(sim.bossView().active);
+    CHECK(hullX() == 192.0f);        // anchored while the mount lives
+    CHECK(!sim.bossView().sailing);
+
+    // Strip the armor with guns.
+    bool stripped = false;
+    for (int f = 0; f < 60 * 30 && !stripped; ++f) {
+        sim.setPlayerIntent({0, 0}, true, false);
+        sim.update();
+        while (sim.popEvent(ev)) {}
+        stripped = true;
+        for (const auto& e : sim.entities())
+            if (e.alive && e.kind == EKind::BossComponent) stripped = false;
+    }
+    CHECK(stripped);
+
+    // Undocked: one second of sailing drifts it screen-left noticeably.
+    for (int f = 0; f < 60; ++f) {
+        sim.setPlayerIntent({0, 0}, false, false);
+        sim.update();
+        while (sim.popEvent(ev)) {}
+    }
+    CHECK(sim.bossView().sailing);
+    CHECK(hullX() < 192.0f - 20.0f);
+
+    // Bounces keep the whole hull (half 80 + 6 margin) on screen forever,
+    // and the swept range proves it actually bounced off both margins.
+    float minX = 1e9f, maxX = -1e9f;
+    for (int f = 0; f < 60 * 15; ++f) {
+        sim.setPlayerIntent({0, 0}, false, false);
+        sim.update();
+        while (sim.popEvent(ev)) {}
+        const float x = hullX();
+        CHECK(x >= 86.0f - 0.5f && x <= 298.0f + 0.5f);
+        minX = std::min(minX, x);
+        maxX = std::max(maxX, x);
+    }
+    CHECK(maxX - minX >= 200.0f);  // full margin-to-margin sweep
+}
+
+// Regression: formation members must never get stuck off-screen. The// enteredView clamp used to fight the formation controller (pinning
 // members at the edge as a group drifted past it), and the off-screen
 // despawn gate checked move.t, which never advances for formation
 // members (the controller owns their motion) - so pinned members were

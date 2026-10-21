@@ -155,6 +155,8 @@ public:
         float hpFraction = 0.0f;
         bool arenaOcean = false;  // boss carries its own ground: sea below
         const char* hullSprite = "";  // static def string, safe to keep briefly
+        bool sailing = false;     // drydock has undocked and is maneuvering
+        float sailDir = 1.0f;     // sailing heading (-1 = screen-left)
     };
     BossView bossView() const;
 
@@ -209,6 +211,8 @@ private:
         float extraTimer = 0.0f;
         float deathChain = 0.0f;
         float sortieTimer = 0.0f;     // air-group launches (carrier bosses)
+        bool sailing = false;         // drydock undocked (sailSpeed bosses)
+        float sailDir = 1.0f;         // +1 = sailing screen-right
         int phase = 0;
     };
 

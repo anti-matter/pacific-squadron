@@ -208,6 +208,10 @@ struct BossDef {
     // fortress). Keeps a static land-locked boss from appearing to slide
     // over scrolling terrain.
     bool arenaOcean = false;
+    // Mobile drydock: once the LAST destructible mount is destroyed the
+    // dock breaks loose and sails sideways at this speed (px/s), bouncing
+    // off the side margins. 0 = stationary (every boss except the drydock).
+    float sailSpeed = 0.0f;
 };
 
 // ---------------------------------------------------------------------------
