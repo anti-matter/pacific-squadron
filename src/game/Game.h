@@ -106,6 +106,10 @@ public:
     bool debugOverlay = false;
 
     int menuSelection() const { return menuSel_; }
+    // HELP screen paging: page 0 is the original help page; pages 1+
+    // catalog the sprites. Left/right arrows move between pages.
+    int helpPage() const { return helpPage_; }
+    static constexpr int kHelpPages = 4;
     int stageIndex() const { return stageIndex_; }
     std::string stageName() const;
     float stateTimer() const { return stateTimer_; }
@@ -119,6 +123,8 @@ public:
     void debugStartAtStage(int idx);
     // Headless smoke capture: jump straight to a UI screen.
     void debugSetState(GameState s) { state_ = s; }
+    // Smoke-harness paging into a specific HELP catalog page.
+    void debugSetHelpPage(int p) { helpPage_ = p; }
 
 private:
     void enterState(GameState s);
@@ -135,6 +141,7 @@ private:
     GameState state_ = GameState::Title;
     float stateTimer_ = 0.0f;
     int menuSel_ = 0;
+    int helpPage_ = 0;
     int stageIndex_ = 0;
     int score_ = 0;
     std::vector<HighScoreEntry> highScores_;

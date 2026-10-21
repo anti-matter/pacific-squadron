@@ -270,7 +270,10 @@ bool Application::init() {
                 game_->debugSetState(GameState::Options);
             else if (!std::strcmp(st, "Help"))
                 game_->debugSetState(GameState::Help);
-            else if (!std::strcmp(st, "HighScores"))
+            else if (!std::strncmp(st, "Help", 4) && st[4] >= '1' && st[4] <= '9') {
+                game_->debugSetState(GameState::Help);
+                game_->debugSetHelpPage(st[4] - '0' - 1);  // "Help2" -> page 1
+            } else if (!std::strcmp(st, "HighScores"))
                 game_->debugSetState(GameState::HighScores);
         }
     } else if (startStageIdx >= 0) {
@@ -1347,7 +1350,94 @@ void Application::renderOptions() {
                    Color::rgb(0x9AB0C8), true);
 }
 
+namespace {
+// One sprite-catalog entry for the paged HELP screens.
+struct HelpSpriteEntry {
+    const char* sprite;
+    const char* desc;
+};
+
+struct HelpPageDef {
+    const char* title;
+    const HelpSpriteEntry* entries;
+    int count;
+    int boxW;   // icon fit-box: longest displayed edge, px
+    int boxH;
+    float rowH;
+};
+
+// Page 2: enemy aircraft.
+const HelpSpriteEntry kHelpAircraft[] = {
+    {"enemy_fighter_light", "LIGHT FIGHTER - ATTACKS IN FORMATIONS"},
+    {"enemy_interceptor", "INTERCEPTOR - HEAD-ON GUN RUNNER"},
+    {"enemy_heavy_fighter", "HEAVY FIGHTER - ARMORED AND DEADLY"},
+    {"enemy_fighter_carrier", "CARRIER FIGHTER - LAUNCHED AT YOU"},
+    {"enemy_bomber", "HEAVY BOMBER - SLOW, HEAVILY ARMED"},
+};
+// Page 3: surface & ground targets.
+const HelpSpriteEntry kHelpGround[] = {
+    {"turret_aa", "AA EMPLACEMENT - SHOOTS AT YOU"},
+    {"tank", "ARMORED TANK - ROLLS AND FIRES SHELLS"},
+    {"bunker", "BUNKER - TOUGH CONCRETE FLAK POST"},
+    {"boat_patrol", "PATROL BOAT - FAST, LIGHTLY ARMED"},
+    {"ship_destroyer", "DESTROYER - THREE-GUN SALVOS"},
+};
+// Page 4: enemy flagships (boss hulls, shown scaled down).
+const HelpSpriteEntry kHelpBosses[] = {
+    {"boss_battleship_hull", "BATTLESHIP - HEAVY SHELL BARRAGES"},
+    {"boss_bomber_hull", "SKY FORTRESS - TURRETED BOMBING GIANT"},
+    {"boss_destroyer_hull", "DESTROYER - RAPID-FIRE GUN FLAGSHIP"},
+    {"boss_carrier_hull", "CARRIER - LAUNCHES FIGHTERS"},
+    {"boss_fortress_hull", "COASTAL FORTRESS - ISLAND GUNS"},
+    {"boss_cruiser_hull", "HEAVY CRUISER - DEADLIEST FLEET GUN"},
+};
+
+const HelpPageDef kHelpPages[] = {
+    {"ENEMY AIRCRAFT", kHelpAircraft, 5, 34, 34, 46.0f},
+    {"SEA AND GROUND TARGETS", kHelpGround, 5, 34, 40, 46.0f},
+    {"ENEMY FLAGSHIPS", kHelpBosses, 6, 44, 60, 50.0f},
+};
+}  // namespace
+
+// One catalog page: title, then sprite icon + one-line description rows.
+void Application::renderHelpCatalog(int page) {
+    const Color gold = Color::rgb(0xFFD860);
+    const Color white = Color::rgb(0xD8E0E8);
+    const Color dim = Color::rgb(0x9AB0C8);
+    const HelpPageDef& pg = kHelpPages[page - 1];
+    renderer_.text("HELP", 192.0f, 36.0f, 3, gold, true);
+    renderer_.text(pg.title, 192.0f, 78.0f, 2, gold, true);
+    // Rows centered between the title and the footer band (which starts
+    // at y=444).
+    const float startY =
+        122.0f + (312.0f - static_cast<float>(pg.count - 1) * pg.rowH) * 0.5f;
+    for (int i = 0; i < pg.count; ++i) {
+        const float y = startY + static_cast<float>(i) * pg.rowH;
+        const int tex = renderer_.texture(pg.entries[i].sprite);
+        if (tex >= 0) {
+            int tw = 1, th = 1;
+            renderer_.textureSize(tex, tw, th);
+            const float s = std::min(static_cast<float>(pg.boxW) / static_cast<float>(tw),
+                                     static_cast<float>(pg.boxH) / static_cast<float>(th));
+            renderer_.drawScaled(tex, 48.0f, y,
+                                 static_cast<float>(tw) * s,
+                                 static_cast<float>(th) * s);
+        }
+        renderer_.text(pg.entries[i].desc, 76.0f, y, 1, white, false);
+    }
+    renderer_.text("LEFT / RIGHT: PAGE", 192.0f, 444.0f, 1, dim, true);
+    const std::string pn = std::to_string(page + 1) + " / " +
+                           std::to_string(Game::kHelpPages);
+    renderer_.text(pn, 192.0f, 460.0f, 1, dim, true);
+    renderer_.text("ESC / B: BACK", 192.0f, 476.0f, 1,
+                   Color::rgb(0x7A90A8), true);
+}
+
 void Application::renderHelp() {
+    if (const int page = game_->helpPage(); page > 0) {
+        renderHelpCatalog(page);
+        return;
+    }
     const Color gold = Color::rgb(0xFFD860);
     const Color white = Color::rgb(0xD8E0E8);
     const Color dim = Color::rgb(0x9AB0C8);
@@ -1424,7 +1514,13 @@ void Application::renderHelp() {
         renderer_.text(rightCol[i].desc, kDescX2, y, 1, white, false);
     }
 
-    renderer_.text("ESC / B: BACK", 192.0f, 470.0f, 1,
+    // Same paging footer as the catalog pages so the first page shows
+    // "1 / 4" too, centered between the supply-drops block (ends ~408)
+    // and the screen bottom.
+    renderer_.text("LEFT / RIGHT: PAGE", 192.0f, 444.0f, 1,
+                   Color::rgb(0x9AB0C8), true);
+    renderer_.text("1 / 4", 192.0f, 460.0f, 1, Color::rgb(0x9AB0C8), true);
+    renderer_.text("ESC / B: BACK", 192.0f, 476.0f, 1,
                    Color::rgb(0x7A90A8), true);
 }
 

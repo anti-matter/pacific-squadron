@@ -28,6 +28,7 @@ void Game::enterState(GameState s) {
     state_ = s;
     stateTimer_ = 0.0f;
     menuSel_ = 0;
+    helpPage_ = 0;
 }
 
 DifficultyMods Game::modsFor(Difficulty d) {
@@ -251,6 +252,12 @@ void Game::update(float dt) {
         if (back || confirm) {
             events_.push_back({GameEvent::Type::Sound, "menu_confirm"});
             enterState(GameState::Title);
+        } else {
+            const int prev = helpPage_;
+            if (left && helpPage_ > 0) --helpPage_;
+            if (right && helpPage_ + 1 < kHelpPages) ++helpPage_;
+            if (helpPage_ != prev)
+                events_.push_back({GameEvent::Type::Sound, "menu_select"});
         }
         break;
 

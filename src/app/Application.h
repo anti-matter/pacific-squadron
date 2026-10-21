@@ -46,6 +46,7 @@ private:
     void renderVictory();
     void renderHighScores();
     void renderHelp();
+    void renderHelpCatalog(int page);
     void renderEnterInitials();
     void renderOptions();
 
