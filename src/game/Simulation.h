@@ -246,6 +246,11 @@ private:
     // True while a boss whose arena is open sea (arenaOcean) is on screen:
     // land installations must not spawn (they would slide across the water).
     bool seaArenaActive() const;
+    // True when a terrain-welded unit would appear on the wrong surface:
+    // a land unit (turret/tank/bunker) over open water, or a ship over
+    // land. Such spawn requests are held briefly for the right terrain to
+    // scroll in, then dropped.
+    bool groundSpawnMismatch(const SpawnRequest& r) const;
 
     // systems
     void updatePlayer(float dt);

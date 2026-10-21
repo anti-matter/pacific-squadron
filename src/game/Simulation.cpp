@@ -199,6 +199,20 @@ void Simulation::update() {
                 // would slide across the frozen ocean like stray turrets) are
                 // dropped from the queue while the arena boss is alive.
                 it = spawnQueue_.erase(it);
+            } else if (groundSpawnMismatch(*it)) {
+                // Units welded to terrain must appear on the right surface:
+                // land units never on open water, ships never on land. When
+                // an event's trigger lands on the wrong surface (stage-data
+                // mistiming), land units wait briefly for the correct
+                // terrain to scroll in and are dropped if it never does;
+                // ships are dropped immediately (waiting would burst whole
+                // escorts into a later, unrelated part of the stage).
+                const bool ship =
+                    data_.enemies[static_cast<std::size_t>(it->enemyRef)].ship;
+                if (ship || now - it->time > 10.0f)
+                    it = spawnQueue_.erase(it);
+                else
+                    ++it;
             } else {
                 int formationId = -1;
                 auto fit = std::find_if(formations_.begin(), formations_.end(),
@@ -731,6 +745,21 @@ bool Simulation::seaArenaActive() const {
         if (data_.bosses[static_cast<std::size_t>(b.defRef)].arenaOcean) return true;
     }
     return false;
+}
+
+bool Simulation::groundSpawnMismatch(const SpawnRequest& r) const {
+    if (r.enemyRef < 0 || r.enemyRef >= static_cast<int>(data_.enemies.size()))
+        return false;
+    const EnemyDef& def = data_.enemies[static_cast<std::size_t>(r.enemyRef)];
+    if (!def.ground) return false;
+    const StageDef* sd = director_.stageDef();
+    if (!sd || sd->terrain.empty()) return false;
+    // Ground units weld to the terrain the moment they appear; the spawn
+    // line maps screen y -> worldY exactly like the renderer does.
+    const TerrainKind kind =
+        terrainAt(*sd, director_.scrollY() + kPlayH - r.pos.y);
+    return def.ship ? kind != TerrainKind::Ocean   // ships need open water
+                    : kind == TerrainKind::Ocean;  // land units need land
 }
 void Simulation::spawnBoss(int defRef) {
     if (defRef < 0 || defRef >= static_cast<int>(data_.bosses.size())) return;

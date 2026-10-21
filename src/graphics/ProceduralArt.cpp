@@ -971,16 +971,20 @@ PixelBuf makeMuzzleSheet() {
 PixelBuf makeAATurret() {
     Hi hi(32, 32);
     const float cx = 16.0f;
-    // Sandbag ring: solid base ring with individual bags on the rim.
-    hi.fillEllipse(cx, 21, 15.0f, 12.0f, col(0x54452C));
-    hi.fillEllipse(cx, 20, 14.0f, 11.0f, col(0x746240));
-    for (int k = 0; k < 10; ++k) {
-        const float a = k * 0.6283f + 0.3f;
+    // Cast shadow anchors the emplacement to the ground.
+    hi.fillEllipse(cx + 1.0f, 23.5f, 15.5f, 11.8f, col(0x0A0C06, 80));
+    // Sandbag ring: two stacked courses with individually shaded bags so
+    // the rim reads as fabric, not a solid blob.
+    hi.fillEllipse(cx, 21, 15.0f, 12.0f, col(0x46381F));           // lower course
+    hi.fillEllipse(cx, 20, 14.0f, 11.0f, col(0x6E5C3C));
+    for (int k = 0; k < 11; ++k) {
+        const float a = k * 0.5712f + 0.28f;
         const float bx = cx + 13.2f * std::cos(a);
         const float by = 20.0f + 10.3f * std::sin(a);
-        hi.fillEllipse(bx, by, 2.9f, 2.3f, (k % 2) ? col(0x8A7A52) : col(0x685838));
-        hi.fillEllipse(bx - 0.6f, by - 0.7f, 1.5f, 1.0f,
-                       (k % 2) ? col(0x9C8C62) : col(0x7A6A48));   // bag sheen
+        const bool lit = std::sin(a) < -0.15f || std::cos(a) < -0.3f;
+        hi.fillEllipse(bx, by, 3.0f, 2.35f, lit ? col(0x8A7A52) : col(0x615234));
+        hi.fillEllipse(bx - 0.7f, by - 0.8f, 1.6f, 1.0f,
+                       lit ? col(0x9E8E64) : col(0x746240));       // bag sheen
     }
     // Amber hazard dashes (armored-target language shared with bosses).
     for (int k = 0; k < 16; ++k) {
@@ -989,119 +993,256 @@ PixelBuf makeAATurret() {
         hi.fillEllipse(cx + 14.4f * std::cos(a), 20.4f + 11.4f * std::sin(a),
                        0.9f, 0.7f, col(0xC8A83C));
     }
-    // Concrete gun platform.
-    hi.fillEllipse(cx, 19, 10.2f, 8.2f, col(0x585850));
+    // Concrete gun platform with a lit top face and cast inner shadow.
+    hi.fillEllipse(cx, 19, 10.2f, 8.2f, col(0x505048));
     hi.fillEllipse(cx, 18, 9.0f, 7.0f, col(0x8C8C80));
-    hi.fillEllipse(cx - 2, 15.6f, 5.2f, 3.4f, col(0x9E9E92));      // lit top
-    hi.fillEllipse(cx, 20, 4.2f, 3.2f, col(0x666660));             // mount base
-    // Armored gun shield with bevel + sight slit.
-    hi.fillRoundRect(cx - 7.5f, 8.5f, 15.0f, 6.5f, 1.6f, col(0x6A7076));
-    hi.fillRoundRect(cx - 6.6f, 9.2f, 13.2f, 2.4f, 1.0f, col(0x8A9094));
-    hi.stroke({{cx - 4.0f, 12.6f}, {cx + 4.0f, 12.6f}}, 1.1f, col(0x181C20));
-    // Twin AA barrels with flash hiders.
-    for (const float bx : {12.8f, 17.6f}) {
-        hi.stroke({{bx, 2.0f}, {bx, 13.5f}}, 1.9f, col(0x14181C));
-        hi.stroke({{bx - 0.5f, 2.6f}, {bx - 0.5f, 12.6f}}, 0.55f, col(0x565C62));
-        hi.fillRoundRect(bx - 1.3f, 1.2f, 2.6f, 2.4f, 0.7f, col(0x2B2F33));
+    hi.fillEllipse(cx - 2, 15.6f, 5.4f, 3.4f, col(0xA2A296));      // lit top
+    hi.fillEllipse(cx + 3, 20.6f, 4.6f, 2.8f, col(0x6E6E64));      // shade side
+    // Ready-service depth: ammo cans with red labels behind the gun.
+    hi.fillRoundRect(21.5f, 18.0f, 6.0f, 5.0f, 1.0f, col(0x4A5236));
+    hi.fillRoundRect(22.1f, 18.6f, 4.8f, 1.6f, 0.6f, col(0x5E6844));
+    hi.fillRoundRect(23.0f, 20.8f, 3.0f, 1.4f, 0.4f, col(0x9E3026));
+    hi.fillRoundRect(5.5f, 19.5f, 4.6f, 4.2f, 0.9f, col(0x4A5236));
+    hi.fillRoundRect(6.0f, 20.0f, 3.6f, 1.3f, 0.5f, col(0x5E6844));
+    // Mount base ring + rotating turret body.
+    hi.fillEllipse(cx, 19.4f, 5.6f, 4.4f, col(0x3C4046));
+    hi.fillEllipse(cx, 18.6f, 4.6f, 3.6f, col(0x6A7076));
+    hi.fillEllipse(cx - 1.2f, 17.4f, 2.6f, 1.8f, col(0x8A9094));   // lit crown
+    // Armored gun shield: beveled plate with sight slit and rim light.
+    hi.fillRoundRect(cx - 8.0f, 8.0f, 16.0f, 7.4f, 1.8f, col(0x3E444A));
+    hi.fillRoundRect(cx - 7.2f, 8.7f, 14.4f, 5.6f, 1.4f, col(0x6A727A));
+    hi.fillRoundRect(cx - 6.4f, 9.2f, 12.8f, 2.2f, 1.0f, col(0x8E969C));
+    hi.stroke({{cx - 4.4f, 12.4f}, {cx + 4.4f, 12.4f}}, 1.2f, col(0x10141A));
+    // Twin AA barrels with ribbed cooling jackets + flash hiders.
+    for (const float bx : {12.7f, 17.7f}) {
+        hi.stroke({{bx, 1.6f}, {bx, 13.0f}}, 2.0f, col(0x10141A));
+        hi.stroke({{bx - 0.5f, 2.4f}, {bx - 0.5f, 12.2f}}, 0.6f, col(0x5A6066));
+        for (int r = 0; r < 3; ++r)
+            hi.stroke({{bx - 1.2f, 4.5f + r * 2.6f}, {bx + 1.2f, 4.5f + r * 2.6f}},
+                      0.7f, col(0x2C3238));
+        hi.fillRoundRect(bx - 1.4f, 0.8f, 2.8f, 2.6f, 0.8f, col(0x22262A));
+        hi.fillRoundRect(bx - 1.0f, 1.1f, 1.1f, 1.9f, 0.5f, col(0x4A5056));
     }
-    // Ready-rack box and ladder.
-    hi.fillRoundRect(21.5f, 19.5f, 5.5f, 4.5f, 0.8f, col(0x4A4A40));
-    hi.stroke({{22.2f, 20.4f}, {26.2f, 20.4f}}, 0.7f, col(0x7A7A6C));
-    hi.stroke({{7.6f, 26.5f}, {10.4f, 26.5f}}, 0.8f, col(0x3A3A32));
-    hi.stroke({{7.6f, 29.0f}, {10.4f, 29.0f}}, 0.8f, col(0x3A3A32));
+    // Ladder down the rear face + boot prints in the dirt.
+    hi.stroke({{7.6f, 26.0f}, {10.4f, 26.0f}}, 0.8f, col(0x33332C));
+    hi.stroke({{7.6f, 28.6f}, {10.4f, 28.6f}}, 0.8f, col(0x33332C));
+    hi.stroke({{8.0f, 25.2f}, {8.0f, 29.4f}}, 0.6f, col(0x33332C));
+    hi.stroke({{10.0f, 25.2f}, {10.0f, 29.4f}}, 0.6f, col(0x33332C));
     PixelBuf p = hi.bake();
-    outlineSilhouette(p, col(0x120E08, 150));
+    outlineSilhouette(p, col(0x120E08, 160));
     return p;
 }
 
 PixelBuf makeTank() {
     Hi hi(40, 28);
     const float cx = 20.0f;
-    // Tracks: capsules with wheel hubs.
+    // Cast shadow under the hull grounds the vehicle.
+    hi.fillEllipse(cx + 1.0f, 15.5f, 18.0f, 12.4f, col(0x0A0C06, 70));
+    // Tracks: dark capsules with individual links, road wheels, drive
+    // sprockets and an idler, plus a fender lip catching the light.
     for (const float tx : {6.4f, 33.6f}) {
-        hi.fillRoundRect(tx - 3.4f, 3.0f, 6.8f, 22.0f, 3.2f, col(0x1A1D20));
-        hi.fillRoundRect(tx - 2.6f, 3.8f, 5.2f, 20.4f, 2.6f, col(0x2C3036));
-        for (int k = 0; k < 5; ++k)
-            hi.fillEllipse(tx, 6.5f + k * 3.6f, 1.5f, 1.5f, col(0x4A5056));
-        hi.stroke({{tx - 2.9f, 5.0f}, {tx - 2.9f, 23.0f}}, 0.6f, col(0x3E444A));
+        hi.fillRoundRect(tx - 3.6f, 2.6f, 7.2f, 22.8f, 3.4f, col(0x101316));
+        hi.fillRoundRect(tx - 2.8f, 3.4f, 5.6f, 21.2f, 2.8f, col(0x2A2E33));
+        for (int k = 0; k < 8; ++k)                       // link gaps
+            hi.stroke({{tx - 2.8f, 4.4f + k * 2.6f}, {tx + 2.8f, 4.4f + k * 2.6f}},
+                      0.7f, col(0x171A1E));
+        for (int k = 0; k < 5; ++k) {                     // road wheels
+            hi.fillEllipse(tx, 6.8f + k * 3.5f, 1.7f, 1.7f, col(0x3E444A));
+            hi.fillEllipse(tx - 0.4f, 6.4f + k * 3.5f, 0.8f, 0.8f, col(0x5A6066));
+        }
+        hi.fillEllipse(tx, 4.4f, 2.0f, 2.0f, col(0x4A5056));       // sprocket
+        hi.fillEllipse(tx, 4.4f, 0.8f, 0.8f, col(0x22262A));
+        hi.stroke({{tx - 3.1f, 6.0f}, {tx - 3.1f, 22.0f}}, 0.6f, col(0x40464C));
     }
-    // Hull: rounded slab with front glacis bevel.
-    hi.fillRoundRect(9.5f, 4.0f, 21.0f, 21.0f, 3.4f, col(0x36402A));
-    hi.fillRoundRect(10.6f, 5.2f, 18.8f, 17.6f, 2.8f, col(0x4E5A38));
-    hi.fillRoundRect(11.8f, 6.2f, 8.0f, 7.0f, 2.0f, col(0x5E6C44));   // lit deck
-    hi.stroke({{11.0f, 21.5f}, {29.0f, 21.5f}}, 0.8f, col(0x38422A)); // hull seam
-    // Turret + mantlet + barrel pointing down at the player.
-    hi.fillEllipse(cx, 12.0f, 7.6f, 6.8f, col(0x38422A));
-    hi.fillEllipse(cx - 1.2f, 10.8f, 5.2f, 4.4f, col(0x5C6A42));      // crown light
-    hi.fillRoundRect(cx - 2.4f, 15.0f, 4.8f, 3.6f, 1.2f, col(0x46523A));
-    hi.stroke({{cx, 16.5f}, {cx, 26.5f}}, 2.1f, col(0x14181C));
-    hi.stroke({{cx - 0.55f, 17.5f}, {cx - 0.55f, 25.5f}}, 0.55f, col(0x4E545A));
-    hi.fillRoundRect(cx - 1.6f, 25.4f, 3.2f, 2.2f, 0.6f, col(0x38422A));  // muzzle brake
+    // Mud flung along the outer track edges.
+    for (int k = 0; k < 6; ++k) {
+        hi.fillEllipse(2.0f, 6.0f + k * 3.4f, 0.8f, 0.6f, col(0x5A4A2E, 160));
+        hi.fillEllipse(38.0f, 7.4f + k * 3.4f, 0.8f, 0.6f, col(0x5A4A2E, 160));
+    }
+    // Hull: slab with a front glacis bevel (light from top-left), deck
+    // seam, side bolt strip and rear engine grille.
+    hi.fillRoundRect(9.4f, 3.6f, 21.2f, 21.4f, 3.6f, col(0x2E3823));
+    hi.fillRoundRect(10.4f, 4.6f, 19.2f, 18.4f, 3.0f, col(0x4E5A38));
+    hi.fillRoundRect(11.4f, 5.4f, 17.2f, 6.4f, 2.4f, col(0x5E6C44));  // lit deck
+    hi.fillRoundRect(11.4f, 17.4f, 17.2f, 4.6f, 2.0f, col(0x42502F)); // glacis shade
+    hi.stroke({{11.0f, 16.6f}, {29.0f, 16.6f}}, 0.7f, col(0x38422A)); // deck seam
+    for (int k = 0; k < 5; ++k) {                                      // bolt strip
+        hi.fillEllipse(11.6f, 7.6f + k * 2.6f, 0.5f, 0.5f, col(0x6A7850));
+        hi.fillEllipse(28.4f, 7.6f + k * 2.6f, 0.5f, 0.5f, col(0x3A4630));
+    }
+    for (int k = 0; k < 4; ++k)                                        // grille
+        hi.stroke({{15.0f + k * 0.0f, 22.6f}, {25.0f, 22.6f + k * 0.9f}},
+                  0.5f, col(0x2A3322));
+    // Stowage bin and jack on the rear deck.
+    hi.fillRoundRect(11.8f, 4.4f, 5.4f, 3.0f, 0.8f, col(0x3E4A2C));
+    hi.fillRoundRect(12.2f, 4.8f, 4.6f, 1.0f, 0.5f, col(0x56643C));
+    hi.stroke({{23.4f, 5.4f}, {28.0f, 5.4f}}, 0.8f, col(0x5A4A2E));
+    // Turret: octagonal ring shadow, crown highlight, commander hatch.
+    hi.fillEllipse(cx, 12.6f, 8.0f, 7.2f, col(0x28321F));
+    hi.fillEllipse(cx, 11.8f, 7.4f, 6.6f, col(0x46523A));
+    hi.fillEllipse(cx - 1.4f, 10.2f, 4.8f, 3.8f, col(0x5C6A42));       // crown
+    hi.stroke({{cx - 5.6f, 13.6f}, {cx + 5.6f, 13.6f}}, 0.6f, col(0x36422A));
+    hi.fillEllipse(cx + 3.4f, 9.4f, 1.8f, 1.5f, col(0x3A4630));        // hatch
+    hi.fillEllipse(cx + 3.1f, 9.1f, 0.9f, 0.7f, col(0x56643C));
+    // Hinomaru-style marking on the turret flank for target readability.
+    hi.fillEllipse(cx - 4.2f, 12.4f, 1.7f, 1.5f, col(0xD8D4C8));
+    hi.fillEllipse(cx - 4.2f, 12.4f, 1.1f, 1.0f, col(0xB03428));
+    // Mantlet + main gun: barrel down at the player, collar, muzzle brake.
+    hi.fillRoundRect(cx - 2.8f, 15.0f, 5.6f, 4.0f, 1.3f, col(0x36422A));
+    hi.fillRoundRect(cx - 2.2f, 15.4f, 4.4f, 1.4f, 0.7f, col(0x4E5A38));
+    hi.stroke({{cx, 16.8f}, {cx, 26.4f}}, 2.2f, col(0x10141A));
+    hi.stroke({{cx - 0.6f, 17.6f}, {cx - 0.6f, 25.4f}}, 0.6f, col(0x4E545A));
+    hi.stroke({{cx - 1.4f, 20.2f}, {cx + 1.4f, 20.2f}}, 0.6f, col(0x2A3036));
+    hi.fillRoundRect(cx - 1.8f, 25.2f, 3.6f, 2.4f, 0.7f, col(0x33383D));
+    hi.fillRoundRect(cx - 1.3f, 25.6f, 1.2f, 1.6f, 0.5f, col(0x5A6066));
     PixelBuf p = hi.bake();
-    outlineSilhouette(p, col(0x101408, 150));
+    outlineSilhouette(p, col(0x101408, 160));
     return p;
 }
 
 PixelBuf makeBunker() {
     Hi hi(32, 32);
-    // Earth berm + concrete dome.
-    hi.fillEllipse(16, 20, 14.5f, 11.5f, col(0x4A4436));
-    hi.fillEllipse(16, 18, 12.6f, 10.6f, col(0x6A6A60));
-    hi.fillEllipse(16, 16.4f, 11.4f, 9.4f, col(0x8C8C80));
-    hi.fillEllipse(12.4f, 12.8f, 5.4f, 3.4f, col(0x9E9E90));          // lit crown
-    // Embrasure: dark slot with inner shadow + stub gun.
-    hi.fillRoundRect(7.5f, 15.5f, 17.0f, 4.2f, 1.6f, col(0x0E1012));
-    hi.fillRoundRect(8.4f, 16.2f, 15.2f, 1.4f, 0.6f, col(0x2A2E32));  // lintel shade
-    hi.stroke({{16.0f, 16.6f}, {16.0f, 19.4f}}, 1.5f, col(0x3A4046));
-    hi.stroke({{15.6f, 17.0f}, {15.6f, 19.0f}}, 0.5f, col(0x7A8086));
-    // Cracked concrete seams + base slab.
-    hi.stroke({{6.0f, 24.0f}, {9.5f, 26.5f}}, 0.5f, col(0x6E6E64, 200));
-    hi.stroke({{25.0f, 23.0f}, {22.0f, 26.0f}}, 0.5f, col(0x6E6E64, 200));
-    hi.fillRoundRect(5.0f, 26.0f, 22.0f, 3.2f, 1.2f, col(0x565650));
+    // Cast shadow + earth berm with grass fringe on the far edge.
+    hi.fillEllipse(16, 21, 15.2f, 11.8f, col(0x3A3526));
+    hi.fillEllipse(16, 19.6f, 14.0f, 10.8f, col(0x524A34));
+    for (int k = 0; k < 9; ++k) {                       // grass fringe on berm
+        const float gx = 4.5f + k * 2.9f;
+        const float dx = (gx - 16.0f) / 14.0f;
+        const float rim = 19.6f - 10.8f * std::sqrt(std::max(0.0f, 1.0f - dx * dx));
+        const float gy = rim - 0.6f + 0.8f * std::sin(k * 1.7f + 0.4f);
+        hi.fillEllipse(gx, gy, 1.5f, 0.9f, k % 2 ? col(0x3E5A26) : col(0x354E20));
+        hi.fillEllipse(gx - 0.4f, gy - 0.4f, 0.7f, 0.45f, col(0x4E7030));
+    }
+    // Concrete dome: slab base, curved shell, panel seams, weather streaks.
+    hi.fillEllipse(16, 18, 12.6f, 10.2f, col(0x5E5E54));
+    hi.fillEllipse(16, 16.6f, 11.6f, 9.2f, col(0x8C8C80));
+    hi.fillEllipse(12.0f, 12.6f, 5.6f, 3.4f, col(0x9E9E90));          // lit crown
+    for (int k = 0; k < 3; ++k) {                                     // panel rings
+        const float rr = 4.2f + k * 2.9f;
+        hi.stroke({{16.0f - rr, 15.0f}, {16.0f, 15.0f - rr * 0.78f}}, 0.5f,
+                  col(0x72726A, 220), false);
+        hi.stroke({{16.0f + rr, 15.0f}, {16.0f, 15.0f - rr * 0.78f}}, 0.5f,
+                  col(0x72726A, 220), false);
+    }
+    hi.stroke({{8.0f, 20.0f}, {7.0f, 24.5f}}, 0.7f, col(0x55554D, 170));  // stains
+    hi.stroke({{24.0f, 20.5f}, {25.0f, 24.0f}}, 0.7f, col(0x55554D, 170));
+    // Embrasure: heavy steel frame around a black slot with stub gun.
+    hi.fillRoundRect(6.6f, 14.6f, 18.8f, 5.8f, 2.0f, col(0x4A4E52));
+    hi.fillRoundRect(7.4f, 15.2f, 17.2f, 4.6f, 1.6f, col(0x0C0E10));
+    hi.fillRoundRect(8.4f, 15.6f, 15.2f, 1.2f, 0.5f, col(0x2A2E32));  // lintel lit
+    hi.stroke({{16.0f, 16.2f}, {16.0f, 19.8f}}, 1.6f, col(0x3A4046));
+    hi.stroke({{15.6f, 16.6f}, {15.6f, 19.4f}}, 0.5f, col(0x7A8086));
+    hi.fillEllipse(16, 19.6f, 1.4f, 0.9f, col(0x1A1E22));             // muzzle ring
+    // Sandbags stacked along the base of the front face.
+    for (int k = 0; k < 5; ++k) {
+        const float bx = 6.5f + k * 4.8f;
+        hi.fillEllipse(bx, 23.6f, 2.5f, 1.7f, k % 2 ? col(0x7A6A46) : col(0x665838));
+        hi.fillEllipse(bx - 0.5f, 23.1f, 1.2f, 0.8f, col(0x8E7E58));
+    }
+    // Antenna whip + base insulator.
+    hi.stroke({{26.5f, 4.0f}, {25.6f, 11.5f}}, 0.55f, col(0x2A2E32));
+    hi.fillEllipse(25.6f, 12.0f, 1.0f, 0.8f, col(0x5E5E54));
+    hi.fillEllipse(26.5f, 3.8f, 0.6f, 0.6f, col(0x8A8A80));
+    // Heavy base slab with lit top edge.
+    hi.fillRoundRect(4.6f, 26.0f, 22.8f, 3.4f, 1.3f, col(0x4E4E48));
+    hi.fillRoundRect(5.2f, 26.2f, 21.6f, 1.0f, 0.5f, col(0x7A7A70));
     PixelBuf p = hi.bake();
-    outlineSilhouette(p, col(0x121008, 150));
+    outlineSilhouette(p, col(0x121008, 160));
     return p;
 }
 
 PixelBuf makeShip(int w, int h, bool destroyer) {
     Hi hi(w, h);
     const float cx = w * 0.5f;
-    // AA hull profile: straight lift sides, fine clipped bow at the bottom.
+    // Long, narrow warship silhouette (top-down, bow at the bottom): a
+    // nearly straight belt amidships, a softly rounded stern and a sharp
+    // CLIPPED bow taking the lower 30% of the hull length — the profile
+    // reads as a warship at a glance.
+    const float hw = w * 0.5f - 1.5f;
     auto halfAt = [&](float t) {
-        return (w * 0.5f - 2.0f) *
-               (t > 0.72f ? std::max(0.05f, 1.0f - (t - 0.72f) * 3.4f) : 1.0f);
+        if (t > 0.70f) return hw * std::max(0.06f, 1.0f - (t - 0.70f) / 0.30f * 0.94f);
+        if (t < 0.05f) return hw * (0.72f + t / 0.05f * 0.28f);
+        return hw;
     };
     std::vector<std::pair<float, float>> hull;
-    for (int i = 0; i <= 14; ++i) hull.push_back({cx - halfAt(i / 14.0f) + 0.4f, 1.0f + (h - 2) * i / 14.0f});
-    for (int i = 14; i >= 0; --i) hull.push_back({cx + halfAt(i / 14.0f), 1.0f + (h - 2) * i / 14.0f});
+    for (int i = 0; i <= 18; ++i) hull.push_back({cx - halfAt(i / 18.0f) + 0.4f, 1.0f + (h - 2) * i / 18.0f});
+    for (int i = 18; i >= 0; --i) hull.push_back({cx + halfAt(i / 18.0f), 1.0f + (h - 2) * i / 18.0f});
     hi.fillPoly(hull, col(0x565D64));
     // Belt shading + deck inset.
     std::vector<std::pair<float, float>> deck;
-    for (int i = 0; i <= 12; ++i) {
-        const float t = 0.08f + 0.86f * i / 12.0f;
-        deck.push_back({cx - halfAt(t) + 3.0f, 1.0f + (h - 2) * t});
+    for (int i = 0; i <= 16; ++i) {
+        const float t = 0.05f + 0.9f * i / 16.0f;
+        deck.push_back({cx - halfAt(t) + 2.4f, 1.0f + (h - 2) * t});
     }
-    for (int i = 12; i >= 0; --i) {
-        const float t = 0.08f + 0.86f * i / 12.0f;
-        deck.push_back({cx + halfAt(t) - 3.4f, 1.0f + (h - 2) * t});
+    for (int i = 16; i >= 0; --i) {
+        const float t = 0.05f + 0.9f * i / 16.0f;
+        deck.push_back({cx + halfAt(t) - 2.6f, 1.0f + (h - 2) * t});
     }
     hi.fillPoly(deck, col(0x6A7178));
-    hi.stroke({{cx - halfAt(0.5f) + 1.2f, 3.0f}, {cx - halfAt(0.5f) + 1.2f, h - 6.0f}},
+    hi.stroke({{cx - halfAt(0.4f) + 1.0f, 4.0f}, {cx - halfAt(0.4f) + 1.0f, h - 20.0f}},
               1.2f, col(0x7C848B));                                  // lit flank
-    hi.stroke({{cx + halfAt(0.5f) - 1.2f, 3.0f}, {cx + halfAt(0.5f) - 1.2f, h - 6.0f}},
+    hi.stroke({{cx + halfAt(0.4f) - 1.0f, 4.0f}, {cx + halfAt(0.4f) - 1.0f, h - 20.0f}},
               1.2f, col(0x3A4046));                                  // shaded flank
-    // Deck structures: bridge block with windows.
-    hi.fillRoundRect(cx - 6.5f, h * 0.5f - 8.0f, 13.0f, 16.0f, 1.8f, col(0x7E858C));
-    hi.fillRoundRect(cx - 4.5f, h * 0.5f - 6.0f, 9.0f, 10.0f, 1.2f, col(0x41474D));
-    hi.fillRoundRect(cx - 3.6f, h * 0.5f - 5.2f, 7.2f, 2.0f, 0.6f, col(0x3A5A6E));
-    // Gun turrets (barrels face the player).
-    auto turret = [&](float tx, float ty) {
-        hi.fillEllipse(tx, ty, 3.8f, 3.8f, col(0x33383D));
-        hi.fillEllipse(tx - 0.5f, ty - 0.5f, 2.4f, 2.4f, col(0x5E656C));
-        hi.stroke({{tx, ty + 1.5f}, {tx, ty + 6.5f}}, 1.5f, col(0x14181C));
+    // Deck plank lines for weathered steel.
+    for (int i = 0; i < 7; ++i) {
+        const float t = 0.08f + 0.8f * i / 6.0f;
+        const float yy = 1.0f + (h - 2) * t;
+        hi.stroke({{cx - halfAt(t) + 2.0f, yy}, {cx + halfAt(t) - 2.2f, yy}},
+                  0.5f, col(0x5D646B));
+    }
+    // Superstructure fore-aft: (destroyer) aft gun - funnel - bridge -
+    // forward gun; barrels face the player.
+    auto turret = [&](float tx, float ty, float s, float blen) {
+        hi.fillEllipse(tx, ty + 0.5f * s, 3.9f * s, 3.9f * s, col(0x24282C));
+        hi.fillEllipse(tx, ty, 3.7f * s, 3.7f * s, col(0x454B51));
+        hi.fillEllipse(tx - 0.6f * s, ty - 0.6f * s, 2.3f * s, 2.3f * s,
+                       col(0x6E757C));
+        hi.stroke({{tx, ty + 1.4f * s}, {tx, ty + 1.4f * s + blen}}, 1.6f * s,
+                  col(0x10141A));
+        hi.stroke({{tx - 0.4f * s, ty + 1.8f * s}, {tx - 0.4f * s, ty + 1.4f * s + blen - 0.6f}},
+                  0.5f, col(0x565C62));
     };
-    turret(cx, h - 9.0f);
-    if (destroyer) { turret(cx, 9.0f); turret(cx - 10.0f, h * 0.5f); turret(cx + 10.0f, h * 0.5f); }
+    auto bridge = [&](float by, float bw) {
+        hi.fillRoundRect(cx - bw - 0.7f, by - 2.2f, bw * 2.0f + 1.4f, 6.4f, 1.3f,
+                         col(0x33383D));
+        hi.fillRoundRect(cx - bw, by - 3.0f, bw * 2.0f, 6.2f, 1.3f, col(0x7E858C));
+        hi.fillRoundRect(cx - bw + 0.8f, by - 2.4f, bw * 2.0f - 1.6f, 1.8f, 0.7f,
+                         col(0x9AA1A8));                            // lit top
+        hi.fillRoundRect(cx - 2.0f, by - 0.2f, 4.0f, 2.2f, 0.7f, col(0x3A5A6E));
+        hi.fillRoundRect(cx - 1.6f, by + 0.1f, 1.5f, 1.3f, 0.5f, col(0x6E90A4));
+        hi.fillEllipse(cx, by + 4.2f, 1.4f, 1.2f, col(0xE8E4D0));   // searchlight
+        hi.fillEllipse(cx, by + 4.2f, 0.65f, 0.6f, col(0xFFFFE8));
+    };
+    if (destroyer) {
+        // h=64: aft AA y4.5, aft gun y14, funnel y21.5, bridge y30, fwd gun
+        // y45 on the bow shoulder.
+        for (const float sx : {-1.0f, 1.0f}) {
+            hi.fillEllipse(cx + sx * 4.6f, 4.6f, 1.6f, 1.4f, col(0x3A4046));
+            hi.stroke({{cx + sx * 4.6f, 3.9f}, {cx + sx * 4.6f, 2.4f}}, 0.9f,
+                      col(0x10141A));
+        }
+        turret(cx, 14.0f, 0.85f, 4.6f);                              // aft gun
+        hi.fillEllipse(cx, 22.0f, 2.7f, 2.4f, col(0x2E3338));        // funnel
+        hi.fillEllipse(cx, 21.6f, 1.8f, 1.5f, col(0x4E555C));
+        bridge(30.5f, 6.2f);
+        hi.fillRoundRect(cx - 1.4f, 38.6f, 2.8f, 2.8f, 0.6f, col(0x565D64));
+        turret(cx, 45.0f, 1.0f, 5.0f);                               // forward gun
+        hi.fillEllipse(cx, 55.0f, 0.9f, 0.9f, col(0x3A4046));        // bow anchor
+    } else {
+        // h=44 patrol boat: depth-charge racks at the stern, mast, bridge,
+        // funnel, light forward gun on the bow. Same bow-down orientation
+        // as the destroyer (no flip).
+        hi.fillRoundRect(cx - 6.2f, 2.0f, 2.0f, 5.6f, 0.9f, col(0x2E3338));
+        hi.fillRoundRect(cx + 4.2f, 2.0f, 2.0f, 5.6f, 0.9f, col(0x2E3338));
+        hi.fillEllipse(cx - 5.2f, 3.4f, 0.7f, 0.7f, col(0x4E555C));
+        hi.fillEllipse(cx + 5.2f, 3.4f, 0.7f, 0.7f, col(0x4E555C));
+        hi.stroke({{cx, 9.6f}, {cx, 12.4f}}, 0.6f, col(0x2A2E32));   // mast
+        hi.fillEllipse(cx, 9.3f, 0.7f, 0.7f, col(0xC8C4B0));
+        bridge(17.0f, 4.2f);
+        hi.fillEllipse(cx, 25.5f, 2.0f, 1.8f, col(0x2E3338));        // funnel
+        hi.fillEllipse(cx, 25.2f, 1.2f, 1.1f, col(0x4E555C));
+        turret(cx, 32.5f, 0.75f, 3.2f);                              // forward gun
+    }
     PixelBuf p = hi.bake();
     outlineSilhouette(p, col(0x10141A, 150));
     return p;
@@ -4044,7 +4185,7 @@ namespace {
 constexpr std::uint32_t kArtCacheMagic = 0x50534152u;  // "PSAR"
 // Bump whenever any generated art changes (v10: A6M Zero redesign of the
 // primary enemy fighter and interceptor).
-constexpr std::uint32_t kArtCacheVersion = 18u;
+constexpr std::uint32_t kArtCacheVersion = 21u;
 
 void wr32(std::ostream& o, std::uint32_t v) {
     o.write(reinterpret_cast<const char*>(&v), 4);
@@ -4140,6 +4281,7 @@ bool generateAllArt(Renderer& r, const std::string& cachePath,
     }
     auto add = [&](const std::string& name, const PixelBuf& p) {
         r.createTextureFromPixels(name, p.bytes(), p.w, p.h);
+        dumpSpriteDbg(name, p);
         if (wantCache) captured.emplace_back(name, p);
     };
     auto step = [&progress](float p) { if (progress) progress(p); };
@@ -4184,8 +4326,8 @@ bool generateAllArt(Renderer& r, const std::string& cachePath,
     add("turret_aa", makeAATurret());
     add("tank", makeTank());
     add("bunker", makeBunker());
-    add("boat_patrol", []() { auto p = makeShip(44, 20, false); flipY(p); return p; }());
-    add("ship_destroyer", makeShip(64, 30, true));
+    add("boat_patrol", makeShip(22, 44, false));
+    add("ship_destroyer", makeShip(34, 64, true));
     step(0.32f);
 
     // Projectiles.

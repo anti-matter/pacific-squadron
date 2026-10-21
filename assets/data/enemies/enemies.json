@@ -54,14 +54,14 @@
     "weapon": "e_flak", "fireInterval": 3.2, "aimAtPlayer": false,
     "dropChance": 0.26, "deathEffect": 2, "deathSound": "explosion_medium" },
 
-  { "name": "boat_patrol", "sprite": "boat_patrol", "width": 44, "height": 20,
-    "hitbox": [0, 0, 26, 12], "hp": 2, "score": 150, "speed": 20,
+  { "name": "boat_patrol", "sprite": "boat_patrol", "width": 22, "height": 44,
+    "hitbox": [0, 0, 14, 32], "hp": 2, "score": 150, "speed": 20,
     "path": "drift_down", "ship": true, "ground": true,
     "weapon": "e_light_gun", "fireInterval": 2.6, "aimAtPlayer": true,
     "dropChance": 0.10, "deathEffect": 1, "deathSound": "explosion_small" },
 
-  { "name": "destroyer", "sprite": "ship_destroyer", "width": 64, "height": 30,
-    "hitbox": [0, 0, 40, 18], "hp": 11, "score": 400, "speed": 14,
+  { "name": "destroyer", "sprite": "ship_destroyer", "width": 34, "height": 64,
+    "hitbox": [0, 0, 22, 50], "hp": 11, "score": 400, "speed": 14,
     "path": "drift_down", "ship": true, "ground": true,
     "weapon": "e_burst3", "fireInterval": 3.0, "aimAtPlayer": true,
     "dropChance": 0.42, "drop": "random", "deathEffect": 2,
