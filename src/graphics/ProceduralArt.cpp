@@ -2761,10 +2761,11 @@ PixelBuf makeCruiserHull(int damage) {
 // damage: 0 pristine, 2 cracked & burning, 3 wreck.
 namespace ffort {
 constexpr int W = 224, H = 214;
-// Island shoreline ellipse (sand), seawall ellipse and inner court ellipse.
-constexpr float RX = 101.0f, RY = 96.0f;
-constexpr float WX = 82.0f,  WY = 77.0f;
-constexpr float CX = 74.0f,  CY = 68.0f;
+// Base island shoreline ellipse (the visible coast is this warped by the
+// islR() harmonics inside makeFortressHull), seawall and inner court ellipses.
+constexpr float RX = 95.0f, RY = 88.0f;
+constexpr float WX = 78.0f,  WY = 73.0f;
+constexpr float CX = 70.0f,  CY = 63.0f;
 }  // namespace ffort
 
 PixelBuf makeFortressHull(int damage) {
@@ -2772,14 +2773,19 @@ PixelBuf makeFortressHull(int damage) {
     const int cx = W / 2, cy = H / 2;
     PixelBuf p(W, H);
 
-    // --- palettes ------------------------------------------------------------
+    // --- palettes -------------------------------------------------------------
     const std::uint32_t sandHi  = col(0xDCC698);
     const std::uint32_t sandMid = col(0xC6AF7F);
     const std::uint32_t sandDk  = col(0xA8916A);
     const std::uint32_t sandWet = col(0x8C7A55);
-    const std::uint32_t jgDark  = col(0x2B5527);
-    const std::uint32_t jgMid   = col(0x3D7A33);
-    const std::uint32_t jgHi    = col(0x59963F);
+    const std::uint32_t rockLo  = col(0x6E6759);
+    const std::uint32_t rockMid = col(0x867F70);
+    const std::uint32_t jgDeep  = col(0x163314);
+    const std::uint32_t jgDark  = col(0x24501F);
+    const std::uint32_t jgMid   = col(0x3A7A31);
+    const std::uint32_t jgHi    = col(0x5C9940);
+    const std::uint32_t dirtHi  = col(0x97845F);
+    const std::uint32_t dirtLo  = col(0x665741);
     const std::uint32_t concHi  = col(0x9D998B);
     const std::uint32_t concMid = col(0x8B877A);
     const std::uint32_t concLo  = col(0x767265);
@@ -2797,6 +2803,7 @@ PixelBuf makeFortressHull(int damage) {
                (static_cast<std::uint32_t>(bl + 0.5f) << 8) |
                static_cast<std::uint32_t>(al + 0.5f);
     };
+    auto cl = [](float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); };
     auto hash = [](int x, int y, int s) {
         std::uint32_t h = static_cast<std::uint32_t>(x * 374761393 + y * 668265263 +
                                                      s * 1274126177);
@@ -2821,10 +2828,43 @@ PixelBuf makeFortressHull(int damage) {
                 }
             }
     };
-    // Ellipse radius along a direction, for ring/edge maths.
+    // Ellipse radius along a direction, for the man-made rings (wall, court).
     auto qAt = [&](float x, float y, float rx, float ry) {
         const float dx = (x + 0.5f - cx) / rx, dy = (y + 0.5f - cy) / ry;
         return std::sqrt(dx * dx + dy * dy);
+    };
+
+    // --- organic island outline -------------------------------------------------
+    // Harmonic warp of the base ellipse: coves, headlands, asymmetric lobes.
+    // The silhouette is still deterministic — it is baked sprite art.
+    auto islR = [](float ang) {
+        return 1.00f + 0.030f * std::sin(ang * 1.0f + 2.10f) +
+                           0.090f * std::sin(ang * 3.0f + 1.30f) +
+                           0.060f * std::sin(ang * 5.0f + 4.20f) +
+                           0.040f * std::sin(ang * 8.0f + 2.50f) +
+                           0.022f * std::sin(ang * 13.0f + 0.70f);
+    };
+    // Normalised distance to the organic shoreline (1.0 == waterline).
+    auto shoreQ = [&](float x, float y) {
+        const float dx = (x + 0.5f - cx) / RX, dy = (y + 0.5f - cy) / RY;
+        const float base = std::sqrt(dx * dx + dy * dy);
+        return base / islR(std::atan2(dy, dx));
+    };
+    auto angOf = [&](float x, float y) {
+        return std::atan2((y + 0.5f - cy) / RY, (x + 0.5f - cx) / RX);
+    };
+    // Rocky shore sectors: exposed stone breaks the sand ring (0..1).
+    auto rockAmt = [&](float ang) {
+        const float v = std::sin(ang * 3.0f + 0.4f) * std::sin(ang * 2.0f - 1.2f);
+        return v > 0.15f ? cl((v - 0.15f) * 2.2f) : 0.0f;
+    };
+    // Vegetation density mask: dense jungle masses alternating with open,
+    // sandy stretches — no uniform green ring.
+    auto vegDens = [&](float ang) {
+        const float v = 0.5f + 0.5f * std::sin(ang * 2.3f + 0.8f) *
+                                  std::sin(ang * 3.7f + 2.9f);
+        const float fine = frand(static_cast<int>(ang * 40.0f), 5, 5) * 0.22f;
+        return cl(0.24f + 0.76f * v + fine);
     };
     // Gun pads: {x, y, r} — mirrors bosses.json offsets.
     struct Pad { float x, y, r; };
@@ -2840,105 +2880,260 @@ PixelBuf makeFortressHull(int damage) {
         const float kx = (x - cx) / 38.0f, ky = (y - (cy - 4.0f)) / 31.0f;
         return kx * kx + ky * ky < 1.0f;
     };
+    // Where vegetation may grow: between the seawall and the beach, clear of
+    // the emplacements and the dock approach.
+    auto inVegBand = [&](float x, float y) {
+        if (qAt(x, y, WX + 4.0f, WY + 4.0f) < 1.0f) return false;
+        if (shoreQ(x, y) > 0.985f) return false;
+        if (nearPad(x, y, 4.0f)) return false;
+        if (x < cx - 56.0f && y > cy + 12.0f && y < cy + 46.0f) return false;  // dock
+        return true;
+    };
 
-    // --- layered soft shadow on the sea ---------------------------------------
-    softDisc(cx + 8.0f, cy + 11.0f, RX + 5.0f, RY + 4.0f, col(0x050F1A, 34));
-    softDisc(cx + 6.0f, cy + 8.0f,  RX + 3.0f, RY + 2.0f, col(0x050F1A, 46));
-    softDisc(cx + 4.0f, cy + 6.0f,  RX + 1.0f, RY + 1.0f, col(0x050F1A, 60));
-
-    // --- reef shallows: two-tone turquoise haze around the island ---------------
-    softDisc(cx, cy, RX + 10.0f, RY + 9.0f, col(0x2E7E96, 70));
-    softDisc(cx, cy, RX + 6.0f,  RY + 5.0f, col(0x3E93A8, 80));
-
-    // --- sand body: radial gradient + speckle + wet edge -------------------------
+    // --- layered drop shadow on the sea, following the organic outline ----------
     for (int y = 0; y < H; ++y)
         for (int x = 0; x < W; ++x) {
-            const float q = qAt(static_cast<float>(x), static_cast<float>(y), RX, RY);
+            const float fx = static_cast<float>(x), fy = static_cast<float>(y);
+            const float q = shoreQ(fx, fy);
+            if (q <= 1.0f) continue;  // shadow only falls on water
+            if (shoreQ(fx - 7.0f, fy - 9.0f) < 1.0f)
+                p.blend(x, y, col(0x050F1A, static_cast<int>(72.0f * cl((1.15f - q) / 0.15f))));
+            else if (shoreQ(fx - 13.0f, fy - 16.0f) < 1.0f)
+                p.blend(x, y, col(0x050F1A, static_cast<int>(40.0f * cl((1.24f - q) / 0.09f))));
+        }
+
+    // --- reef shallows hugging the shore, deeper water just offshore ------------
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const float q = shoreQ(static_cast<float>(x), static_cast<float>(y));
+            if (q <= 1.0f || q > 1.34f) continue;
+            const float ang = angOf(static_cast<float>(x), static_cast<float>(y));
+            if (q < 1.17f) {
+                // bright turquoise shallows, broken by darker reef patches
+                const float t = (q - 1.0f) / 0.17f;
+                const float patchf = 0.5f + 0.5f * std::sin(ang * 6.0f + 2.2f);
+                const std::uint32_t c = patchf > 0.60f ? col(0x2E7E90) : col(0x4FA8B8);
+                const int a = static_cast<int>(80.0f * (1.0f - t * t) * (0.65f + 0.35f * patchf));
+                if (a > 6) p.blend(x, y, (c & 0xFFFFFF00u) | static_cast<std::uint32_t>(a));
+            } else {
+                const float t = (q - 1.17f) / 0.17f;
+                const int a = static_cast<int>(46.0f * (1.0f - t));
+                if (a > 6) p.blend(x, y, col(0x0A2440, a));
+            }
+        }
+
+    // --- sand body: organic outline, wet tideline, rock sectors, speckle --------
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const float q = shoreQ(static_cast<float>(x), static_cast<float>(y));
             if (q > 1.0f) continue;
+            const float ang = angOf(static_cast<float>(x), static_cast<float>(y));
             std::uint32_t c = mix(sandHi, sandMid, q * 1.05f);
             if (q > 0.72f) c = mix(c, sandDk, (q - 0.72f) / 0.28f * 0.85f);
             if (hash(x, y, 3) % 9 == 0) c = mix(c, col(0x8F7C52), 0.30f);   // grit
             if (hash(x, y, 9) % 23 == 0) c = mix(c, col(0xE4D2A6), 0.45f);  // bright flecks
-            if (q > 0.90f) c = mix(c, sandWet, (q - 0.90f) / 0.10f * 0.55f);  // wet band
+            // wet-sand band with an undulating tideline
+            const float wet0 = 0.845f + 0.05f * std::sin(ang * 6.0f + 2.1f) +
+                               0.03f * std::sin(ang * 11.0f + 4.4f);
+            if (q > wet0) c = mix(c, sandWet, (q - wet0) / (1.0f - wet0) * 0.62f);
+            // rocky shore sectors: exposed stone and pebbles replace the sand
+            const float ra = rockAmt(ang);
+            if (ra > 0.02f && q > 0.55f) {
+                const float m = ra * cl((q - 0.55f) / 0.35f);
+                c = mix(c, mix(rockLo, rockMid, frand(x >> 2, y >> 2, 13)), m * 0.85f);
+                if (hash(x >> 1, y >> 1, 17) % 11 == 0) c = mix(c, col(0x544E44), 0.5f);
+            }
             p.set(x, y, c);
         }
-    // Sun-bright inner beach sheen (light from the top-left).
+    // Sun-bright beach sheen (light from the top-left).
     for (int y = 0; y < H; ++y)
         for (int x = 0; x < W; ++x) {
             const float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
-            const float q = qAt(static_cast<float>(x), static_cast<float>(y), RX, RY);
-            if (q < 0.98f && dx + dy < -30.0f && hash(x, y, 5) % 3 == 0)
+            if (shoreQ(static_cast<float>(x), static_cast<float>(y)) < 0.98f &&
+                dx + dy < -30.0f && hash(x, y, 5) % 3 == 0)
                 p.blend(x, y, col(0xF0E2BC, 28));
         }
 
-    // --- breaker foam rings (inner dense, outer sparse with gaps) ----------------
+    // --- breaker foam: broken ring following the organic shoreline ---------------
     for (int y = 0; y < H; ++y)
         for (int x = 0; x < W; ++x) {
-            const float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
-            const float q = qAt(static_cast<float>(x), static_cast<float>(y), RX, RY);
-            if (q < 0.99f || q > 1.09f) continue;
-            const float ang = std::atan2(dy, dx);
+            const float q = shoreQ(static_cast<float>(x), static_cast<float>(y));
+            if (q < 0.995f || q > 1.085f) continue;
+            const float ang = angOf(static_cast<float>(x), static_cast<float>(y));
             const float wob = 0.55f + 0.45f * std::sin(ang * 7.0f + 1.7f);
-            if (wob < 0.30f) continue;
-            const float band = 1.0f - std::fabs((q - 1.0f) / 0.09f - 0.4f) / 0.6f;
+            if (wob < 0.28f) continue;
+            const float band = 1.0f - std::fabs((q - 1.0f) / 0.085f - 0.4f) / 0.6f;
             const int a = static_cast<int>(200.0f * band * wob);
             if (a > 12) p.blend(x, y, col(0xE8F2FA, a));
         }
-    for (int k = 0; k < 46; ++k) {  // foam sparkles just outside the breakers
+    // thin wash tongues creeping up the beach
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const float q = shoreQ(static_cast<float>(x), static_cast<float>(y));
+            if (q < 0.90f || q > 1.0f) continue;
+            const float ang = angOf(static_cast<float>(x), static_cast<float>(y));
+            const float s = std::sin(ang * 17.0f + 0.6f) * std::sin(ang * 5.0f + 1.9f);
+            if (s <= 0.62f) continue;
+            const float w = (s - 0.62f) / 0.38f;
+            const float edge = 0.995f - (1.0f - w) * 0.06f;
+            if (q > edge) p.blend(x, y, col(0xE8F2FA, static_cast<int>(52.0f * w)));
+        }
+    for (int k = 0; k < 52; ++k) {  // foam sparkles just outside the breakers
         const float ang = static_cast<float>(k) * 0.1364f + 0.31f;
-        const float q = 1.06f + frand(k, 17, 4) * 0.05f;
+        const float q = (1.05f + frand(k, 17, 4) * 0.05f) * islR(ang);
         const float fx = cx + std::cos(ang) * q * RX;
         const float fy = cy + std::sin(ang) * q * RY;
         softDisc(fx, fy, 1.6f, 1.2f, col(0xFFFFFF, 120));
     }
 
-    // --- rocks along the shoreline ------------------------------------------------
-    for (int k = 0; k < 26; ++k) {
+    // --- rocks along the shoreline (bigger in the rocky sectors) ------------------
+    for (int k = 0; k < 34; ++k) {
         const float ang = static_cast<float>(k) * 0.2417f + 0.62f;
-        const float q = 0.99f + frand(k, 23, 6) * 0.05f;
+        const float q = (0.985f + frand(k, 23, 6) * 0.05f) * islR(ang);
         const float rx = cx + std::cos(ang) * q * RX;
         const float ry = cy + std::sin(ang) * q * RY;
-        const float s = 2.2f + frand(k, 5, 8) * 2.4f;
+        const float boost = 1.0f + rockAmt(ang) * 1.1f;
+        const float s = (2.2f + frand(k, 5, 8) * 2.4f) * boost;
         softDisc(rx + 1.0f, ry + 1.6f, s * 1.05f, s * 0.8f, col(0x0A141C, 90));
-        softDisc(rx, ry, s, s * 0.78f, col(0x5F5A4E));
+        softDisc(rx, ry, s, s * 0.78f, mix(rockLo, rockMid, frand(k, 9, 10)));
         softDisc(rx - s * 0.28f, ry - s * 0.3f, s * 0.5f, s * 0.4f, col(0x837E70));
+        if (boost > 1.6f && k % 2 == 0) {  // companion rock in rocky sectors
+            softDisc(rx + s * 1.3f, ry + s * 0.5f, s * 0.6f, s * 0.45f, mix(rockLo, rockMid, 0.4f));
+            softDisc(rx + s * 1.15f, ry + s * 0.35f, s * 0.3f, s * 0.22f, col(0x837E70));
+        }
     }
 
-    // --- jungle ring: dark base then dense palms/bushes (avoids walls & pads) ----
+    // small rock outcrops scattered on the sand between wall and shore
+    for (int k = 0; k < 7; ++k) {
+        const float ang = k * 0.898f + 2.3f;
+        const float qq = (0.88f + frand(k, 51, 1) * 0.08f) * islR(ang);
+        const float bx = cx + std::cos(ang) * qq * RX, by = cy + std::sin(ang) * qq * RY;
+        if (nearPad(bx, by, 2.0f)) continue;
+        for (int j = 0; j < 3; ++j) {
+            const float rx = bx + (frand(k, j, 52) - 0.5f) * 10.0f;
+            const float ry = by + (frand(k, j, 53) - 0.5f) * 8.0f;
+            const float s = 1.8f + frand(k, j, 54) * 2.2f;
+            softDisc(rx + 1.0f, ry + 1.4f, s * 1.05f, s * 0.8f, col(0x0A141C, 70));
+            softDisc(rx, ry, s, s * 0.75f, mix(rockLo, rockMid, frand(k, j, 55)));
+            softDisc(rx - s * 0.25f, ry - s * 0.28f, s * 0.4f, s * 0.3f, col(0x837E70));
+        }
+    }
+
+    // --- jungle floor: dark under-canopy, density-masked by sector ----------------
     for (int y = 0; y < H; ++y)
         for (int x = 0; x < W; ++x) {
-            const float qs = qAt(static_cast<float>(x), static_cast<float>(y), WX - 2, WY - 2);
-            const float qb = qAt(static_cast<float>(x), static_cast<float>(y), RX - 1, RY - 1);
-            if (qs < 1.0f || qb > 1.0f) continue;
-            const float t = hash(x, y, 11) / 65535.0f;
-            const std::uint32_t c = mix(col(0x234A1F), col(0x1B3A18), t);
-            p.blend(x, y, (c & 0xFFFFFF00u) | 205u);
+            if (!inVegBand(static_cast<float>(x), static_cast<float>(y))) continue;
+            const float ang = angOf(static_cast<float>(x), static_cast<float>(y));
+            const float d = vegDens(ang);
+            if (d <= 0.40f) continue;
+            const std::uint32_t c = mix(col(0x234A1F), col(0x1B3A18), frand(x, y, 11));
+            const int a = static_cast<int>(190.0f * cl((d - 0.40f) / 0.5f));
+            p.blend(x, y, (c & 0xFFFFFF00u) | static_cast<std::uint32_t>(a));
         }
-    for (int k = 0; k < 150; ++k) {
-        const float ang = static_cast<float>(k) * 2.39996f;
-        const float qq = 0.83f + 0.13f * frand(k, 7, 1);
+
+    // --- vegetation: four plant types, clumped + scattered --------------------------
+    auto drawPalm = [&](float tx, float ty, float s, int k) {
+        softDisc(tx + s * 0.55f, ty + s * 0.60f, s * 1.05f, s * 0.62f, col(0x08130A, 80));
+        softDisc(tx + s * 0.18f, ty + s * 0.34f, s * 0.13f, s * 0.36f, col(0x6B4E2E, 210));
+        for (int f = 0; f < 8; ++f) {  // tapered radiating fronds
+            const float a = f * 0.7854f + frand(k, f, 14) * 0.42f;
+            const std::uint32_t fc = (f % 2) ? mix(col(0x254D1F), jgMid, frand(f, k, 15))
+                                             : mix(jgMid, jgHi, frand(f, k, 16) * 0.7f);
+            for (int d = 0; d < 3; ++d) {
+                const float rr = s * (0.42f + 0.30f * d);
+                softDisc(tx + std::cos(a) * rr, ty + std::sin(a) * rr * 0.82f,
+                         s * (0.48f - 0.11f * d), s * (0.35f - 0.08f * d), fc);
+            }
+        }
+        softDisc(tx, ty, s * 0.42f, s * 0.34f, mix(jgDark, jgMid, 0.5f));
+        softDisc(tx - s * 0.20f, ty - s * 0.20f, s * 0.20f, s * 0.15f, jgHi);
+        softDisc(tx + s * 0.08f, ty + s * 0.10f, s * 0.10f, s * 0.09f, col(0x6B4E2E));
+        softDisc(tx - s * 0.10f, ty + s * 0.12f, s * 0.08f, s * 0.08f, col(0x5A4128));
+    };
+    auto drawBroad = [&](float tx, float ty, float s, int k) {
+        softDisc(tx + s * 0.5f, ty + s * 0.58f, s * 1.0f, s * 0.55f, col(0x08130A, 78));
+        for (int b = 0; b < 5; ++b) {  // irregular dark canopy outline
+            const float a = b * 1.2566f + frand(k, b, 21);
+            softDisc(tx + std::cos(a) * s * 0.42f, ty + std::sin(a) * s * 0.36f,
+                     s * (0.52f + frand(k, b, 22) * 0.16f),
+                     s * (0.44f + frand(k, b, 23) * 0.12f), jgDeep);
+        }
+        softDisc(tx, ty, s * 0.80f, s * 0.64f, jgDark);
+        for (int b = 0; b < 4; ++b) {  // mid-tone leaf lobes
+            const float a = b * 1.5708f + 0.5f + frand(k, b, 24) * 0.5f;
+            softDisc(tx + std::cos(a) * s * 0.30f - s * 0.06f,
+                     ty + std::sin(a) * s * 0.24f - s * 0.06f, s * 0.42f, s * 0.34f,
+                     mix(jgDark, jgMid, 0.35f + frand(b, k, 25) * 0.4f));
+        }
+        softDisc(tx - s * 0.26f, ty - s * 0.28f, s * 0.34f, s * 0.26f, mix(jgMid, jgHi, 0.55f));
+        softDisc(tx - s * 0.34f, ty - s * 0.34f, s * 0.16f, s * 0.12f, jgHi);
+    };
+    auto drawClump = [&](float tx, float ty, float s, int k) {
+        softDisc(tx + s * 0.45f, ty + s * 0.5f, s * 1.05f, s * 0.55f, col(0x08130A, 70));
+        const int n = 6 + static_cast<int>(frand(k, 1, 26) * 4.0f);
+        for (int b = 0; b < n; ++b) {  // merged canopy mass
+            const float a = frand(k, b, 27) * 6.2832f;
+            const float rr = frand(k, b, 28) * s * 0.62f;
+            const std::uint32_t c = (b % 3 == 0) ? jgDeep
+                                                 : mix(jgDark, jgMid, frand(k, b, 29));
+            softDisc(tx + std::cos(a) * rr, ty + std::sin(a) * rr * 0.8f,
+                     s * (0.40f + frand(k, b, 30) * 0.30f),
+                     s * (0.32f + frand(k, b, 31) * 0.22f), c);
+        }
+        for (int b = 0; b < 4; ++b) {  // sunlit crown dots
+            const float a = frand(k, b, 32) * 6.2832f;
+            softDisc(tx + std::cos(a) * s * 0.4f - s * 0.1f,
+                     ty + std::sin(a) * s * 0.3f - s * 0.12f, s * 0.16f, s * 0.12f,
+                     mix(jgMid, jgHi, 0.6f));
+        }
+    };
+    auto drawBush = [&](float tx, float ty, float s, int k) {
+        softDisc(tx + s * 0.35f, ty + s * 0.45f, s * 0.85f, s * 0.5f, col(0x08130A, 60));
+        softDisc(tx, ty, s * 0.72f, s * 0.56f, col(0x21451D));
+        softDisc(tx - s * 0.18f, ty - s * 0.22f, s * 0.44f, s * 0.34f, jgDark);
+        softDisc(tx - s * 0.30f, ty - s * 0.30f, s * 0.20f, s * 0.15f, mix(jgMid, jgHi, 0.4f));
+        if (frand(k, 9, 33) < 0.30f)  // occasional flowering speck
+            softDisc(tx + s * 0.10f, ty - s * 0.10f, s * 0.09f, s * 0.09f, col(0xC9A0C8, 160));
+    };
+    auto plantTree = [&](float tx, float ty, float s, int k) {
+        const float r = frand(k, 13, 12);
+        if (r < 0.38f) drawPalm(tx, ty, s, k);
+        else if (r < 0.64f) drawBroad(tx, ty, s, k);
+        else if (r < 0.82f) drawBush(tx, ty, s * 0.85f, k);
+        else drawClump(tx, ty, s * 1.45f, k);
+    };
+    // irregular jungle masses
+    for (int ci = 0; ci < 12; ++ci) {
+        const float ca = ci * 0.5236f + frand(ci, 3, 1) * 0.55f;
+        const float cq = (0.80f + frand(ci, 7, 2) * 0.15f) * islR(ca);
+        const float ccx = cx + std::cos(ca) * cq * RX;
+        const float ccy = cy + std::sin(ca) * cq * RY;
+        const int n = 3 + static_cast<int>(frand(ci, 11, 2) * 5.0f);
+        for (int m = 0; m < n; ++m) {
+            const float tx = ccx + (frand(ci * 31 + m, 5, 3) - 0.5f) * 22.0f;
+            const float ty = ccy + (frand(ci * 31 + m, 9, 4) - 0.5f) * 18.0f;
+            if (!inVegBand(tx, ty)) continue;
+            plantTree(tx, ty, 3.6f + frand(ci * 31 + m, 3, 2) * 3.2f, ci * 31 + m);
+        }
+    }
+    // scattered singles, gated by the sector density mask
+    for (int k = 0; k < 110; ++k) {
+        const float ang = k * 2.39996f + 0.4f;
+        const float qq = (0.76f + 0.22f * frand(k, 7, 1)) * islR(ang);
         const float tx = cx + std::cos(ang) * qq * RX;
         const float ty = cy + std::sin(ang) * qq * RY;
-        if (qAt(tx, ty, WX + 5, WY + 5) < 1.0f) continue;  // inside the seawall
-        if (nearPad(tx, ty, 4.0f)) continue;
-        if (tx < cx - 56.0f && ty > cy + 12.0f && ty < cy + 44.0f) continue;  // dock
-        const float s = 4.2f + frand(k, 3, 2) * 2.8f;
-        if (frand(k, 13, 12) < 0.78f) {  // palm cluster
-            softDisc(tx + s * 0.55f, ty + s * 0.55f, s * 1.0f, s * 0.66f, col(0x08130A, 85));
-            for (int f = 0; f < 6; ++f) {
-                const float a = static_cast<float>(f) * 1.0472f + frand(k, f, 14) * 0.5f;
-                const float fx = tx + std::cos(a) * s * 0.62f;
-                const float fy = ty + std::sin(a) * s * 0.56f;
-                softDisc(fx, fy, s * 0.64f, s * 0.44f, mix(col(0x254D1F), jgMid, frand(f, k, 15)));
-            }
-            softDisc(tx, ty, s * 0.58f, s * 0.48f, mix(jgDark, jgMid, 0.55f));
-            softDisc(tx - s * 0.24f, ty - s * 0.26f, s * 0.30f, s * 0.24f, jgHi);
-            softDisc(tx + s * 0.1f, ty + s * 0.08f, s * 0.14f, s * 0.12f, col(0x6B4E2E));
-        } else {  // bush clump
-            softDisc(tx, ty, s * 0.95f, s * 0.72f, col(0x21451D));
-            softDisc(tx - s * 0.25f, ty - s * 0.3f, s * 0.6f, s * 0.45f, jgDark);
-            softDisc(tx - s * 0.4f, ty - s * 0.4f, s * 0.28f, s * 0.2f, jgMid);
-        }
+        if (!inVegBand(tx, ty)) continue;
+        if (frand(k, 3, 6) > vegDens(ang)) continue;
+        plantTree(tx, ty, 3.2f + frand(k, 3, 2) * 3.4f, 200 + k);
+    }
+    // coastal scrub right at the vegetation/beach boundary
+    for (int k = 0; k < 28; ++k) {
+        const float ang = k * 1.91f + 1.1f;
+        const float qq = (0.925f + frand(k, 33, 1) * 0.05f) * islR(ang);
+        const float tx = cx + std::cos(ang) * qq * RX;
+        const float ty = cy + std::sin(ang) * qq * RY;
+        if (!inVegBand(tx, ty)) continue;
+        drawBush(tx, ty, 1.8f + frand(k, 34, 2) * 1.2f, 400 + k);
     }
 
     // --- concrete seawall: gradient body, dark rim, sun highlight ------------------
@@ -2963,34 +3158,78 @@ PixelBuf makeFortressHull(int damage) {
             const float dx = x + 0.5f - cx;
             if (dx > -20.0f) p.blend(x, y, col(0x1A160F, 90));
         }
+    // worn dirt and moss creeping across the rampart walk
+    for (int k = 0; k < 8; ++k) {
+        const float a = k * 0.7854f + 0.3f;
+        const float rr = 0.80f + frand(k, 61, 1) * 0.14f;
+        const float bx = cx + std::cos(a) * rr * WX, by = cy + std::sin(a) * rr * WY;
+        softDisc(bx, by, 5.0f + frand(k, 62, 2) * 4.0f, 4.0f + frand(k, 62, 3) * 3.0f,
+                 col(0x776B50, 130));
+    }
 
-    // --- inner court: lighter concrete floor, grid seams, stains -------------------
+    // --- inner court: packed dirt with grass intrusions -----------------------------
     for (int y = 0; y < H; ++y)
         for (int x = 0; x < W; ++x) {
             const float q = qAt(static_cast<float>(x), static_cast<float>(y), CX, CY);
             if (q > 1.0f) continue;
             const float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
-            std::uint32_t c = mix(mix(concMid, concLo, q), col(0x8E8A7D), 0.45f);
-            if ((x - y) % 15 == 0 || (x + y) % 17 == 0) c = mix(c, concSeam, 0.45f);
-            if (dx + dy < -14.0f) c = mix(c, col(0xA8A496), 0.3f);
-            if (dx + dy > 22.0f) c = mix(c, concLo, 0.28f);
-            if (hash(x, y, 21) % 29 == 0) c = mix(c, col(0x6E5A3E), 0.30f);  // rust stain
+            std::uint32_t c = mix(dirtHi, dirtLo, q * 0.9f);
+            if (hash(x, y, 23) % 9 == 0) c = mix(c, col(0x5C4D38), 0.35f);   // grit
+            if (hash(x, y, 24) % 19 == 0) c = mix(c, col(0xA8946C), 0.40f);  // pale flecks
+            if (frand(x >> 1, y >> 1, 37) > 0.955f) c = mix(c, col(0x5E6B3A), 0.55f);  // tufts
+            if (dx + dy < -14.0f) c = mix(c, col(0xB09B72), 0.22f);  // sun side
+            if (dx + dy > 22.0f) c = mix(c, col(0x54472F), 0.24f);   // shade side
             p.set(x, y, c);
         }
-
-    // --- radial supply roads from the keep to every gun pad -------------------------
-    const float kx = static_cast<float>(cx), ky = static_cast<float>(cy - 6);
-    for (const Pad& pd : pads) {
-        const float ex = cx + pd.x, ey = cy + pd.y;
-        const float len = std::sqrt((ex - kx) * (ex - kx) + (ey - ky) * (ey - ky));
-        const int steps = static_cast<int>(len);
-        for (int i = 0; i < steps; ++i) {
-            const float t = static_cast<float>(i) / static_cast<float>(steps);
-            const float rx = kx + (ex - kx) * t, ry = ky + (ey - ky) * t;
-            const float rw = 6.5f - 2.0f * std::fabs(t - 0.5f);
-            softDisc(rx, ry, rw, rw, col(0x9A968A, 120));
+    // contact shadow where the court meets the wall base (upper-left sun)
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const float q1 = qAt(static_cast<float>(x), static_cast<float>(y), CX, CY);
+            const float q2 = qAt(static_cast<float>(x), static_cast<float>(y), CX - 3.0f, CY - 3.0f);
+            if (q1 >= 1.0f || q2 <= 1.0f) continue;
+            if (x + 0.5f - cx + (y + 0.5f - cy) < 30.0f)
+                p.blend(x, y, col(0x2A2216, 80));
+        }
+    // grass patches intruding from the edges
+    for (int k = 0; k < 12; ++k) {
+        const float a = k * 0.5236f + frand(k, 71, 1) * 0.4f;
+        const float rr = 0.82f + frand(k, 72, 2) * 0.2f;
+        const float bx = cx + std::cos(a) * rr * CX, by = cy + std::sin(a) * rr * CY;
+        softDisc(bx, by, 6.0f + frand(k, 73, 3) * 5.0f, 5.0f + frand(k, 73, 4) * 4.0f,
+                 col(0x50683A, 150));
+        softDisc(bx - 1.0f, by - 1.0f, 3.0f, 2.4f, col(0x5F7A44, 140));
+    }
+    // drainage gullies radiating from the keep to the wall base
+    for (int d4 = 0; d4 < 4; ++d4) {
+        const float a = 0.7854f + static_cast<float>(d4) * 1.5708f;
+        for (float d = 40.0f; d < 60.0f; d += 1.0f) {
+            const float gx = cx + std::cos(a) * d * 0.98f, gy = cy + std::sin(a) * d * 0.92f;
+            p.blend(static_cast<int>(gx), static_cast<int>(gy), col(0x3F382C, 200));
+            p.blend(static_cast<int>(gx) + 1, static_cast<int>(gy) + 1, col(0xA49B84, 90));
         }
     }
+
+    // --- worn concrete service roads from the keep to every gun pad -----------------
+    const float kx = static_cast<float>(cx), ky = static_cast<float>(cy - 6);
+    auto road = [&](float x0, float y0, float x1, float y1) {
+        const float len = std::sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
+        const int steps = static_cast<int>(len);
+        const float nx = -(y1 - y0) / len, ny = (x1 - x0) / len;
+        for (int i = 0; i < steps; ++i) {
+            const float t = static_cast<float>(i) / static_cast<float>(steps);
+            const float rx = x0 + (x1 - x0) * t, ry = y0 + (y1 - y0) * t;
+            const float rw = 6.8f - 2.2f * std::fabs(t - 0.5f);
+            softDisc(rx + nx * rw, ry + ny * rw, 1.7f, 1.7f, col(0x55503F, 70));  // worn edge
+            softDisc(rx - nx * rw, ry - ny * rw, 1.7f, 1.7f, col(0x55503F, 70));
+            softDisc(rx, ry, rw, rw, col(0x94908A, 145));
+            if (i % 6 == 0)
+                softDisc(rx + (frand(i, static_cast<int>(x1), 41) - 0.5f) * rw,
+                         ry + (frand(i, static_cast<int>(y1), 42) - 0.5f) * rw,
+                         1.1f, 1.1f, col(0x6E6A5D, 110));  // spalling
+        }
+    };
+    for (const Pad& pd : pads) road(kx, ky, cx + pd.x, cy + pd.y);
+    road(kx, ky, static_cast<float>(cx) - 56.0f, static_cast<float>(cy) + 27.0f);  // dock spur
 
     // --- gun pads: rim, deck, bolt ring (mirrors the JSON offsets) -------------------
     for (const Pad& pd : pads) {
@@ -3039,7 +3278,19 @@ PixelBuf makeFortressHull(int damage) {
         }
     }
 
-    // --- west dock: timber pier, pilings, moored barge ----------------------------------
+    // --- supply depot beside the dock gate ---------------------------------------------
+    auto hut = [&](int hx, int hy) {
+        p.fillRect(hx + 1, hy + 2, 13, 8, col(0x0A141C, 80));  // cast shadow
+        p.fillRect(hx, hy, 13, 8, col(0x5E6B4A));               // camo body
+        p.fillRect(hx, hy, 13, 3, col(0x6E7B58));               // sunlit roof
+        p.hline(hx, hx + 12, hy + 7, col(0x36402C));
+        p.fillRect(hx + 2, hy + 3, 3, 2, col(0x4A5539));        // camo splotches
+        p.fillRect(hx + 8, hy + 4, 3, 2, col(0x4A5539));
+    };
+    hut(cx - 52, cy + 36);
+    hut(cx - 52, cy + 48);
+
+    // --- west dock: timber pier, pilings, T-head, supply cache, barge -------------------
     {
         const int py0 = cy + 19, py1 = cy + 35;
         for (int x = cx - 111; x <= cx - 58; ++x) {  // deck shadow
@@ -3055,13 +3306,44 @@ PixelBuf makeFortressHull(int damage) {
                 p.set(x, y, c);
             }
         }
+        // T-head platform at the outer end
+        for (int x = cx - 113; x <= cx - 103; ++x)
+            for (int y = cy + 13; y <= cy + 41; ++y) {
+                const std::uint32_t c = ((y - (cy + 13)) % 4 == 0) ? col(0x54432B) : col(0x665234);
+                p.set(x, y, (y == cy + 13 || y == cy + 41) ? col(0x4A3B26) : c);
+            }
+        for (int y = cy + 13; y <= cy + 41; ++y) p.set(cx - 103, y, col(0x463722));
         for (int x = cx - 110; x <= cx - 60; x += 10) {  // pilings
             softDisc(static_cast<float>(x), static_cast<float>(py0 - 1), 1.6f, 1.4f, col(0x2E2415));
             softDisc(static_cast<float>(x), static_cast<float>(py1 + 1), 1.6f, 1.4f, col(0x2E2415));
         }
+        for (int y = cy + 15; y <= cy + 39; y += 8)  // T-head pilings
+            softDisc(static_cast<float>(cx - 112), static_cast<float>(y), 1.5f, 1.4f, col(0x2E2415));
         softDisc(cx - 110.0f, cy + 27.0f, 2.0f, 2.0f, col(0x33383D));  // bollard
+        softDisc(cx - 108.0f, cy + 16.0f, 1.6f, 1.6f, col(0x33383D));
+        softDisc(cx - 108.0f, cy + 38.0f, 1.6f, 1.6f, col(0x33383D));
+        // supply cache on the beach beside the pier root
+        auto crate = [&](float bx2, float by2, float s2) {
+            const int x0 = static_cast<int>(bx2 - s2), y0 = static_cast<int>(by2 - s2);
+            const int w2 = static_cast<int>(s2 * 2.0f), h2 = static_cast<int>(s2 * 2.0f);
+            p.fillRect(x0 + 1, y0 + 1, w2, h2, col(0x0A141C, 70));
+            p.fillRect(x0, y0, w2, h2, col(0x7A5F38));
+            p.hline(x0, x0 + w2, y0, col(0x97764A));
+            p.hline(x0, x0 + w2, y0 + h2, col(0x46361F));
+            p.vline(x0 + w2 / 2, y0, y0 + h2, col(0x5C4830));
+        };
+        const float bx0 = static_cast<float>(cx) - 70.0f, by0 = static_cast<float>(cy) + 50.0f;
+        crate(bx0, by0, 3.2f);
+        crate(bx0 + 7.0f, by0 + 1.0f, 2.6f);
+        crate(bx0 + 3.0f, by0 - 5.0f, 2.4f);
+        for (int d = 0; d < 3; ++d) {  // red fuel drums
+            const float dx2 = bx0 + 12.5f, dy2 = by0 - 7.0f + static_cast<float>(d) * 5.0f;
+            softDisc(dx2 + 1.0f, dy2 + 1.2f, 2.6f, 2.2f, col(0x0A141C, 70));
+            softDisc(dx2, dy2, 2.4f, 2.0f, col(0x8A4030));
+            softDisc(dx2 - 0.6f, dy2 - 0.6f, 1.1f, 0.9f, col(0xB05A44));
+        }
         // Moored barge just off the pier end.
-        const float bx = cx - 95.0f, by = cy + 48.0f;
+        const float bx = cx - 95.0f, by = cy + 52.0f;
         softDisc(bx + 1.5f, by + 2.5f, 12.0f, 6.0f, col(0x0A141C, 80));
         p.fillRect(static_cast<int>(bx - 11), static_cast<int>(by - 5), 22, 10, col(0x5A4830));
         p.hline(static_cast<int>(bx - 11), static_cast<int>(bx + 10), static_cast<int>(by - 5),
@@ -3114,12 +3396,10 @@ PixelBuf makeFortressHull(int damage) {
             const float ry = cy + 54.0f + frand(k, 41, 9) * 12.0f;
             softDisc(rx, ry, 2.0f + frand(k, 7, 3) * 1.8f, 1.6f, col(0x6E6A5E));
         }
-        // Dead jungle: brown haze over the vegetation ring.
+        // Dead jungle: brown haze over wherever vegetation grew.
         for (int y = 0; y < H; ++y)
             for (int x = 0; x < W; ++x) {
-                const float qs = qAt(static_cast<float>(x), static_cast<float>(y), WX - 4, WY - 4);
-                const float qb = qAt(static_cast<float>(x), static_cast<float>(y), RX - 1, RY - 1);
-                if (qs < 1.0f || qb > 1.0f) continue;
+                if (!inVegBand(static_cast<float>(x), static_cast<float>(y))) continue;
                 if ((x * 5 + y * 3) % 11 < 6) p.blend(x, y, col(0x3A362A, 130));
             }
     }
@@ -4185,7 +4465,7 @@ namespace {
 constexpr std::uint32_t kArtCacheMagic = 0x50534152u;  // "PSAR"
 // Bump whenever any generated art changes (v10: A6M Zero redesign of the
 // primary enemy fighter and interceptor).
-constexpr std::uint32_t kArtCacheVersion = 21u;
+constexpr std::uint32_t kArtCacheVersion = 23u;
 
 void wr32(std::ostream& o, std::uint32_t v) {
     o.write(reinterpret_cast<const char*>(&v), 4);
