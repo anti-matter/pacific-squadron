@@ -13,6 +13,7 @@ int main() {
     test_drydock_undocks_and_sails();
     test_yamato_turrets_track_player();
     test_ships_are_rammed_by_capital_ships();
+    test_fortress_opens_its_bomb_bays();
     test_boss_slot_pinning();
     test_formation_edge_despawn();
     test_ground_scroll_anchor();

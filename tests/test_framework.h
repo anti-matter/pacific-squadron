@@ -39,6 +39,7 @@ void test_bomb_sweep_and_boss_20pct();
 void test_drydock_undocks_and_sails();
 void test_yamato_turrets_track_player();
 void test_ships_are_rammed_by_capital_ships();
+void test_fortress_opens_its_bomb_bays();
 void test_boss_slot_pinning();
 void test_formation_edge_despawn();
 void test_ground_scroll_anchor();

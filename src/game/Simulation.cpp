@@ -1047,6 +1047,15 @@ void Simulation::updateBosses(float dt) {
             b.phase = phase;
             emitSound("boss_phase");
         }
+        // Multi-stage fortress: doors blow open once the mounts are beaten
+        // down to the trigger fraction — the hull sprite swaps to the open
+        // variant (exposed bays + extra phase guns sell the last stand).
+        if (!def.hullSpriteOpen.empty() && def.openAtFraction < 1.9f &&
+            frac <= def.openAtFraction && b.hull >= 0 &&
+            pool_[static_cast<std::size_t>(b.hull)].sprite != def.hullSpriteOpen) {
+            pool_[static_cast<std::size_t>(b.hull)].sprite = def.hullSpriteOpen;
+            emitSound("explosion_small");
+        }
         const float phaseRate = phase > 0 && phase <= static_cast<int>(def.phases.size())
             ? def.phases[static_cast<std::size_t>(phase - 1)].rateMul
             : 1.0f;

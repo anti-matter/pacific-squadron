@@ -304,4 +304,52 @@ void test_shipped_data() {
         if (ev.trigger > st9.bossTime) ++yamatoLateWaves;
     CHECK(yamatoLateWaves >= 8);
     CHECK(yamato.phases.size() == 4);
+
+    // Stage 10: the flying fortress finale.
+    CHECK(data.stages.size() >= 10);
+    const StageDef& st10 = data.stages[9];
+    CHECK(st10.name == "THE SKY FORTRESS");
+    CHECK(st10.bossTime > 0.0f && st10.bossTime < st10.duration);
+    // Open-ocean arena tail: the fortress storms in over open water.
+    CHECK(!st10.terrain.empty());
+    CHECK(st10.terrain.back().kind == TerrainKind::Ocean);
+    const BossDef& omega = data.bosses[static_cast<std::size_t>(st10.bossRef)];
+    CHECK(omega.name == "SKY FORTRESS OMEGA");
+    CHECK(omega.hullSprite == "boss_fortress2_hull");
+    CHECK(omega.hullSpriteOpen == "boss_fortress2_open");
+    CHECK(omega.openAtFraction > 0.0f && omega.openAtFraction < 1.0f);
+    // Five predictive turrets (nose, dorsal pair, wingtips) + command spire
+    // + four AA gondolas + two silent bomb bays.
+    CHECK(omega.components.size() == 12);
+    int aimTurrets = 0, omegaAa = 0, silentBays = 0;
+    bool spire = false;
+    for (const auto& c : omega.components) {
+        if (c.sprite == "boss_yamato_wing") {
+            ++aimTurrets;
+            CHECK(c.aimAtPlayer);   // every fortress turret tracks the player
+        } else if (c.sprite == "boss_fort_aa") {
+            ++omegaAa;
+        } else if (c.sprite == "boss_fortress2_bay") {
+            ++silentBays;
+            CHECK(c.weapon.empty());  // doors never fire; the hull does
+            CHECK(c.hp > 0);          // ...but they can be shot off
+        } else if (c.sprite == "boss_airfield_tower") {
+            spire = true;
+        }
+    }
+    CHECK(aimTurrets == 5);
+    CHECK(omegaAa == 4);
+    CHECK(silentBays == 2);
+    CHECK(spire);
+    // Kill-difficulty budget: ~35% above the battleship's 1080 hp.
+    int omegaHp = omega.hullHp;
+    for (const auto& c : omega.components) omegaHp += c.hp;
+    CHECK(omegaHp == 1450);
+    CHECK(omegaHp * 100 >= 1080 * 131 && omegaHp * 100 <= 1080 * 137);
+    // Escort waves keep coming straight through the final boss window.
+    int omegaLateWaves = 0;
+    for (const auto& ev : st10.events)
+        if (ev.trigger > st10.bossTime) ++omegaLateWaves;
+    CHECK(omegaLateWaves >= 8);
+    CHECK(omega.phases.size() == 4);
 }

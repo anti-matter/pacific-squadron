@@ -5197,6 +5197,298 @@ PixelBuf makeDrydockPontoon() {
     return p;
 }
 
+// ---------------------------------------------------------------------------
+// SKY FORTRESS OMEGA (level 10 finale): a vast four-engine flying fortress,
+// nose down. Multi-stage: once the mounts are beaten down, the sim swaps to
+// the bays-open variant — doors gone, bomb racks exposed — for the last
+// stand. Coverage-AA'd silhouette (same language as the Super Battleship).
+// ---------------------------------------------------------------------------
+namespace skyfort {
+constexpr int W = 236, H = 224;
+inline float fusRadius(float y) {  // screen y; nose (bottom) tapers to a tip
+    if (y < 26.0f || y > 208.0f) return -1.0f;
+    if (y < 34.0f) return 12.0f + (y - 26.0f) * 1.0f;   // tail cap
+    if (y < 168.0f) return 30.0f;                       // main body
+    return 30.0f * (1.0f - (y - 168.0f) / 40.0f);       // nose cone
+}
+}  // namespace skyfort
+
+// damage: 0 pristine, 1 light, 2 damaged, 3 wreck. baysOpen swaps the
+// centerline bay doors for exposed bomb racks.
+PixelBuf makeFortress2Hull(int damage, bool baysOpen) {
+    using namespace skyfort;
+    const int cx = W / 2;
+    PixelBuf p(W, H);
+    auto mix = [](std::uint32_t a, std::uint32_t b, float t) -> std::uint32_t {
+        auto ch = [](std::uint32_t v, int s) { return static_cast<float>((v >> s) & 0xFFu); };
+        const float r  = ch(a, 24) + (ch(b, 24) - ch(a, 24)) * t;
+        const float g  = ch(a, 16) + (ch(b, 16) - ch(a, 16)) * t;
+        const float bl = ch(a, 8)  + (ch(b, 8)  - ch(a, 8))  * t;
+        const float al = ch(a, 0)  + (ch(b, 0)  - ch(a, 0))  * t;
+        return (static_cast<std::uint32_t>(r + 0.5f) << 24) |
+               (static_cast<std::uint32_t>(g + 0.5f) << 16) |
+               (static_cast<std::uint32_t>(bl + 0.5f) << 8) |
+               static_cast<std::uint32_t>(al + 0.5f);
+    };
+    auto hash = [](int x, int y, int s) {
+        std::uint32_t h = static_cast<std::uint32_t>(x * 374761393 + y * 668265263 +
+                                                     s * 1274126177);
+        h = (h ^ (h >> 13)) * 1274126177u;
+        return (h ^ (h >> 16)) & 0xFFFFu;
+    };
+    auto frand = [&](int x, int y, int s) { return static_cast<float>(hash(x, y, s)) / 65535.0f; };
+    auto softDisc = [&](float ex, float ey, float rx, float ry, std::uint32_t c) {
+        for (int y = static_cast<int>(ey - ry) - 1; y <= static_cast<int>(ey + ry) + 1; ++y)
+            for (int x = static_cast<int>(ex - rx) - 1; x <= static_cast<int>(ex + rx) + 1; ++x) {
+                const float dx = (x + 0.5f - ex) / rx, dy = (y + 0.5f - ey) / ry;
+                const float q2 = dx * dx + dy * dy;
+                if (q2 > 1.0f) continue;
+                if (q2 > 0.68f) {
+                    const float f = 1.0f - (q2 - 0.68f) / 0.32f;
+                    const int a = static_cast<int>(static_cast<float>(c & 0xFFu) * f);
+                    p.blend(x, y, (c & 0xFFFFFF00u) | static_cast<std::uint32_t>(a));
+                } else {
+                    p.blend(x, y, c);
+                }
+            }
+    };
+    auto clampF = [](float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); };
+    auto covBand = [&](float v, float lo, float hi) {
+        return clampF(std::fmin(v - lo + 0.5f, hi - v + 0.5f), 0.0f, 1.0f);
+    };
+    const float ca = 0.951f, sa = 0.309f;   // wing sweep 18 deg
+    const float ta = 0.914f, st = 0.407f;   // tailplane sweep 24 deg
+    auto covRect = [&](float px, float py, float ccx, float ccy,
+                       float ux, float uy, float halfA, float halfB) {
+        const float dx = px - ccx, dy = py - ccy;
+        const float a = dx * ux + dy * uy;
+        const float b = -dx * uy + dy * ux;
+        return std::fmin(clampF(halfA - std::fabs(a) + 0.5f, 0.0f, 1.0f),
+                         clampF(halfB - std::fabs(b) + 0.5f, 0.0f, 1.0f));
+    };
+    auto nacelleCov = [&](float px, float py) {
+        float cn = 0.0f;
+        for (int s = -1; s <= 1; s += 2) {
+            cn = std::fmax(cn, covRect(px, py, cx + s * 52.0f, 112.0f, 0.0f, 1.0f, 15.0f, 6.5f));
+            cn = std::fmax(cn, covRect(px, py, cx + s * 86.0f, 101.0f, 0.0f, 1.0f, 13.0f, 6.0f));
+        }
+        return cn;
+    };
+
+    // --- silhouette: fuselage + swept wings + tailplanes + fin + nacelles ----
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const float px = x + 0.5f, py = y + 0.5f;
+            const float r = fusRadius(py);
+            float covF = 0.0f;
+            if (r > 0.0f)
+                covF = std::fmin(covBand(py, 26.5f, 207.5f),
+                                 clampF(r - std::fabs(px - cx) + 0.5f, 0.0f, 1.0f));
+            const float cwP = covRect(px, py, cx - 70.0f, 105.5f, -ca, -sa, 55.0f, 15.0f);
+            const float cwS = covRect(px, py, cx + 70.0f, 105.5f,  ca, -sa, 55.0f, 15.0f);
+            const float ctP = covRect(px, py, cx - 40.0f, 46.0f, -ta, -st, 30.0f, 9.0f);
+            const float ctS = covRect(px, py, cx + 40.0f, 46.0f,  ta, -st, 30.0f, 9.0f);
+            const float cf = std::fmin(covBand(py, 26.5f, 74.0f),
+                                       clampF(5.0f - std::fabs(px - cx) + 0.5f, 0.0f, 1.0f));
+            const float cn = nacelleCov(px, py);
+            float cov = std::fmax(cn, std::fmax(covF,
+                          std::fmax(std::fmax(cwP, cwS), std::fmax(std::fmax(ctP, ctS), cf))));
+            if (cov <= 0.0f) continue;
+            std::uint32_t c;
+            if (cn >= cov && cn >= covF) {
+                c = mix(col(0x4E545A), col(0x5A6066), frand(x, y, 1));
+            } else if (cf >= cov && cf >= covF) {
+                c = col(0x565E64);
+                if (x == cx - 5) c = mix(c, col(0x8A9298), 0.5f);
+            } else if (covF >= cov) {
+                c = mix(col(0x8A9298), col(0x7E868C), frand(x, y / 2, 2));
+                if ((y % 7) < 1 && std::fabs(px - cx) > 8.0f) c = mix(c, col(0x666E74), 0.6f);
+            } else {
+                c = mix(col(0x7E868C), col(0x737B81), frand(x, y / 2, 3));
+                if (hash(x / 7, y / 7, 4) % 10 == 0) c = mix(c, col(0x5E6A58), 0.40f);
+                if (hash(x / 5, y / 9, 5) % 13 == 0) c = mix(c, col(0x626B60), 0.30f);
+            }
+            // sun from the top-left; shade the starboard/trailing side
+            if (px < cx - 30.0f) c = mix(c, col(0xD2D8DE), 0.07f);
+            else if (px > cx + 30.0f) c = mix(c, col(0x1A2026), 0.06f);
+            if (cov >= 1.0f) p.set(x, y, c);
+            else p.set(x, y, (c & 0xFFFFFF00u) |
+                                static_cast<std::uint32_t>(cov * 255.0f + 0.5f));
+        }
+
+    // --- spine + bay block (interior of the fuselage) -------------------------
+    for (int y = 92; y < 118; ++y)
+        for (int x = cx - 9; x <= cx + 9; ++x)
+            p.set(x, y, x == cx - 9 ? col(0x8A9298) : (x == cx + 9 ? col(0x33393F) : col(0x4E565C)));
+    const int bayY0 = 122, bayY1 = 162;
+    for (int y = bayY0; y < bayY1; ++y)
+        for (int x = cx - 26; x < cx + 26; ++x) {
+            if (!baysOpen) {
+                // closed doors: two panels with a center seam and hinge rows
+                std::uint32_t c = (x < cx ? mix(col(0x767E84), col(0x6E767C), frand(x, y, 6))
+                                          : mix(col(0x6E767C), col(0x666E74), frand(x, y, 6)));
+                if (x == cx - 1 || x == cx) c = col(0x2A3036);
+                if ((y % 9) < 1 && x != cx - 1 && x != cx) c = mix(c, col(0x3C444A), 0.7f);
+                if (y == bayY0 || y == bayY1 - 1) c = col(0x33393F);
+                p.set(x, y, c);
+            } else {
+                // open bays: dark cavity, side walls, two racks of bombs
+                std::uint32_t c = col(0x0E1218);
+                if (y == bayY0 || y == bayY1 - 1) c = col(0x3A4046);
+                if (std::fabs(x + 0.5f - cx) >= 24.0f) c = col(0x333B41);
+                p.set(x, y, c);
+            }
+        }
+    if (baysOpen) {
+        // bomb racks: two columns of olive bombs with yellow nose bands
+        for (const int bx : {cx - 13, cx + 11}) {
+            for (int by = bayY0 + 3; by < bayY1 - 6; by += 11) {
+                for (int y = by; y < by + 9; ++y)
+                    for (int x = bx; x < bx + 4; ++x) {
+                        std::uint32_t c = col(0x5E6A3E);
+                        if (x == bx) c = col(0x7C8A56);
+                        if (x == bx + 3) c = col(0x39412A);
+                        if (y == by + 1) c = col(0xC8A23C);
+                        p.set(x, y, c);
+                    }
+                p.set(bx + 1, by + 9, col(0x23272B));
+                p.set(bx + 2, by + 9, col(0x23272B));
+            }
+        }
+    } else {
+        // stenciled hazard dashes fore and aft of the closed doors
+        for (int x = cx - 20; x <= cx + 20; ++x) {
+            if ((x / 3) % 2 == 0) {
+                p.set(x, bayY0 + 3, col(0xC8A23C));
+                p.set(x, bayY1 - 4, col(0xC8A23C));
+            }
+        }
+    }
+
+    // --- cockpit greenhouse ---------------------------------------------------
+    softDisc(cx, 185.0f, 7.5f, 12.0f, col(0x31505F));
+    for (int k = -6; k <= 6; ++k) {
+        p.set(cx + k, 180, col(0x6E767C));
+        p.set(cx + k, 186, col(0x6E767C));
+    }
+    // --- prop discs + cowlings ------------------------------------------------
+    for (int s = -1; s <= 1; s += 2) {
+        for (int i = 0; i < 2; ++i) {
+            const float nx = cx + s * (i == 0 ? 52.0f : 86.0f);
+            const float ny = (i == 0 ? 112.0f : 101.0f) + (i == 0 ? 15.0f : 13.0f);
+            softDisc(nx, ny, 6.5f, 2.6f, col(0x1E2226));
+            softDisc(nx, ny, 1.6f, 1.4f, col(0x9AA0A6));
+            for (int x = static_cast<int>(nx) - 6; x <= static_cast<int>(nx) + 6; ++x)
+                if ((p.get(x, static_cast<int>(ny) - 4) & 0xFFu) != 0u)
+                    p.set(x, static_cast<int>(ny) - 4,
+                          mix(p.get(x, static_cast<int>(ny) - 4), col(0x2A3036), 0.6f));
+        }
+    }
+    // --- wing walkway + aileron hinge lines -----------------------------------
+    for (int s = -1; s <= 1; s += 2) {
+        for (int t = 22; t < 52; ++t) {
+            const int wx = cx + s * static_cast<int>(19.0f + t * ca);
+            const int wy = 122 - static_cast<int>(t * sa);
+            p.set(wx, wy, mix(p.get(wx, wy), col(0x5A6268), 0.7f));
+            p.set(wx, wy + 11, mix(p.get(wx, wy + 11), col(0x4A5258), 0.6f));
+        }
+        for (int t = 12; t < 30; ++t) {
+            const int wx = cx + s * static_cast<int>(14.0f + t * ta);
+            const int wy = 60 - static_cast<int>(t * st);
+            p.set(wx, wy, mix(p.get(wx, wy), col(0x4A5258), 0.7f));
+        }
+    }
+
+    // --- battle damage ----------------------------------------------------------
+    const auto scorch = [&](float sx, float sy, float r) {
+        softDisc(sx, sy, r * 1.3f, r * 1.1f, col(0x35332E, 160));
+        softDisc(sx, sy, r * 0.8f, r * 0.7f, col(0x14120F, 220));
+    };
+    if (damage >= 1) {
+        scorch(cx - 46.0f, 118.0f, 5.0f);
+        softDisc(cx + 60.0f, 96.0f, 8.0f, 5.0f, col(0x2A2620, 120));
+    }
+    if (damage >= 2) {
+        scorch(cx + 52.0f, 112.0f, 6.5f);
+        scorch(cx - 86.0f, 101.0f, 5.5f);
+        scorch(cx + 12.0f, 150.0f, 5.0f);
+        for (int k = 0; k < 5; ++k)  // torn trailing edge, port wing
+            p.set(cx - 60 - k * 7, 128 - (k % 3), col(0x10141A));
+    }
+    if (damage >= 3) {
+        scorch(cx - 52.0f, 112.0f, 8.0f);   // port inner engine on fire
+        softDisc(cx - 52.0f, 112.0f, 5.0f, 5.0f, col(0xE07A28, 220));
+        softDisc(cx - 52.0f, 109.0f, 3.0f, 3.0f, col(0xF2C048, 220));
+        scorch(cx + 86.0f, 101.0f, 6.0f);
+        softDisc(cx + 86.0f, 101.0f, 4.0f, 4.0f, col(0xE07A28, 200));
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x)
+                if ((x * 7 + y * 11) % 13 < 4 && (p.get(x, y) & 0xFFu) != 0u)
+                    p.blend(x, y, col(0x141311, 100));
+    }
+    outlineSilhouette(p, col(0x0E1216, 150));
+    return p;
+}
+
+// Bomb-bay door component: 20x40 armored panel with hinge rows and hazard
+// chevrons (rides on the closed hull; the hull art sells the open state).
+PixelBuf makeFortress2Bay() {
+    constexpr int W = 20, H = 40;
+    PixelBuf p(W, H);
+    auto mix = [](std::uint32_t a, std::uint32_t b, float t) -> std::uint32_t {
+        auto ch = [](std::uint32_t v, int s) { return static_cast<float>((v >> s) & 0xFFu); };
+        const float r  = ch(a, 24) + (ch(b, 24) - ch(a, 24)) * t;
+        const float g  = ch(a, 16) + (ch(b, 16) - ch(a, 16)) * t;
+        const float bl = ch(a, 8)  + (ch(b, 8)  - ch(a, 8))  * t;
+        const float al = ch(a, 0)  + (ch(b, 0)  - ch(a, 0))  * t;
+        return (static_cast<std::uint32_t>(r + 0.5f) << 24) |
+               (static_cast<std::uint32_t>(g + 0.5f) << 16) |
+               (static_cast<std::uint32_t>(bl + 0.5f) << 8) |
+               static_cast<std::uint32_t>(al + 0.5f);
+    };
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            std::uint32_t c = mix(col(0x767E84), col(0x666E74), static_cast<float>(x) / W);
+            if (x == 0 || y == 0) c = mix(c, col(0xB6BEC4), 0.5f);
+            if (x == W - 1 || y == H - 1) c = mix(c, col(0x2A3036), 0.6f);
+            if ((y % 8) < 1 && x > 1 && x < W - 2) c = mix(c, col(0x3C444A), 0.7f);
+            p.set(x, y, c);
+        }
+    for (int x = 2; x < W - 2; ++x)  // hazard chevrons along both edges
+        if ((x / 2) % 2 == 0) {
+            p.set(x, 2, col(0xC8A23C));
+            p.set(x, H - 3, col(0xC8A23C));
+        }
+    outlineSilhouette(p, col(0x0E1216, 160));
+    return p;
+}
+
+// Falling bomb (b_bombs): stubby dark body, lit rail, yellow band, tail fins.
+PixelBuf makeBombEnemy() {
+    constexpr int W = 8, H = 16;
+    PixelBuf p(W, H);
+    for (int y = 3; y < 14; ++y)
+        for (int x = 2; x <= 5; ++x) {
+            std::uint32_t c = col(0x4A5056);
+            if (x == 2) c = col(0x8A9298);
+            if (x == 5) c = col(0x20262C);
+            if (y == 4) c = col(0xC8A23C);
+            p.set(x, y, c);
+        }
+    // nose (points screen-down)
+    for (int x = 2; x <= 5; ++x) p.set(x, 14, col(0x20262C));
+    for (int x = 3; x <= 4; ++x) p.set(x, 15, col(0x141A20));
+    // tail fins
+    for (int y = 0; y < 3; ++y) {
+        p.set(0, y, col(0x2A3036));
+        p.set(1, y, col(0x3C444A));
+        p.set(6, y, col(0x3C444A));
+        p.set(7, y, col(0x2A3036));
+    }
+    outlineSilhouette(p, col(0x0A0E12, 180));
+    return p;
+}
+
 // SUPER BATTLESHIP (level 9 finale): a Yamato-inspired capital ship, bow
 // down. Long and sleek — a heavily armored stretched hull barely larger
 // than the Heavy Cruiser, not a broad barge. Two triple main turrets,
@@ -5761,7 +6053,7 @@ namespace {
 constexpr std::uint32_t kArtCacheMagic = 0x50534152u;  // "PSAR"
 // Bump whenever any generated art changes (v10: A6M Zero redesign of the
 // primary enemy fighter and interceptor).
-constexpr std::uint32_t kArtCacheVersion = 32u;
+constexpr std::uint32_t kArtCacheVersion = 33u;
 
 void wr32(std::ostream& o, std::uint32_t v) {
     o.write(reinterpret_cast<const char*>(&v), 4);
@@ -6006,6 +6298,18 @@ bool generateAllArt(Renderer& r, const std::string& cachePath,
     add("boss_yamato_turret_aft", makeYamatoTurretMain(false));
     add("boss_yamato_wing", makeYamatoWingTurret());
     add("boss_yamato_bridge", makeYamatoBridge());
+    add("boss_fortress2_hull", makeFortress2Hull(0, false));
+    add("boss_fortress2_hull_light", makeFortress2Hull(1, false));
+    add("boss_fortress2_hull_dmg", makeFortress2Hull(2, false));
+    add("boss_fortress2_hull_wreck", makeFortress2Hull(3, false));
+    add("boss_fortress2_hull_flash", toFlashSilhouette(makeFortress2Hull(0, false)));
+    add("boss_fortress2_open", makeFortress2Hull(0, true));
+    add("boss_fortress2_open_light", makeFortress2Hull(1, true));
+    add("boss_fortress2_open_dmg", makeFortress2Hull(2, true));
+    add("boss_fortress2_open_wreck", makeFortress2Hull(3, true));
+    add("boss_fortress2_open_flash", toFlashSilhouette(makeFortress2Hull(0, true)));
+    add("boss_fortress2_bay", makeFortress2Bay());
+    add("bomb_enemy", makeBombEnemy());
     add("boss_airfield_hangar", makeAirfieldHangar());
     add("boss_airfield_tower", makeAirfieldTower());
     add("boss_cruiser_hull", makeCruiserHull(0));

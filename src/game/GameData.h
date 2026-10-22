@@ -190,6 +190,11 @@ struct BossPhaseDef {
 struct BossDef {
     std::string name;
     std::string hullSprite = "boss_hull";
+    // Multi-stage fortress: once remaining mount hp falls to this fraction
+    // the hull sprite swaps to the open variant (bomb-bay doors blown) and
+    // stays there for the rest of the fight. 2 = never.
+    std::string hullSpriteOpen = "";
+    float openAtFraction = 2.0f;
     int hullWidth = 160;
     int hullHeight = 96;
     int hullHp = 60;

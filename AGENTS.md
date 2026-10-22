@@ -86,13 +86,15 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
 
 ## Data conventions
 
-- **Stages are auto-discovered** from `assets/data/stages/*.json`; the game
+- **Stages are auto-discovered** from `assets/data/stages/*.json`, ordered by
+  the first number in the filename (`stage2` before `stage10`); the game
   reaches Victory after the last one. `WWII_START_STAGE` is 1-based.
 - **New bosses go at the END of `bosses.json`** — tests reference indices.
 - **Kill-difficulty budget**: each boss's total HP (hull + components) is
   ~1.31–1.37× the previous boss's total, and `test_data.cpp` pins the exact
   number plus the band. Chain so far: destroyer 194 → carrier 252 →
-  fortress 338 → cruiser 448 → airfield 596 → drydock 800 → battleship 1080.
+  fortress 338 → cruiser 448 → airfield 596 → drydock 800 → battleship 1080
+  → sky fortress 1450.
 - `test_data.cpp` pins per-stage boss identity/composition/HP/phases. Any
   data change must update the pins deliberately, never by accident.
 - Boss JSON: `arenaOcean: true` = boss carries its own ground and the world
@@ -104,6 +106,12 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
   splash on launch.
   Top-level `boss` + `bossTime` select the stage boss; event-level `"boss"`
   is broken, top-level stage `hpMul` is ignored.
+  `hullSpriteOpen` + `openAtFraction` = multi-stage hull (sky fortress):
+  once remaining **mount** hp falls to that fraction of the boss total the
+  hull entity's `sprite` swaps to the open variant for good — the renderer
+  resolves `_dmg/_wreck/_flash` against the new base automatically. Register
+  the full variant set for the open name. Note phase `hpFraction` and
+  `openAtFraction` both key on mount hp / (hull + mounts), hull hp excluded.
   Component `"aimAtPlayer": true` = predictive turret: its `Entity.angle`
   tracks the player (with lead for shell flight time, deterministic) and the
   renderer rotates the sprite about its centre — barrel points **screen-down**
@@ -165,15 +173,16 @@ problems with blur or generic smoothing filters. Concretely:
 
 ## Content roadmap
 
-Levels 1–9 shipped (stage 9 TRUK LAGOON: SUPER BATTLESHIP — a Yamato-class
-giant with fore/aft triple main turrets, two predictive rotating 12.7 cm
-wing turrets (`aimAtPlayer`), four AA sponsons, a pagoda fire-control
-bridge, and FOUR damage phases; continuous escort waves hammer in through
-the whole boss window. Too big to undock — it fights at anchor).
-Remaining per the design sheet: **10 SKY
-FORTRESS** (multi-stage flying fortress, bomb bays open with extra guns,
-final core-exposed phase; boss index 1 already holds an older Sky Fortress —
-the finale supersedes or reuses it).
+**All ten levels shipped.** Stage 10 THE SKY FORTRESS closes the design
+sheet with SKY FORTRESS OMEGA: a multi-stage flying fortress whose bomb-bay
+doors blow open at 30% mount hp (hull sprite swap to `boss_fortress2_open`,
+bombs raining via `b_bombs`) and which grinds through four escalating
+phases; five predictive turrets, four AA gondolas, a command spire and
+two destructible (silent) bay doors. Continuous escort waves through the
+boss window; Victory follows the last stage. Level 9 TRUK LAGOON (SUPER
+BATTLESHIP, Yamato-class at anchor) is documented in `test_data.cpp` pins.
+The boss-index-1 "SKY FORTRESS GX-7" remains as an early-stage set piece;
+the finale is a distinct boss (index 9).
 
 ## Gotchas
 

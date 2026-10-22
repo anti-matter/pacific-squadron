@@ -1470,13 +1470,14 @@ const HelpSpriteEntry kHelpBosses2[] = {
     {"boss_airfield_hull", "AIRFIELD COMMAND - ENDLESS ZEROES"},
     {"boss_drydock_hull", "DRYDOCK - SAILS WHEN STRIPPED"},
     {"boss_yamato_hull", "SUPER BATTLESHIP - TRIPLE TURRETS"},
+    {"boss_fortress2_hull", "SKY FORTRESS OMEGA - BOMB BAYS"},
 };
 
 const HelpPageDef kHelpPages[] = {
     {"ENEMY AIRCRAFT", kHelpAircraft, 5, 34, 34, 46.0f, 76.0f},
     {"SEA AND GROUND TARGETS", kHelpGround, 5, 34, 40, 46.0f, 76.0f},
     {"ENEMY FLAGSHIPS", kHelpBosses, 5, 56, 56, 56.0f, 88.0f},
-    {"ENEMY FLAGSHIPS II", kHelpBosses2, 4, 56, 56, 56.0f, 88.0f},
+    {"ENEMY FLAGSHIPS II", kHelpBosses2, 5, 56, 56, 56.0f, 88.0f},
 };
 }  // namespace
 

@@ -309,6 +309,8 @@ bool parseBossesJson(const std::string& text, std::vector<BossDef>& out, std::st
         BossDef b;
         b.name = j["name"].get<std::string>();
         b.hullSprite = getS(j, "hullSprite", b.hullSprite);
+        b.hullSpriteOpen = getS(j, "hullSpriteOpen", b.hullSpriteOpen);
+        b.openAtFraction = getF(j, "openAtFraction", b.openAtFraction);
         b.hullWidth = getI(j, "hullWidth", b.hullWidth);
         b.hullHeight = getI(j, "hullHeight", b.hullHeight);
         b.hullHp = std::max(1, getI(j, "hullHp", b.hullHp));
@@ -557,7 +559,8 @@ bool GameData::loadAll(const std::string& assetDir, std::string& error) {
             return false;
     }
 
-    // Stages: data/stages/*.json, sorted by filename for ordering.
+    // Stages: data/stages/*.json, ordered by the first number in the
+    // filename (stage2 < stage10), falling back to plain name order.
     {
         const fs::path stageDir = base / "data" / "stages";
         std::vector<fs::path> files;
@@ -566,7 +569,24 @@ bool GameData::loadAll(const std::string& assetDir, std::string& error) {
                 if (entry.is_regular_file() && entry.path().extension() == ".json")
                     files.push_back(entry.path());
         }
-        std::sort(files.begin(), files.end());
+        const auto stageKey = [](const fs::path& p) -> std::pair<long long, std::string> {
+            const std::string name = p.filename().string();
+            long long num = -1;
+            for (std::size_t i = 0; i < name.size(); ++i) {
+                if (name[i] >= '0' && name[i] <= '9') {
+                    num = 0;
+                    for (; i < name.size() && name[i] >= '0' && name[i] <= '9' && num < 1000000000LL;
+                         ++i)
+                        num = num * 10 + (name[i] - '0');
+                    break;
+                }
+            }
+            return {num, name};
+        };
+        std::sort(files.begin(), files.end(),
+                  [&](const fs::path& a, const fs::path& b) {
+                      return stageKey(a) < stageKey(b);
+                  });
         for (const auto& f : files) {
             StageDef stage;
             const std::string text = readFile(f);

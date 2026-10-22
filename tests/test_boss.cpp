@@ -660,3 +660,75 @@ void test_ships_are_rammed_by_capital_ships() {
     CHECK(!boatDeepInside);         // ...but never slid underneath the hull
     CHECK(boatGone);                // ...it was rammed and destroyed
 }
+
+// Multi-stage fortress: once the mounts are beaten down to openAtFraction
+// the hull entity's sprite swaps to the bays-open variant and stays there.
+void test_fortress_opens_its_bomb_bays() {
+    const char* weaponsJson = R"([
+      { "name": "gun_l1", "pattern": "forward", "damage": 5, "fireInterval": 0.05,
+        "speed": 800, "count": 1, "lifetime": 1.2 }
+    ])";
+    const char* powerupsJson = R"([
+      { "name": "powerup_p", "effect": "weapon_up", "sprite": "powerup_p" }
+    ])";
+    const char* bossesJson = R"([
+      {
+        "name": "TEST FORTRESS", "hullSprite": "boss_fortress2_hull",
+        "hullSpriteOpen": "boss_fortress2_open", "openAtFraction": 0.75,
+        "hullWidth": 120, "hullHeight": 96, "hullHp": 10, "hullScore": 100,
+        "entryY": 120, "hoverAmp": 0, "hoverFreq": 0.1,
+        "defeatDrop": "powerup_p",
+        "components": [
+          { "name": "BAY", "sprite": "boss_fortress2_bay", "offsetX": 0, "offsetY": 0,
+            "width": 20, "height": 40, "hp": 90, "score": 100,
+            "weapon": "", "firstFireDelay": 999 }
+        ]
+      }
+    ])";
+    GameData data;
+    std::string err;
+    CHECK(parseWeaponsJson(weaponsJson, data.weapons, err));
+    CHECK(parsePowerupsJson(powerupsJson, data.powerups, err));
+    CHECK(parseEnemiesJson("[]", data.enemies, err));
+    CHECK(parseBossesJson(bossesJson, data.bosses, err));
+    StageDef stage;
+    stage.name = "fortress test";
+    stage.duration = 600;
+    stage.bossTime = 1e9f;  // boss spawned manually
+    data.stages.push_back(stage);
+    CHECK(data.linkReferences(err));
+
+    Simulation sim(data, 7);
+    sim.startStage(0, {});
+    sim.setGodMode(true);
+    sim.debugSpawnBoss(0);
+    for (int f = 0; f < 60 * 3; ++f) {
+        sim.setPlayerIntent({0, 0}, false, false);
+        sim.update();
+        SimEvent e;
+        while (sim.popEvent(e)) {}
+    }
+    auto hullSprite = [&sim]() -> std::string {
+        for (const auto& e : sim.entities())
+            if (e.alive && e.kind == EKind::BossHull) return e.sprite;
+        return "";
+    };
+    // Full mounts (frac 90/100 = 0.9 > 0.75): still the closed hull.
+    CHECK(hullSprite() == "boss_fortress2_hull");
+
+    // One BOMB: 20% of max (18) off the mount -> frac 0.72 <= 0.75.
+    sim.setPlayerIntent({0, 0}, false, true);
+    sim.update();
+    sim.setPlayerIntent({0, 0}, false, false);
+    sim.update();
+    CHECK(hullSprite() == "boss_fortress2_open");  // doors blown, for good
+
+    // And it never swaps back while the fight goes on.
+    for (int f = 0; f < 60 * 3; ++f) {
+        sim.setPlayerIntent({0, 0}, false, false);
+        sim.update();
+        SimEvent e;
+        while (sim.popEvent(e)) {}
+    }
+    CHECK(hullSprite() == "boss_fortress2_open");
+}

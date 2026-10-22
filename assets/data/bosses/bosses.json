@@ -1148,5 +1148,209 @@
         "extraInterval": 1.9
       }
     ]
+  },
+  {
+    "name": "SKY FORTRESS OMEGA",
+    "hullSprite": "boss_fortress2_hull",
+    "hullSpriteOpen": "boss_fortress2_open",
+    "openAtFraction": 0.3,
+    "hullWidth": 236,
+    "hullHeight": 224,
+    "hullHp": 600,
+    "hullScore": 20000,
+    "entryY": 132,
+    "hoverAmp": 44,
+    "hoverFreq": 0.07,
+    "deathEffect": 2,
+    "defeatDrop": "powerup_p",
+    "components": [
+      {
+        "name": "NOSE TURRET",
+        "sprite": "boss_yamato_wing",
+        "offsetX": 0,
+        "offsetY": 84,
+        "width": 30,
+        "height": 36,
+        "hp": 90,
+        "score": 1400,
+        "weapon": "b_dp_gun",
+        "fireInterval": 2.0,
+        "firstFireDelay": 2.2,
+        "aimAtPlayer": true
+      },
+      {
+        "name": "DORSAL TURRET PORT",
+        "sprite": "boss_yamato_wing",
+        "offsetX": -34,
+        "offsetY": -10,
+        "width": 30,
+        "height": 36,
+        "hp": 85,
+        "score": 1400,
+        "weapon": "b_dp_gun",
+        "fireInterval": 2.2,
+        "firstFireDelay": 2.6,
+        "aimAtPlayer": true
+      },
+      {
+        "name": "DORSAL TURRET STBD",
+        "sprite": "boss_yamato_wing",
+        "offsetX": 34,
+        "offsetY": -10,
+        "width": 30,
+        "height": 36,
+        "hp": 85,
+        "score": 1400,
+        "weapon": "b_dp_gun",
+        "fireInterval": 2.3,
+        "firstFireDelay": 2.8,
+        "aimAtPlayer": true
+      },
+      {
+        "name": "COMMAND SPIRE",
+        "sprite": "boss_airfield_tower",
+        "offsetX": 0,
+        "offsetY": -24,
+        "width": 36,
+        "height": 44,
+        "hp": 100,
+        "score": 2000,
+        "weapon": "b_big_turret",
+        "fireInterval": 2.6,
+        "firstFireDelay": 3.0
+      },
+      {
+        "name": "WING TURRET PORT",
+        "sprite": "boss_yamato_wing",
+        "offsetX": -118,
+        "offsetY": -26,
+        "width": 30,
+        "height": 36,
+        "hp": 75,
+        "score": 1200,
+        "weapon": "b_aimed3",
+        "fireInterval": 2.4,
+        "firstFireDelay": 3.2,
+        "aimAtPlayer": true
+      },
+      {
+        "name": "WING TURRET STBD",
+        "sprite": "boss_yamato_wing",
+        "offsetX": 118,
+        "offsetY": -26,
+        "width": 30,
+        "height": 36,
+        "hp": 75,
+        "score": 1200,
+        "weapon": "b_aimed3",
+        "fireInterval": 2.5,
+        "firstFireDelay": 3.4,
+        "aimAtPlayer": true
+      },
+      {
+        "name": "AA GONDOLA PORT-AFT",
+        "sprite": "boss_fort_aa",
+        "offsetX": -62,
+        "offsetY": -4,
+        "width": 26,
+        "height": 26,
+        "hp": 40,
+        "score": 600,
+        "weapon": "b_aa_flak",
+        "fireInterval": 2.6,
+        "firstFireDelay": 3.0
+      },
+      {
+        "name": "AA GONDOLA STBD-AFT",
+        "sprite": "boss_fort_aa",
+        "offsetX": 62,
+        "offsetY": -4,
+        "width": 26,
+        "height": 26,
+        "hp": 40,
+        "score": 600,
+        "weapon": "b_aa_flak",
+        "fireInterval": 2.7,
+        "firstFireDelay": 3.2
+      },
+      {
+        "name": "AA GONDOLA PORT-FWD",
+        "sprite": "boss_fort_aa",
+        "offsetX": -86,
+        "offsetY": -18,
+        "width": 26,
+        "height": 26,
+        "hp": 40,
+        "score": 600,
+        "weapon": "b_aa_flak",
+        "fireInterval": 2.8,
+        "firstFireDelay": 3.4
+      },
+      {
+        "name": "AA GONDOLA STBD-FWD",
+        "sprite": "boss_fort_aa",
+        "offsetX": 86,
+        "offsetY": -18,
+        "width": 26,
+        "height": 26,
+        "hp": 40,
+        "score": 600,
+        "weapon": "b_aa_flak",
+        "fireInterval": 2.9,
+        "firstFireDelay": 3.6
+      },
+      {
+        "name": "BOMB BAY PORT",
+        "sprite": "boss_fortress2_bay",
+        "offsetX": -16,
+        "offsetY": 30,
+        "width": 20,
+        "height": 40,
+        "hp": 90,
+        "score": 1000,
+        "weapon": "",
+        "fireInterval": 0,
+        "firstFireDelay": 0
+      },
+      {
+        "name": "BOMB BAY STBD",
+        "sprite": "boss_fortress2_bay",
+        "offsetX": 16,
+        "offsetY": 30,
+        "width": 20,
+        "height": 40,
+        "hp": 90,
+        "score": 1000,
+        "weapon": "",
+        "fireInterval": 0,
+        "firstFireDelay": 0
+      }
+    ],
+    "phases": [
+      {
+        "hpFraction": 0.5,
+        "rateMul": 0.88,
+        "extraWeapon": "b_dp_gun",
+        "extraInterval": 3.4
+      },
+      {
+        "hpFraction": 0.3,
+        "rateMul": 0.76,
+        "extraWeapon": "b_bombs",
+        "extraInterval": 2.4
+      },
+      {
+        "hpFraction": 0.18,
+        "rateMul": 0.65,
+        "extraWeapon": "b_spray5",
+        "extraInterval": 2.0
+      },
+      {
+        "hpFraction": 0.06,
+        "rateMul": 0.54,
+        "extraWeapon": "b_radial12",
+        "extraInterval": 2.2
+      }
+    ]
   }
 ]
