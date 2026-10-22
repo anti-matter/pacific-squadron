@@ -1583,16 +1583,20 @@ void Application::renderHelp() {
     };
     constexpr float kIconX1 = 74.0f, kDescX1 = 94.0f;
     constexpr float kIconX2 = 218.0f, kDescX2 = 238.0f;
+    // Text is top-anchored in a 7x11 cell with the cap box at y+1..y+9, so
+    // the description's ink center sits 5 px below the row y. The icons are
+    // center-anchored: drop them by the same 5 px to share that center.
+    constexpr float kIconDY = 5.0f;
     for (int i = 0; i < 4; ++i) {
         const float y = 342.0f + static_cast<float>(i) * 20.0f;
         const int tex = renderer_.texture(leftCol[i].sprite);
-        if (tex >= 0) renderer_.draw(tex, kIconX1, y);
+        if (tex >= 0) renderer_.draw(tex, kIconX1, y + kIconDY);
         renderer_.text(leftCol[i].desc, kDescX1, y, 1, white, false);
     }
     for (int i = 0; i < 3; ++i) {
         const float y = 342.0f + static_cast<float>(i) * 20.0f;
         const int tex = renderer_.texture(rightCol[i].sprite);
-        if (tex >= 0) renderer_.draw(tex, kIconX2, y);
+        if (tex >= 0) renderer_.draw(tex, kIconX2, y + kIconDY);
         renderer_.text(rightCol[i].desc, kDescX2, y, 1, white, false);
     }
 
