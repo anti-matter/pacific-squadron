@@ -33,7 +33,7 @@ inline constexpr float kPlayerHitbox = 10.0f;
 inline constexpr int kPlayerStartLives = 2;
 inline constexpr int kPlayerMaxHp = 3;
 inline constexpr int kPlayerStartBombs = 2;
-inline constexpr int kBombCap = 9;   // max stored bombs
+inline constexpr int kBombCap = 4;   // max stored bombs (HUD shows 4 icons)
 
 // --- special / evasive action ----------------------------------------------
 inline constexpr float kSpecialDuration = 0.9f;   // wingman loop time (s)

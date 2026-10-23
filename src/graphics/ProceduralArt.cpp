@@ -2126,19 +2126,10 @@ PixelBuf makeBattleshipHull(int damage) {
         for (int x = -hw; x <= hw; ++x)
             p.set(cx + x + 4, y + 5, col(0x050F1A, 110));
     }
-    // --- bow wave, spray & side foam ----------------------------------------
-    for (int k = 0; k < 64; ++k) {
-        const float a = static_cast<float>(k) / 63.0f;
-        const float bowY = yBot - 4.0f - 40.0f * a;
-        const float spread = 4.0f + 30.0f * a;
-        const std::uint32_t foam = col(0xE8F2FA, static_cast<std::uint8_t>(200 - 160 * a));
-        for (int sx : {-1, 1}) {
-            const int fx = cx + static_cast<int>(sx * (halfAt(static_cast<int>(bowY)) + spread));
-            p.set(fx, static_cast<int>(bowY), foam);
-            p.set(fx + sx, static_cast<int>(bowY) + 1, col(0xC8DCF0, 110));
-            if (k % 7 == 0) p.set(fx + sx * 3, static_cast<int>(bowY) - 2, col(0xFFFFFF, 150));
-        }
-    }
+    // --- side foam ------------------------------------------------------------
+    // The broad bow-wave V and the stern wash are animated at runtime
+    // (Application::renderShipWake); the sprite keeps only the foam hugging
+    // the hull so nothing static reads as a frozen wake.
     for (int y = yTop + 6; y < yBot - 8; y += 3) {
         const int hw = static_cast<int>(halfAt(y));
         p.set(cx - hw - 2, y, col(0xC8DCF0, 70));
@@ -2565,19 +2556,9 @@ PixelBuf makeCruiserHull(int damage) {
         for (int x = -hw; x <= hw; ++x)
             p.set(cx + x + 3, y + 4, col(0x050F1A, 100));
     }
-    // --- bow wave & side foam ----------------------------------------------------
-    for (int k = 0; k < 58; ++k) {
-        const float a = static_cast<float>(k) / 57.0f;
-        const float bowY = yBot - 4.0f - 38.0f * a;
-        const float spread = 3.0f + 22.0f * a;
-        const std::uint32_t foam = col(0xE8F2FA, static_cast<std::uint8_t>(200 - 160 * a));
-        for (int sx : {-1, 1}) {
-            const int fx = cx + static_cast<int>(sx * (halfAt(static_cast<int>(bowY)) + spread));
-            p.set(fx, static_cast<int>(bowY), foam);
-            p.set(fx + sx, static_cast<int>(bowY) + 1, col(0xC8DCF0, 110));
-            if (k % 7 == 0) p.set(fx + sx * 2, static_cast<int>(bowY) - 2, col(0xFFFFFF, 150));
-        }
-    }
+    // --- side foam ----------------------------------------------------------------
+    // The broad bow-wave V is animated at runtime (see renderShipWake);
+    // keep only foam hugging the hull and transom.
     // Sterna wake feathering behind the transom.
     for (int k = 0; k < 12; ++k) {
         const float a = static_cast<float>(k) / 11.0f;
@@ -3677,19 +3658,9 @@ PixelBuf makeDestroyerHull(int damage) {
         for (int x = -hw; x <= hw; ++x)
             p.set(cx + x + 3, y + 4, col(0x050F1A, 100));
     }
-    // --- keener bow wave & side foam -----------------------------------------
-    for (int k = 0; k < 56; ++k) {
-        const float a = static_cast<float>(k) / 55.0f;
-        const float bowY = yBot - 4.0f - 34.0f * a;
-        const float spread = 3.0f + 20.0f * a;
-        const std::uint32_t foam = col(0xE8F2FA, static_cast<std::uint8_t>(200 - 160 * a));
-        for (int sx : {-1, 1}) {
-            const int fx = cx + static_cast<int>(sx * (halfAt(static_cast<int>(bowY)) + spread));
-            p.set(fx, static_cast<int>(bowY), foam);
-            p.set(fx + sx, static_cast<int>(bowY) + 1, col(0xC8DCF0, 110));
-            if (k % 7 == 0) p.set(fx + sx * 2, static_cast<int>(bowY) - 2, col(0xFFFFFF, 150));
-        }
-    }
+    // --- side foam -----------------------------------------------------------------
+    // The broad bow-wave V is animated at runtime (see renderShipWake);
+    // keep only foam hugging the hull and transom.
     // Sterna wake feathering behind the transom.
     for (int k = 0; k < 10; ++k) {
         const float a = static_cast<float>(k) / 9.0f;
@@ -4005,19 +3976,9 @@ PixelBuf makeCarrierHull(int damage) {
         for (int x = -hw; x <= hw; ++x)
             p.set(cx + x + 3, y + 4, col(0x050F1A, 100));
     }
-    // --- bow wave & side foam ---------------------------------------------------
-    for (int k = 0; k < 46; ++k) {
-        const float a = static_cast<float>(k) / 45.0f;
-        const float bowY = yBot - 2.0f - 40.0f * a;
-        const float spread = 4.0f + 26.0f * a;
-        const std::uint32_t foam = col(0xE8F2FA, static_cast<std::uint8_t>(190 - 150 * a));
-        for (int sx : {-1, 1}) {
-            const int fx = cx + static_cast<int>(sx * (halfAt(static_cast<int>(bowY)) + spread));
-            p.set(fx, static_cast<int>(bowY), foam);
-            p.set(fx + sx, static_cast<int>(bowY) + 1, col(0xC8DCF0, 100));
-            if (k % 6 == 0) p.set(fx + sx * 2, static_cast<int>(bowY) - 2, col(0xFFFFFF, 150));
-        }
-    }
+    // --- side foam --------------------------------------------------------------
+    // The broad bow-wave V is animated at runtime (see renderShipWake);
+    // keep only foam hugging the hull and transom.
     for (int k = 0; k < 12; ++k) {                     // stern wake feathering
         const float a = static_cast<float>(k) / 11.0f;
         const int wy = yTop - 4 + k;
@@ -4410,6 +4371,24 @@ PixelBuf makeWake() {
             p.set(W / 2 + ((y * 7) % 13) - 6, y,
                   col(0x9CC8E8, static_cast<std::uint8_t>(70 * t)));
     }
+    return p;
+}
+
+// Soft foam puff used by the runtime boss-ship wake animation
+// (Application::renderShipWake): a small AA white puff that each draw call
+// scales, fades and drifts, so the wake flows instead of baking static.
+PixelBuf makeWakeDot() {
+    constexpr int W = 9, H = 9;
+    PixelBuf p(W, H);
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const float dx = (x + 0.5f - W / 2.0f) / (W / 2.0f);
+            const float dy = (y + 0.5f - H / 2.0f) / (H / 2.0f);
+            const float q = std::sqrt(dx * dx + dy * dy);
+            if (q >= 1.0f) continue;
+            const float a = q < 0.5f ? 1.0f : 1.0f - (q - 0.5f) / 0.5f;
+            p.set(x, y, col(0xEAF4FC, static_cast<std::uint8_t>(235.0f * a)));
+        }
     return p;
 }
 
@@ -6053,7 +6032,7 @@ namespace {
 constexpr std::uint32_t kArtCacheMagic = 0x50534152u;  // "PSAR"
 // Bump whenever any generated art changes (v10: A6M Zero redesign of the
 // primary enemy fighter and interceptor).
-constexpr std::uint32_t kArtCacheVersion = 33u;
+constexpr std::uint32_t kArtCacheVersion = 34u;
 
 void wr32(std::ostream& o, std::uint32_t v) {
     o.write(reinterpret_cast<const char*>(&v), 4);
@@ -6322,6 +6301,7 @@ bool generateAllArt(Renderer& r, const std::string& cachePath,
     add("boss_fort_keep", makeFortKeep());
     add("boss_carrier_island", makeCarrierIsland());
     add("wake_foam", makeWake());
+    add("wake_dot", makeWakeDot());
     add("fire_puff", makeFirePuff());
     add("smoke_puff", makeSmokePuff());
     add("explosion_xlarge", makeBoomSheet(17, 96, 0xE5D4u, 3));

@@ -38,6 +38,10 @@ private:
     void dimOverlay();
     void renderTerrain(const StageDef* stage, float scrollY);
     void renderWorld();
+    // Animated bow-wave V + stern wake for the seagoing boss ships (battleship,
+    // yamato, cruiser, destroyer, carrier). Presentation-only: draws under the
+    // hull sprite before it, using the wall-clock `time` like the ocean glint.
+    void renderShipWake(const std::string& hullSprite, float x, float y, float t);
     void renderTitleBackground(float time);
     void renderTitle();
     void renderStageIntro();

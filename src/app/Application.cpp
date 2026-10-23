@@ -915,6 +915,86 @@ void Application::renderTerrain(const StageDef* stage, float scrollY) {
     }
 }
 
+// Animated wake for the seagoing boss ships. The hull sprites only keep the
+// foam hugging the plating now; the broad Kelvin-V bow wave and the churning
+// stern trail flow here. Presentation-only: uses the wall-clock render time
+// like the ocean glint, and draws BEFORE the hull so foam passes under it.
+void Application::renderShipWake(const std::string& hull, float x, float y,
+                                 float t) {
+    // Canvas geometry per ship family: bow/stern offsets from the sprite
+    // centre (all bosses draw bow-down) and the midships half-beam.
+    struct Geo { float bow, stern, beam; };
+    Geo g{};
+    bool ship = true;
+    if (hull.find("battleship") != std::string::npos)
+        g = {78.0f, -78.0f, 38.0f};
+    else if (hull.find("yamato") != std::string::npos)
+        g = {124.0f, -124.0f, 48.0f};
+    else if (hull.find("destroyer") != std::string::npos)
+        g = {90.0f, -90.0f, 22.0f};
+    else if (hull.find("cruiser") != std::string::npos)
+        g = {98.0f, -98.0f, 29.0f};
+    else if (hull.find("carrier") != std::string::npos)
+        g = {92.0f, -92.0f, 65.0f};
+    else
+        ship = false;
+    const int dot = renderer_.texture("wake_dot");
+    if (!ship || dot < 0) return;
+
+    // --- bow: Kelvin-V foam arms streaming outward from the bow tip --------
+    const float bx = x, by = y + g.bow;
+    const float armLen = 26.0f + g.beam * 2.0f;
+    for (int s = -1; s <= 1; s += 2) {
+        for (int k = 0; k < 12; ++k) {
+            // Dense enough that the puffs read as one continuous foam line.
+            const float u = std::fmod(t * 0.6f + k / 12.0f, 1.0f);
+            const float wob = std::sin(t * 3.4f + k * 2.3f) * 0.9f;
+            const float px = bx + s * (1.5f + u * armLen * 0.75f);
+            const float py = by - 2.0f - u * armLen * 0.66f + wob;
+            const float birth = u < 0.06f ? u / 0.06f : 1.0f;
+            const float fade = (1.0f - u) * birth;
+            // Soft outer foam + a brighter crest core on the same spot: the
+            // V stays a crisp white line close to the bow and turns into
+            // dissipating spray as it flows aft.
+            const float sc = 4.5f + u * 6.5f;
+            renderer_.drawScaled(dot, px, py, sc, sc * 0.8f, fade * 0.55f);
+            renderer_.drawScaled(dot, px, py, sc * 0.45f, sc * 0.4f,
+                                 fade * fade * 0.95f);
+        }
+    }
+    // Pulsing crest right at the bow tip where the water parts.
+    const float crest = 0.55f + 0.30f * std::sin(t * 5.0f);
+    renderer_.drawScaled(dot, bx, by - 1.0f, 8.0f, 5.0f, crest);
+    renderer_.drawScaled(dot, bx - 4.0f, by - 4.0f, 5.0f, 4.0f, crest * 0.7f);
+    renderer_.drawScaled(dot, bx + 4.0f, by - 4.0f, 5.0f, 4.0f, crest * 0.7f);
+
+    // --- stern: base foam trail + churning bubbles drifting aft ------------
+    const float sy = y + g.stern;
+    const int wake = renderer_.texture("wake_foam");
+    if (wake >= 0)
+        renderer_.draw(wake, x + std::sin(t * 2.0f) * 2.0f, sy - 58.0f);
+    for (int k = 0; k < 10; ++k) {
+        // Bubbles surface at the transom and are left behind: they drift
+        // screen-up, spread across the beam, grow and dissipate.
+        const float u = std::fmod(t * 0.5f + k / 10.0f, 1.0f);
+        const float side = (k % 2 ? 1.0f : -1.0f) * (2.0f + u * g.beam * 0.9f);
+        const float a = (1.0f - u) * (1.0f - u);
+        const float sc = 5.0f + u * 10.0f;
+        renderer_.drawScaled(dot, x + side, sy - 4.0f - u * 100.0f, sc,
+                             sc * 0.7f, a * 0.5f);
+        renderer_.drawScaled(dot, x + side, sy - 4.0f - u * 100.0f, sc * 0.4f,
+                             sc * 0.3f, a * 0.8f);
+    }
+    // Foam feathers diverging off the stern corners.
+    for (int s = -1; s <= 1; s += 2)
+        for (int k = 0; k < 4; ++k) {
+            const float u = std::fmod(t * 0.6f + k / 4.0f, 1.0f);
+            renderer_.drawScaled(dot, x + s * (g.beam * 0.55f + u * 16.0f),
+                                 sy - 2.0f - u * 22.0f, 4.0f + u * 3.0f,
+                                 3.0f + u * 3.0f, (1.0f - u) * 0.4f);
+        }
+}
+
 void Application::renderWorld() {
     const auto& sim = game_->sim();
     const StageDef* stage = sim.director().stageDef();
@@ -1002,12 +1082,8 @@ void Application::renderWorld() {
                 texName = e.sprite + "_dmg";
             else if (frac < 0.85f && renderer_.texture(e.sprite + "_light") >= 0)
                 texName = e.sprite + "_light";
-            // Wake foam trails behind the battleship's stern (screen-up).
-            if (texName.find("battleship") != std::string::npos ||
-                texName.find("yamato") != std::string::npos)
-                renderer_.draw(renderer_.texture("wake_foam"),
-                               e.pos.x + std::sin(time * 2.0f) * 2.0f,
-                               e.pos.y - 140.0f);
+            // Seagoing bosses: animated bow-wave V + churning stern wake.
+            renderShipWake(texName, e.pos.x, e.pos.y, time);
             // Sailing drydock: a horizontal wake streak off the stern.
             if (texName.find("drydock") != std::string::npos) {
                 const auto dockView = sim.bossView();
@@ -1283,10 +1359,8 @@ void Application::renderTitleBackground(float time) {
     if (hull >= 0) {
         const float bx = 192.0f + std::sin(time * 0.12f) * 30.0f;
         const float by = 486.0f + std::sin(time * 0.5f) * 3.0f;
-        const int wake = renderer_.texture("wake_foam");
-        if (wake >= 0)
-            renderer_.draw(wake, bx + std::sin(time * 2.0f) * 2.0f, by - 140.0f,
-                           0.45f, Color::rgb(0x50687C));
+        // Animated wake (same helper as the boss fight), then the tinted hull.
+        renderShipWake("boss_battleship_hull", bx, by, time);
         renderer_.draw(hull, bx, by, 1.0f, Color::rgb(0xD0D8E0));
     }
     // Decorative flyovers.
@@ -1330,7 +1404,8 @@ void Application::renderTitle() {
 }
 
 void Application::renderStageIntro() {
-    renderer_.text("STAGE", 192.0f, 200.0f, 2, Color::rgb(0x9AB0C8), true);
+    const std::string num = "STAGE " + std::to_string(game_->stageIndex() + 1);
+    renderer_.text(num, 192.0f, 200.0f, 2, Color::rgb(0x9AB0C8), true);
     // Auto-fit long stage names ("SOLO OVER THE CORAL SEA" at scale 3 is
     // wider than the 384px playfield) so they never run off either edge.
     const std::string name = game_->stageName();
@@ -1350,7 +1425,16 @@ void Application::renderPaused() {
 
 void Application::renderStageComplete() {
     renderer_.fillRect(0, 0, kPlayW, kPlayH, Color{0, 0, 0, 120});
-    renderer_.text("STAGE CLEAR", 192.0f, 210.0f, 3, Color::rgb(0x7AE87A), true);
+    const std::string clear =
+        "STAGE " + std::to_string(game_->stageIndex() + 1) + " CLEAR";
+    int cs = 3;
+    while (cs > 1 && renderer_.textWidth(clear, cs) > 368) --cs;
+    renderer_.text(clear, 192.0f, 200.0f, cs, Color::rgb(0x7AE87A), true);
+    // Stage title under the header, auto-fit like the intro screen.
+    const std::string name = game_->stageName();
+    int ns = 2;
+    while (ns > 1 && renderer_.textWidth(name, ns) > 368) --ns;
+    renderer_.text(name, 192.0f, 240.0f, ns, Color::rgb(0xFFD860), true);
     const std::string s = "SCORE " + std::to_string(game_->score());
     renderer_.text(s, 192.0f, 270.0f, 2, Color::rgb(0xF0F4F8), true);
 }

@@ -186,6 +186,13 @@ the finale is a distinct boss (index 9).
 
 ## Gotchas
 
+- **Boss-ship wakes animate at runtime**: the seagoing boss hulls
+  (battleship/yamato/cruiser/destroyer/carrier) bake only foam hugging the
+  plating; the bow-wave V and stern trail are drawn per-frame by
+  `Application::renderShipWake()` (presentation-only, wall-clock time like
+  the glint), using the small `wake_dot` sprite. Geometry (bow/stern offsets
+  from the sprite centre, half-beam) is hard-coded per ship family there —
+  update it if a hull canvas resizes.
 - The **BOMB** special (Shift/Ctrl, `p.bombs` charges) wipes on-screen enemies
   and enemy fire and takes 20% of max HP off every living boss part (hull only
   once armor is stripped — same gate as bullets). During the AIRFIELD COMMAND
