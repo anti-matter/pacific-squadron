@@ -39,7 +39,8 @@ cmake -S . -B build && cmake --build build -j8     # must stay warning-clean
 ctest --test-dir build                              # must stay green
 ```
 
-macOS: `brew install sdl3` first. The `PACIFIC_SQUADRON_MAC_BUNDLE` option is ON
+macOS: `brew install sdl3` first (only to *build* — the `.app` embeds its own
+SDL3 copy, see Gotchas). The `PACIFIC_SQUADRON_MAC_BUNDLE` option is ON
 by default, so the binary lands at
 `./build/pacific-squadron.app/Contents/MacOS/pacific-squadron` (assets are copied
 beside it) — the smoke-harness commands below need that path, or configure with
@@ -207,6 +208,24 @@ the finale is a distinct boss (index 9).
   with no enemies, no firing and no splash art. `Application::init()` now
   aborts (log + message box, skipped for `WWII_SMOKE`/dummy-video) if stages,
   enemies or weapons come back empty.
+- **The `.app` is self-contained (SDL3 embedded)**:
+  `cmake/BundleSDL.cmake` copies the SDL3 dylib into `Contents/Frameworks`,
+  rewrites the install name and the executable's reference to `@rpath`, deletes
+  the absolute Homebrew rpath CMake leaves behind (otherwise a broken bundle
+  silently resolves SDL on the build machine and only fails on other Macs),
+  copies SDL's zlib license to `Resources/LICENSE.SDL3.txt`, and re-signs
+  inside-out ad-hoc — arm64 refuses to load a binary whose load commands were
+  edited after signing. Runs on any POST_BUILD (idempotent) and handles both a
+  bare `libSDL3*.dylib` and `SDL3.framework`. The license it ships comes from
+  the vendored `licenses/LICENSE.SDL3.txt` — do *not* grab the `LICENSE.txt`
+  next to a Homebrew SDL3, that is Homebrew's own BSD-2 formula license. Opt out
+  with `-DPACIFIC_SQUADRON_BUNDLE_SDL=OFF`. Two traps:
+  `$<TARGET_FILE:SDL3::SDL3>` is a *symlink* under Homebrew and `file(COPY)`
+  preserves symlinks, so resolve with `REALPATH` first; and signing is ad-hoc,
+  so Gatekeeper still blocks a downloaded copy (distributing would need a
+  Developer ID and notarization). Verify self-containment with
+  `DYLD_PRINT_LIBRARIES=1 <exe> 2>&1 | grep libSDL3` — it must print a path
+  inside the bundle.
 
 - **Boss-ship wakes animate at runtime**: the seagoing boss hulls
   (battleship/yamato/cruiser/destroyer/carrier) bake only foam hugging the

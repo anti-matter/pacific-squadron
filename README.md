@@ -43,13 +43,35 @@ cmake --build build -j
 
 On Linux you may need the SDL3 development package, e.g. `apt install
 libsdl3-dev`, or build SDL from source and point CMake at it. On macOS install
-it with `brew install sdl3`. On macOS the build produces a
+it with `brew install sdl3` — that is only needed to *build*, though: the
+resulting `.app` carries its own copy of SDL3 (see below), so it runs on Macs
+that have nothing installed. On macOS the build produces a
 `pacific-squadron.app` bundle (display name "Pacific Squadron") rather than a
 bare executable, and CMake's `MACOSX_BUNDLE` nests the binary inside it, so run
 `open build/pacific-squadron.app` or
 `./build/pacific-squadron.app/Contents/MacOS/pacific-squadron` — the latter
 keeps the startup log in your terminal. Configure with
 `-DPACIFIC_SQUADRON_MAC_BUNDLE=OFF` for a plain `build/pacific-squadron`.
+
+### Self-contained macOS bundle
+
+`cmake/BundleSDL.cmake` copies the SDL3 dylib into
+`pacific-squadron.app/Contents/Frameworks`, rewrites the executable to load it
+from `@rpath` (and drops the Homebrew rpath CMake leaves behind, so a missing
+bundle library fails loudly instead of quietly resolving on the build machine),
+ships SDL's zlib license — the vendored `licenses/LICENSE.SDL3.txt`, since the
+`LICENSE.txt` beside a Homebrew SDL3 is Homebrew's own license, not SDL's — as
+`Resources/LICENSE.SDL3.txt`, and re-signs everything ad-hoc — required on
+arm64, since rewriting load commands invalidates the linker signature. The
+`.app` is then relocatable: drag it to another Mac, or anywhere on disk, and it
+launches. Opt out with
+`-DPACIFIC_SQUADRON_BUNDLE_SDL=OFF` to link against the system copy instead
+(a ~2.4 MB smaller bundle, but SDL3 must be installed).
+
+Ad-hoc signing means the bundle runs fine on your own machine but Gatekeeper
+will block it when downloaded from elsewhere — that needs a Developer ID
+certificate and notarization, which is out of scope here. Locally, `open`
+works; if quarantine is applied, right-click → Open.
 
 At startup the
 game disables SDL's HIDAPI-libusb fallback (the hidraw backend covers normal
@@ -229,9 +251,9 @@ Wired in automatically:
   the bundle icon.
 - **Windows** — `packaging/pacific-squadron.rc.in` is configured into the build
   tree and compiled into the executable, so Explorer/taskbar show the icon.
-- **macOS** — configure with `-DPACIFIC_SQUADRON_MAC_BUNDLE=ON` to build a real
-  `.app` with the `.icns` in `Contents/Resources`. It is opt-in because bundling
-  moves the executable and the asset copy step.
+- **macOS** — the `.app` is built by default (`PACIFIC_SQUADRON_MAC_BUNDLE=ON`)
+  with the `.icns` in `Contents/Resources`, alongside the embedded SDL3 copy and
+  its license.
 - **Linux install** — `cmake --install` places the binary in `bin/`, the PNGs in
   `share/icons/hicolor/<size>/apps/pacific-squadron.png`, and
   `packaging/pacific-squadron.desktop` in `share/applications/`.

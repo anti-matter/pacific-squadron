@@ -165,6 +165,28 @@ if(APPLE AND PACIFIC_SQUADRON_MAC_BUNDLE)
         MACOSX_BUNDLE_GUI_IDENTIFIER com.pacificsquadron.game
         MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
         MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION})
+
+    # Ship SDL3 inside the .app so it runs on Macs without Homebrew. The
+    # Homebrew dylib's install name is its absolute build-machine path;
+    # cmake/BundleSDL.cmake copies it into Contents/Frameworks, repoints the
+    # executable at @rpath (adding an @executable_path/../Frameworks rpath and
+    # dropping Homebrew's), ships the zlib license, and re-signs ad-hoc.
+    # Disable with -DPACIFIC_SQUADRON_BUNDLE_SDL=OFF to keep linking against the
+    # system/Homebrew copy (smaller bundle, needs SDL3 installed).
+    option(PACIFIC_SQUADRON_BUNDLE_SDL
+           "Embed the SDL3 dylib in the macOS .app bundle" ON)
+    get_target_property(SDL3_TARGET_TYPE SDL3::SDL3 TYPE)
+    if(PACIFIC_SQUADRON_BUNDLE_SDL AND SDL3_TARGET_TYPE STREQUAL "SHARED_LIBRARY")
+        add_custom_command(TARGET pacific-squadron POST_BUILD
+            COMMAND ${CMAKE_COMMAND}
+                -DAPP_BUNDLE=$<TARGET_BUNDLE_DIR:pacific-squadron>
+                -DSDL_LIB=$<TARGET_FILE:SDL3::SDL3>
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/BundleSDL.cmake
+            COMMENT "Bundling SDL3 into the .app")
+    elseif(PACIFIC_SQUADRON_BUNDLE_SDL)
+        message(STATUS "SDL bundling skipped: SDL3::SDL3 is not a shared "
+                       "library (${SDL3_TARGET_TYPE})")
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------
