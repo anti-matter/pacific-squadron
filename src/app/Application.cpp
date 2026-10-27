@@ -76,9 +76,11 @@ Application::Application() = default;
 Application::~Application() = default;
 
 bool Application::init() {
-    // Locate the asset directory: cwd/assets, <exe>/assets (build tree or
-    // macOS bundle), then <prefix>/share/pacific-squadron/assets so an
-    // installed launcher works regardless of its working directory.
+    // Locate the asset directory. cwd/assets comes first (dev runs from the
+    // repo root), then everything derived from the executable so a Finder /
+    // `open` / Dock launch -- which starts with cwd "/" -- still finds its
+    // data. On a macOS bundle SDL_GetBasePath() is Contents/Resources, NOT
+    // Contents/MacOS, so both bundle layouts are probed.
     namespace fs = std::filesystem;
     if (fs::exists("assets/data")) {
         assetDir_ = "assets";
@@ -88,11 +90,14 @@ bool Application::init() {
         SDL_free(const_cast<char*>(base));
         const fs::path candidates[] = {
             exeDir / "assets",
+            exeDir / ".." / "Resources" / "assets",  // macOS bundle (preferred)
+            exeDir / ".." / "MacOS" / "assets",      // macOS bundle (legacy)
             exeDir / ".." / "share" / "pacific-squadron" / "assets",
         };
         for (const fs::path& p : candidates) {
-            if (fs::exists(p / "data")) {
-                assetDir_ = p.string();
+            std::error_code ec;
+            if (fs::exists(p / "data", ec)) {
+                assetDir_ = p.lexically_normal().string();
                 break;
             }
         }
@@ -188,6 +193,31 @@ bool Application::init() {
     std::string err;
     if (!data_.loadAll(assetDir_, err)) {
         SDL_Log("Data load error: %s", err.c_str());
+        return false;
+    }
+    // A missing/renamed asset tree makes every category load zero entries,
+    // which loadAll reports as success -- the game then boots into an empty
+    // ocean with no enemies, weapons or stages and no clue why. Fail loudly
+    // with the directory it looked in instead.
+    if (data_.stages.empty() || data_.enemies.empty() || data_.weapons.empty()) {
+        const char* what = data_.stages.empty() ? "stages"
+                         : (data_.enemies.empty() ? "enemies" : "weapons");
+        SDL_Log("Loaded no %s from '%s' -- the asset tree is missing or corrupt.",
+                what, assetDir_.c_str());
+        // A double-clicked bundle has no terminal to read that log in, so say
+        // it in a dialog too. Skipped for headless/smoke runs, where a modal
+        // box would hang an automated run.
+        const bool headless = SDL_getenv("WWII_SMOKE") != nullptr ||
+                              (SDL_GetCurrentVideoDriver() &&
+                               SDL_strcmp(SDL_GetCurrentVideoDriver(), "dummy") == 0);
+        if (!headless) {
+            const std::string msg =
+                "No " + std::string(what) + " were loaded from:\n" + assetDir_ +
+                "\n\nThe game's data files are missing or the installation is "
+                "incomplete.";
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Pacific Squadron",
+                                     msg.c_str(), nullptr);
+        }
         return false;
     }
     game_ = std::make_unique<Game>(data_);

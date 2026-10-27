@@ -39,6 +39,13 @@ cmake -S . -B build && cmake --build build -j8     # must stay warning-clean
 ctest --test-dir build                              # must stay green
 ```
 
+macOS: `brew install sdl3` first. The `PACIFIC_SQUADRON_MAC_BUNDLE` option is ON
+by default, so the binary lands at
+`./build/pacific-squadron.app/Contents/MacOS/pacific-squadron` (assets are copied
+beside it) — the smoke-harness commands below need that path, or configure with
+`-DPACIFIC_SQUADRON_MAC_BUNDLE=OFF` to keep the plain `./build/pacific-squadron`
+path the docs assume.
+
 Headless screenshot + autopilot harness (run **from the repo root**, use
 `./build/pacific-squadron` — an installed copy in `~/.local/bin` may be
 stale):
@@ -185,6 +192,21 @@ The boss-index-1 "SKY FORTRESS GX-7" remains as an early-stage set piece;
 the finale is a distinct boss (index 9).
 
 ## Gotchas
+
+- **macOS asset resolution**: inside a `.app`, `SDL_GetBasePath()` is
+  `Contents/Resources/`, *not* `Contents/MacOS/`, and a Finder/`open` launch
+  starts with cwd `/` — so `cwd/assets` never hits. `Application::init()`
+  probes `Resources/assets` (where `cmake/CopyAssets.cmake` puts them) plus
+  the legacy `MacOS/assets` and the installed `share/` layout. If you move the
+  asset copy, update both. `CopyAssets.cmake` exists because
+  `cmake -E copy_directory` cannot exclude the multi-MB dev-only artwork in
+  `assets/` (icon master, reference sheets); it copies only `data/`, `icons/`,
+  optional `sprites/`+`tiles/` overrides and `splash.png`.
+- **Empty asset tree used to boot silently**: `GameData::loadAll` reports
+  success when it finds zero files, which produced a playable-looking game
+  with no enemies, no firing and no splash art. `Application::init()` now
+  aborts (log + message box, skipped for `WWII_SMOKE`/dummy-video) if stages,
+  enemies or weapons come back empty.
 
 - **Boss-ship wakes animate at runtime**: the seagoing boss hulls
   (battleship/yamato/cruiser/destroyer/carrier) bake only foam hugging the

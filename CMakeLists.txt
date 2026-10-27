@@ -88,11 +88,29 @@ add_custom_target(buildinfo ALL
 add_dependencies(pacific-squadron buildinfo)
 target_include_directories(pacific-squadron PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
-# Copy assets next to the binary so the game runs from the build dir.
+# Declared before the asset copy below, which needs to know the bundle layout.
+if(APPLE)
+    option(PACIFIC_SQUADRON_MAC_BUNDLE "Package the executable as a macOS .app bundle" ON)
+endif()
+
+# Copy runtime assets so the game runs straight out of the build tree.
+# cmake/CopyAssets.cmake copies only what the game loads (data, icons,
+# optional sprite/tile overrides, splash.png) -- the source tree also holds
+# multi-MB dev-only artwork that must not ship, and `cmake -E copy_directory`
+# cannot exclude it. For a macOS .app the assets go into Contents/Resources
+# (the idiomatic location, and what SDL_GetBasePath() reports); otherwise they
+# land next to the executable.
+if(APPLE AND PACIFIC_SQUADRON_MAC_BUNDLE)
+    set(ASSET_DEST $<TARGET_BUNDLE_CONTENT_DIR:pacific-squadron>/Resources/assets)
+else()
+    set(ASSET_DEST $<TARGET_FILE_DIR:pacific-squadron>/assets)
+endif()
 add_custom_command(TARGET pacific-squadron POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/assets
-        $<TARGET_FILE_DIR:pacific-squadron>/assets)
+    COMMAND ${CMAKE_COMMAND}
+        -DCOPY_SRC=${CMAKE_CURRENT_SOURCE_DIR}/assets
+        -DCOPY_DEST=${ASSET_DEST}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CopyAssets.cmake
+    COMMENT "Copying runtime assets")
 
 # ---------------------------------------------------------------------------
 # Application icon (assets/icons/ -- see tools/make_icons.py)
@@ -130,15 +148,13 @@ if(WIN32)
     target_sources(pacific-squadron PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/pacific-squadron.rc)
 endif()
 
-if(APPLE)
-    option(PACIFIC_SQUADRON_MAC_BUNDLE "Package the executable as a macOS .app bundle" ON)
-endif()
 if(APPLE AND PACIFIC_SQUADRON_MAC_BUNDLE)
     # The dock icon comes from the bundle, not from SDL_SetWindowIcon, so the
     # .icns has to be a bundle resource. Default ON on macOS: assets resolve
-    # via SDL_GetBasePath() and the POST_BUILD copy lands inside the bundle's
-    # executable directory, so running the .app from the build tree works.
-    # Disable with -DPACIFIC_SQUADRON_MAC_BUNDLE=OFF for a bare executable.
+    # via SDL_GetBasePath() (Contents/Resources), which is where the POST_BUILD
+    # copy puts them, so running the .app from the build tree -- or from
+    # Finder -- works. Disable with -DPACIFIC_SQUADRON_MAC_BUNDLE=OFF for a
+    # bare executable.
     set_source_files_properties(${GAME_ICNS} TARGET_DIRECTORY pacific-squadron
         PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
     target_sources(pacific-squadron PRIVATE ${GAME_ICNS})
@@ -154,7 +170,13 @@ endif()
 # ---------------------------------------------------------------------------
 # Install (Linux/Unix layout; icons registered with the hicolor theme)
 # ---------------------------------------------------------------------------
-install(TARGETS pacific-squadron RUNTIME DESTINATION bin)
+if(APPLE AND PACIFIC_SQUADRON_MAC_BUNDLE)
+    # A MACOSX_BUNDLE target needs a BUNDLE destination; `make install` drops
+    # Pacific Squadron.app in the install prefix (e.g. /usr/local or /opt/homebrew).
+    install(TARGETS pacific-squadron BUNDLE DESTINATION . RUNTIME DESTINATION bin)
+else()
+    install(TARGETS pacific-squadron RUNTIME DESTINATION bin)
+endif()
 if(UNIX AND NOT APPLE)
     # Runtime assets beside the installed binary's share dir so the .desktop
     # launcher works from any cwd (the app also probes <exe>/../share/...).

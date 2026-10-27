@@ -42,7 +42,16 @@ cmake --build build -j
 ```
 
 On Linux you may need the SDL3 development package, e.g. `apt install
-libsdl3-dev`, or build SDL from source and point CMake at it. At startup the
+libsdl3-dev`, or build SDL from source and point CMake at it. On macOS install
+it with `brew install sdl3`. On macOS the build produces a
+`pacific-squadron.app` bundle (display name "Pacific Squadron") rather than a
+bare executable, and CMake's `MACOSX_BUNDLE` nests the binary inside it, so run
+`open build/pacific-squadron.app` or
+`./build/pacific-squadron.app/Contents/MacOS/pacific-squadron` — the latter
+keeps the startup log in your terminal. Configure with
+`-DPACIFIC_SQUADRON_MAC_BUNDLE=OFF` for a plain `build/pacific-squadron`.
+
+At startup the
 game disables SDL's HIDAPI-libusb fallback (the hidraw backend covers normal
 desktop gamepads); on hosts with unresponsive USB devices the libusb scan can
 otherwise freeze launch for many seconds.
