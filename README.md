@@ -90,6 +90,28 @@ Optional: `-DWWII_ENABLE_SANITIZERS=address,undefined` enables sanitizers.
 `gamecore` and all first-party code compile warning-clean with GCC and Clang
 at high warning levels; `third_party` is compiled with warnings suppressed.
 
+### Version number
+
+The release version is `major.minor.bugfix` and lives in exactly one place:
+the `VERSION` field of `project(wwii_fighter ...)` at the top of
+`CMakeLists.txt`.
+
+```cmake
+project(wwii_fighter
+    VERSION 1.0.0        # <-- bump this line and nothing else
+    ...)
+```
+
+Re-run `cmake -S . -B build` after editing it. That single value becomes:
+
+- `VERSION x.y.z` on the splash screen, under the subtitle (from the generated
+  `build/generated/version.h`);
+- `CFBundleVersion` / `CFBundleShortVersionString` in the macOS bundle's
+  `Info.plist`, so Finder's Get Info and the App Store tooling agree;
+- the version in the debug startup log (`PACIFIC SQUADRON 1.0.0 build <hash>`).
+
+CMake refuses to configure if the version is not three dot-separated numbers.
+
 ## Testing
 
 ```sh

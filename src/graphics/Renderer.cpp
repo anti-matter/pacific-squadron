@@ -36,7 +36,13 @@ bool Renderer::init(const std::string& title, bool fullscreen) {
     // (a git hash, unlike __TIME__ which only reflects one TU's compile).
 #if __has_include("buildinfo.h")
 #include "buildinfo.h"
+#if __has_include("version.h")
+#include "version.h"
+    SDL_Log("PACIFIC SQUADRON %s build %s (built %s)", WW_VERSION_STRING,
+            WW_BUILD_HASH, WW_BUILD_TS);
+#else
     SDL_Log("PACIFIC SQUADRON build %s (built %s)", WW_BUILD_HASH, WW_BUILD_TS);
+#endif
 #else
     SDL_Log("PACIFIC SQUADRON build %s %s (no git info)", __DATE__, __TIME__);
 #endif
@@ -306,11 +312,11 @@ constexpr int kTextCellH = 11;
 constexpr int kTextAdvance = 8;
 }  // namespace
 
-int Renderer::textWidth(const std::string& str, int scale) const {
-    return static_cast<int>(str.size()) * kTextAdvance * scale - scale;
+float Renderer::textWidth(const std::string& str, float scale) const {
+    return static_cast<float>(str.size()) * kTextAdvance * scale - scale;
 }
 
-void Renderer::text(const std::string& str, float x, float y, int scale,
+void Renderer::text(const std::string& str, float x, float y, float scale,
                     const Color& c, bool center) {
     textQueue_.push_back({str, x, y, scale, c, center});
 }
@@ -339,7 +345,7 @@ void Renderer::renderTextOverlay(float ox, float oy, float wscale) {
         const float cellW = static_cast<float>(std::lround(kTextCellW * S));
         const float cellH = static_cast<float>(std::lround(kTextCellH * S));
         const float adv = kTextAdvance * wscale * q.scale;
-        const float wLogical = static_cast<float>(textWidth(q.str, q.scale));
+        const float wLogical = textWidth(q.str, q.scale);
         const float startX =
             ox + (q.center ? q.x - wLogical * 0.5f : q.x) * wscale;
         const float baseY = oy + q.y * wscale;

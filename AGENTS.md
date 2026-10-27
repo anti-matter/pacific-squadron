@@ -47,6 +47,12 @@ beside it) — the smoke-harness commands below need that path, or configure wit
 `-DPACIFIC_SQUADRON_MAC_BUNDLE=OFF` to keep the plain `./build/pacific-squadron`
 path the docs assume.
 
+**Version**: `major.minor.bugfix` lives only in `project(wwii_fighter VERSION
+…)` at the top of `CMakeLists.txt`. Bump that one line, re-run `cmake -S . -B
+build`; `cmake/version.h.in` generates `build/generated/version.h`
+(`WW_VERSION_STRING`) for the splash line, and the same value feeds the macOS
+plist. Configure fails if the version is not three numbers.
+
 Headless screenshot + autopilot harness (run **from the repo root**, use
 `./build/pacific-squadron` — an installed copy in `~/.local/bin` may be
 stale):
@@ -194,6 +200,19 @@ the finale is a distinct boss (index 9).
 
 ## Gotchas
 
+- **Never verify text/splash visuals with `SDL_VIDEODRIVER=dummy`.** The
+  native-resolution stroke font is baked at `scale × window-scale` pixels; the
+  dummy driver settles on a ~1.08 canvas scale, where the ~1 px pen strokes
+  merge and every glyph reads as a solid blob (pre-existing, not a regression).
+  Use `SDL_VIDEODRIVER=cocoa` for macOS screenshots — at Retina 3x the glyphs
+  are crisp. `WWII_SMOKE_SPLASH_SHOT=<path>` grabs the finished splash (prompt
+  visible); the procedural fallback splash needs `splash.png` absent from the
+  resolved `assets/` dir, so copy the `.app` to a temp dir and delete it there
+  (a cwd `assets/` shadows the bundle's).
+- **`Renderer::text`/`textWidth` take a `float` scale** — fractional sizes
+  (the splash version line uses 0.8) rasterize crisply because the atlas is
+  baked per physical pixel size; never "fix" small text by pre-scaling a
+  bitmap.
 - **macOS asset resolution**: inside a `.app`, `SDL_GetBasePath()` is
   `Contents/Resources/`, *not* `Contents/MacOS/`, and a Finder/`open` launch
   starts with cwd `/` — so `cwd/assets` never hits. `Application::init()`

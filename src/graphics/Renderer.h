@@ -62,9 +62,12 @@ public:
     void outlineRect(float x, float y, float w, float h, const Color& c);
 
     // ---- text (queued; rendered at native resolution in endFrame) ------
-    void text(const std::string& str, float x, float y, int scale,
+    // `scale` may be fractional (e.g. 0.8f for a subtitle one notch smaller
+    // than the body text): the stroke font is baked per physical glyph size,
+    // so any scale rasterizes crisply rather than resampling a bitmap.
+    void text(const std::string& str, float x, float y, float scale,
               const Color& c, bool center = false);
-    int textWidth(const std::string& str, int scale) const;
+    float textWidth(const std::string& str, float scale) const;
 
     // ---- window --------------------------------------------------------
     void setFullscreen(bool fs);
@@ -98,7 +101,7 @@ private:
     struct TextEntry {
         std::string str;
         float x, y;
-        int scale;
+        float scale;
         Color c;
         bool center;
     };

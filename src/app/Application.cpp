@@ -21,9 +21,24 @@
 #include "core/Rng.h"
 #include "graphics/ProceduralArt.h"
 
+// Release version shown on the splash, generated from the project VERSION in
+// CMakeLists.txt (see cmake/version.h.in). The fallback keeps a standalone
+// compile (no CMake configure) building; it should never be edited by hand.
+#if __has_include("version.h")
+#include "version.h"
+#else
+#define WW_VERSION_STRING "0.0.0"
+#endif
+
 namespace ww {
 
 namespace {
+// "Slightly smaller" than the scale-1 subtitle: 0.8x, which the native-res
+// stroke font rasterizes crisply. The string is 13 glyphs -> ~98 logical px,
+// so it can never reach the 384px edges.
+constexpr float kVersionScale = 0.8f;
+const std::string kVersionLine =
+    std::string("VERSION ") + WW_VERSION_STRING;
 
 // Set by the SIGINT/SIGTERM handler so every wait loop can bail out. SDL's own
 // handler (which turns those signals into SDL_EVENT_QUIT) is only installed
@@ -453,9 +468,11 @@ void Application::showSplash(float progress, const char* label) {
         int ts = 3;
         while (ts > 1 && renderer_.textWidth(kTitle, ts) > 348) --ts;
         renderer_.text(kTitle, 192.0f, 32.0f, ts, Color::rgb(0xFFD860), true);
-        renderer_.text("A WORLD WAR II ARCADE SHOOTER", 192.0f,
-                       32.0f + 11.0f * ts + 7.0f, 1, Color::rgb(0xF0F6FC),
-                       true);
+        const float subY = 32.0f + 11.0f * ts + 7.0f;
+        renderer_.text("A WORLD WAR II ARCADE SHOOTER", 192.0f, subY, 1,
+                       Color::rgb(0xF0F6FC), true);
+        renderer_.text(kVersionLine, 192.0f, subY + 15.0f, kVersionScale,
+                       Color::rgb(0xB0C4D8), true);
         // Progress over the dark sea band at the bottom.
         constexpr float kBarW = 232.0f;
         const float bx = 192.0f - kBarW * 0.5f;
@@ -500,6 +517,8 @@ void Application::showSplash(float progress, const char* label) {
     renderer_.text("SQUADRON", 192.0f, 190.0f, 4, Color::rgb(0xF0F4F8), true);
     renderer_.text("A WORLD WAR II ARCADE SHOOTER", 192.0f, 232.0f, 1,
                    Color::rgb(0x9AB0C8), true);
+    renderer_.text(kVersionLine, 192.0f, 247.0f, kVersionScale,
+                   Color::rgb(0x7A90A8), true);
 
     // The player's fighter appears as soon as the art pass has created it.
     const int plane = renderer_.texture("player_fighter");

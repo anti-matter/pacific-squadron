@@ -1,7 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 
+# Release version: THE single source of truth for the whole project. Bump the
+# three numbers here and nothing else -- cmake/version.h.in turns it into
+# WW_VERSION_STRING for the splash screen, and the same value feeds the macOS
+# bundle plist (CFBundleVersion / CFBundleShortVersionString). Format is
+# major.minor.bugfix.
 project(wwii_fighter
-    VERSION 0.1.0
+    VERSION 1.0.0
     DESCRIPTION "WWII-inspired 2D vertical-scrolling arcade shooter"
     LANGUAGES C CXX)
 
@@ -87,6 +92,15 @@ add_custom_target(buildinfo ALL
     COMMENT "Generating buildinfo.h")
 add_dependencies(pacific-squadron buildinfo)
 target_include_directories(pacific-squadron PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
+
+# Release version header (splash screen "Version x.y.z"). Guarded so a
+# two-component VERSION can't silently ship as e.g. "1.0".
+if(NOT PROJECT_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+    message(FATAL_ERROR
+        "project VERSION must be major.minor.bugfix (got '${PROJECT_VERSION}')")
+endif()
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.h.in
+               ${CMAKE_CURRENT_BINARY_DIR}/generated/version.h @ONLY)
 
 # Declared before the asset copy below, which needs to know the bundle layout.
 if(APPLE)
