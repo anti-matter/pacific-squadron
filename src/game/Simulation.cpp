@@ -1495,6 +1495,25 @@ void Simulation::resolveCollisions() {
 // ---------------------------------------------------------------------------
 // Damage & scoring
 // ---------------------------------------------------------------------------
+void Simulation::debugKillBosses() {
+    for (auto& b : bosses_) {
+        if (b.state != 1) continue;
+        for (int ci : b.components) {
+            Entity& e = pool_[static_cast<std::size_t>(ci)];
+            if (!e.alive) continue;
+            explosions_.push_back({e.pos, 0.0f, 1, false});
+            kill(ci);
+        }
+        b.state = 2;
+        b.stateTimer = 0.0f;
+        b.deathChain = 0.0f;
+        if (b.hull >= 0 && pool_[static_cast<std::size_t>(b.hull)].alive) {
+            emitSoundAt("explosion_large", pool_[static_cast<std::size_t>(b.hull)].pos);
+            emitSoundAt("boss_breakup", b.pos);
+        }
+    }
+}
+
 void Simulation::damagePlayer() {
     PlayerInternal& p = player_;
     if (!p.alive || p.invuln > 0.0f || godMode_) return;

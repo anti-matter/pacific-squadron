@@ -312,6 +312,11 @@ bool Application::init() {
         }
         if (startStageIdx >= 0) game_->debugStartAtStage(startStageIdx);
         else game_->debugStart();
+        // WWII_SMOKE_KILL_BOSS_AT=<t>: force every engaged boss into its
+        // death chain at that sim time (drives the stage-complete transition
+        // headlessly without grinding the boss down).
+        if (const char* kb = SDL_getenv("WWII_SMOKE_KILL_BOSS_AT"))
+            smokeKillBossAt_ = SDL_atof(kb);
         if (SDL_getenv("WWII_SMOKE_GOD"))
             game_->sim().setGodMode(true);
         if (!SDL_getenv("WWII_SMOKE_NOAUTO")) {
@@ -333,6 +338,8 @@ bool Application::init() {
                 game_->debugSetHelpPage(st[4] - '0' - 1);  // "Help2" -> page 1
             } else if (!std::strcmp(st, "HighScores"))
                 game_->debugSetState(GameState::HighScores);
+            else if (!std::strcmp(st, "StageIntro"))
+                game_->debugSetState(GameState::StageIntro);
         }
     } else if (startStageIdx >= 0) {
         game_->debugStartAtStage(startStageIdx);
@@ -677,6 +684,10 @@ int Application::run() {
             ++steps;
             if (smokeTime_ > 0.0f) {
                 smokeElapsed_ += kSimDt;
+                if (smokeKillBossAt_ > 0.0f && smokeElapsed_ >= smokeKillBossAt_) {
+                    smokeKillBossAt_ = 0.0f;
+                    game_->sim().debugKillBosses();
+                }
                 if (smokeBoss_ && !smokeBossSpawned_ && smokeElapsed_ > 2.0f) {
                     smokeBossSpawned_ = true;
                     if (smokeBossIdx_ < static_cast<int>(data_.bosses.size()))
@@ -1152,11 +1163,15 @@ void Application::renderWorld() {
     const float scrollY = sim.director().scrollY();
     const float time = sim.director().time();
 
-    // Decay presentation timers (clamped dt tolerates per-stage time resets).
-    const float dt = clamp(time - lastWorldTime_, 0.0f, 0.1f);
-    lastWorldTime_ = time;
-    flashT_ = std::max(0.0f, flashT_ - dt);
-    armorFlashT_ = std::max(0.0f, armorFlashT_ - dt);
+    // Flash timers decay on the WALL clock: the stage clock freezes during
+    // StageComplete/StageIntro and resets to 0 per stage, so sim-clock
+    // decay stopped entirely at those transitions and froze the boss's last
+    // detonation flash as a gray veil over the next stage's intro.
+    const float wall = static_cast<float>(SDL_GetTicks()) / 1000.0f;
+    const float wallDt = clamp(wall - lastFlashClock_, 0.0f, 0.1f);
+    lastFlashClock_ = wall;
+    flashT_ = std::max(0.0f, flashT_ - wallDt);
+    armorFlashT_ = std::max(0.0f, armorFlashT_ - wallDt);
 
     // Bosses with arenaOcean (the island fortress) carry their own ground:
     // while one is alive the world renders as open sea, so the island never

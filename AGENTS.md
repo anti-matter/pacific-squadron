@@ -64,6 +64,11 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
 ```
 
 - `WWII_SMOKE_NOAUTO=1` = idle player (keeps targets on screen).
+- `WWII_SMOKE_KILL_BOSS_AT=10` = force every engaged boss into its death
+  chain at that **sim** time — drives the StageComplete→StageIntro
+  transition headlessly without grinding the boss down.
+- `WWII_SMOKE_STATE=StageIntro` = jump straight to a state from the title
+  (Options/Help/HelpN/HighScores/StageIntro).
 - `WWII_SMOKE_BOMB_AT=8,9.5` = press the BOMB special at those **sim** times
   (comma-separated) — headless verification of bomb effects.
 - `WWII_SMOKE_SHOT_AT` is **real elapsed time**, not stage time (~2–3 s
@@ -330,5 +335,9 @@ the finale is a distinct boss (index 9).
 - Git: commit to `main` and push only after the user approves that change.
 - The stage clock resets per level; anything time-based in presentation must
   handle that (the glint drift uses the wall clock for exactly this reason).
+  Same for the screen-flash decay (`flashT_`/`armorFlashT_` in `renderWorld`):
+  the sim clock **freezes entirely** during StageComplete/StageIntro, so
+  sim-clock decay froze the boss's last detonation flash as a gray veil over
+  the next stage's intro — decay them on `SDL_GetTicks` instead.
 - `fillRect`/`hline`/`vline` are integer; `softDisc`/`fillEllipse` float.
 - Keep both GCC and Clang warning-free (warnings are treated as work).

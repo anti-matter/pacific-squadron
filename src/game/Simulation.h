@@ -182,6 +182,9 @@ public:
     // Debug: trigger the current stage's boss at this stage-clock time
     // (see LevelDirector::setBossTimeOverride / WWII_BOSS_NOW).
     void debugSetBossTime(float t) { director_.setBossTimeOverride(t); }
+    // Debug/smoke: put every engaged boss into its death chain, as if the
+    // last hull hit had just connected (drives the StageComplete transition).
+    void debugKillBosses();
 
     const GameData& data() const { return data_; }
 
