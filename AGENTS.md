@@ -130,6 +130,20 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
   filler tile is skipped only when its full 32 px range lies inside a span
   (`composedTileCovered`); centre-based skipping leaves clear-colour
   (`0x06101C`) stripes at every coastline.
+- **Bake budget only counts real bakes** (`EnvironmentBaker::get`): open-water
+  cells never find a span and never cache, so incrementing `frameBakes_` on
+  them starves the next land chunk until it has scrolled past (symptom: the
+  far shore of a wide ocean gap renders as open water with baked-looking
+  ground units parked on it). Keep the increment after the span search.
+- **Ground units never wade** (`src/game/Coastline.h` is the shared contract
+  between baker and sim): `groundSurfaceAt()` = non-Ocean terrain, with shore
+  bands only past their sea-facing margin (`coast::kGroundMargin` 48 px —
+  clears the waterline wobble `coast::kWobbleMajor/Minor`, which
+  `coastEdgeY` now derives from the same constants). The spawn gate uses it,
+  and both movement paths (formation controller + solo `DriftDown`) refuse
+  self-motion that would leave the grounded surface while keeping the world
+  scroll carry. The formation check tests the LOWEST member (offsets hang
+  below the anchor) and projects spawn overshoot landward.
 - **`env_*` sprites are PNG-overridable** from `assets/sprites/<name>.png`
   like all other sprites; the baker reads them through the Renderer's env
   pixel store, so authored art and procedural fallbacks both bake.

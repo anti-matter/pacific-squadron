@@ -61,6 +61,7 @@ struct Entity {
     bool aimAtPlayer = false;
     bool rotates = false;
     bool groundUnit = false;
+    bool shipUnit = false;     // ground def that belongs on water
     bool collidesWithPlayer = true;
 
     int bossInstance = -1;       // BossInstance index or -1
@@ -199,6 +200,9 @@ private:
         // (or carried by) the terrain; air groups keep screen-relative
         // paths authored in screen space.
         bool scrollsWithTerrain = false;
+        // Ground (non-ship) groups stop dead at the coast instead of
+        // drifting into the rendered sea.
+        bool holdsAtShore = false;
     };
 
     struct BossInstance {

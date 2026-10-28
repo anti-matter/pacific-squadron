@@ -5,6 +5,7 @@
 #include <utility>
 #include <vector>
 
+#include "game/Coastline.h"
 #include "game/Simulation.h"  // terrainAt + StageDef
 #include "graphics/EnvironmentArt.h"
 #include "graphics/SpriteKit.h"
@@ -59,8 +60,11 @@ float vnoise(float x, float y, float cell, std::uint64_t seed) {
 // the identical curve (padded neighbours agree, no seams).
 // ---------------------------------------------------------------------------
 float coastEdgeY(float x, float baseY) {
-    return baseY + (vnoise(x, baseY * 0.5f, 90.0f, SEED + 0xC057) - 0.5f) * 22.0f +
-           (vnoise(x, baseY * 0.5f, 26.0f, SEED + 0xC058) - 0.5f) * 9.0f;
+    static_assert(coast::kGroundMargin > coast::kMaxWobble,
+                  "spawn margin must clear the rendered waterline wobble");
+    return baseY +
+           (vnoise(x, baseY * 0.5f, 90.0f, SEED + 0xC057) - 0.5f) * coast::kWobbleMajor +
+           (vnoise(x, baseY * 0.5f, 26.0f, SEED + 0xC058) - 0.5f) * coast::kWobbleMinor;
 }
 
 // Treatment at one end of a composed-land span.
@@ -894,7 +898,6 @@ int EnvironmentBaker::get(Renderer& r, const StageDef& stage, int cx, int cy) {
         return slotTex_[static_cast<std::size_t>(it->second.slot)];
     }
     if (frameBakes_ >= kBakesPerFrame) return -1;  // spread bakes over frames
-    ++frameBakes_;
 
     // ---- composed-land span covering this cell, with coast treatment ----
     // The bake cell intersects the EXTENDED span: the base span plus any
@@ -983,6 +986,12 @@ int EnvironmentBaker::get(Renderer& r, const StageDef& stage, int cx, int cy) {
         }
     }
     if (!found) return -1;
+    // Only real bakes consume the per-frame budget: open-water cells never
+    // find a span and never cache, so counting their lookups here starved
+    // the next land chunk until it had scrolled off screen (the far shore
+    // of a wide ocean gap stayed unbaked — open water where the beach
+    // should be).
+    ++frameBakes_;
 
     if (cache_.size() >= kPoolSize) {  // LRU eviction
         auto victim = cache_.begin();

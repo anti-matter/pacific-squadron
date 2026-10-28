@@ -1,5 +1,6 @@
 #include "game/Simulation.h"
 
+#include "game/Coastline.h"
 #include "game/Tuning.h"
 
 #include <algorithm>
@@ -35,6 +36,14 @@ void shotSize(ShotKind kind, float& w, float& h) {
 namespace {
 
 constexpr float kMargin = 40.0f;
+
+// Does the world row under a screen position offer visually solid ground
+// (see Coastline.h)? Mapping matches the terrain renderer exactly.
+bool groundHoldsAtScreenY(const LevelDirector& dir, float screenY) {
+    const StageDef* sd = dir.stageDef();
+    if (!sd || sd->terrain.empty()) return true;
+    return groundSurfaceAt(*sd, dir.scrollY() + kPlayH - screenY);
+}
 
 Vec2 playerAimDir(Vec2 from, Vec2 to) {
     Vec2 d = to - from;
@@ -235,6 +244,7 @@ void Simulation::update() {
                     f.lead = formationLeadState(def, it->shape, it->pos,
                                                 it->speedMul * mods_.speedMul);
                     f.scrollsWithTerrain = def.ground;
+                    f.holdsAtShore = def.ground && !def.ship;
                     if (it->pathRef >= 0 &&
                         it->pathRef < static_cast<int>(data_.paths.size())) {
                         f.lead.pathRef = it->pathRef;
@@ -458,6 +468,7 @@ int Simulation::spawnEnemy(int defRef, Vec2 pos, float hpMul, float rateMul,
                                     static_cast<float>(def.hp) * hpMul * mods_.hpMul)));
     e.aimAtPlayer = def.aimAtPlayer;
     e.groundUnit = def.ground;
+    e.shipUnit = def.ship;
     e.rateMul = rateMul * mods_.rateMul;
     e.forceDrop = forceDrop;
     e.enteredView = false;
@@ -626,8 +637,49 @@ void Simulation::updateFormations(float dt) {
         // Ground/sea anchors are carried by the world scroll (Static =
         // terrain-fixed installations, DriftDown = carried + own way);
         // air groups fly their screen-space paths unscaled.
+        const Vec2 prevAnchor = f.anchor;
         f.anchor = advanceMovement(f.lead, f.anchor, player_.pos, leadPath,
                                    f.scrollsWithTerrain ? scroll : 0.0f, dt);
+        // Ground groups never wade. The check covers the LOWEST formation
+        // member (offsets hang below the anchor); if its world row is not a
+        // grounded surface, the group is projected back to the nearest
+        // grounded row. This both refuses drift into the sea (the projection
+        // lands on the row it came from, welded to the terrain) and corrects
+        // spawn overshoot, where the anchor passed the gate but member
+        // offsets hung into the sea-margin.
+        if (f.holdsAtShore) {
+            float maxOffY = 0.0f;
+            for (const Vec2& o : f.offsets) maxOffY = std::max(maxOffY, o.y);
+            const StageDef* sd = director_.stageDef();
+            if (sd && !sd->terrain.empty()) {
+                const float base = director_.scrollY() + kPlayH;
+                const float wy = base - (f.anchor.y + maxOffY);
+                if (!groundSurfaceAt(*sd, wy)) {
+                    const float prevWy = base - (prevAnchor.y + maxOffY);
+                    if (groundSurfaceAt(*sd, prevWy)) {
+                        // Refuse the drift: welded to the terrain at the
+                        // last grounded row.
+                        f.anchor = {prevAnchor.x, prevAnchor.y +
+                                                      (f.scrollsWithTerrain ? scroll : 0.0f) * dt};
+                    } else {
+                        // Spawned into the sea-margin (anchor passed the
+                        // gate, member offsets hung into the water): walk
+                        // landward to the nearest grounded row.
+                        float best = wy;
+                        bool ok = false;
+                        for (int i = 1; i <= 40 && !ok; ++i) {
+                            const float up = wy + 8.0f * static_cast<float>(i);
+                            if (groundSurfaceAt(*sd, up)) { best = up; ok = true; break; }
+                            const float dn = wy - 8.0f * static_cast<float>(i);
+                            if (groundSurfaceAt(*sd, dn)) { best = dn; ok = true; break; }
+                        }
+                        if (ok)
+                            f.anchor = {prevAnchor.x, base - best - maxOffY};
+                    }
+                    f.lead.lastPos = f.anchor;  // keep the movement accumulator in sync
+                }
+            }
+        }
         // A formation that leaves the playfield escapes without bonus.
         if (f.anchor.y > kPlayH + 80.0f || f.anchor.y < -220.0f ||
             f.anchor.x < -120.0f || f.anchor.x > kPlayW + 120.0f) {
@@ -704,7 +756,15 @@ void Simulation::updateEnemies(float dt) {
             ? &data_.paths[static_cast<std::size_t>(e.move.pathRef)]
             : nullptr;
         if (e.formation < 0) {
+            const Vec2 prevPos = e.pos;
             e.pos = advanceMovement(e.move, e.pos, player_.pos, path, scroll, dt);
+            // Ground units never wade (see the formation controller): hold
+            // the last grounded row instead of drifting into the sea.
+            if (e.groundUnit && !e.shipUnit && e.pos.y != prevPos.y &&
+                !groundHoldsAtScreenY(director_, e.pos.y)) {
+                e.pos.y = prevPos.y + scroll * dt;  // carried, not wading
+                e.move.lastPos = e.pos;             // keep the accumulator in sync
+            }
         } else {
             e.move.lastPos = e.pos;  // position owned by the formation controller
         }
@@ -845,11 +905,13 @@ bool Simulation::groundSpawnMismatch(const SpawnRequest& r) const {
     const StageDef* sd = director_.stageDef();
     if (!sd || sd->terrain.empty()) return false;
     // Ground units weld to the terrain the moment they appear; the spawn
-    // line maps screen y -> worldY exactly like the renderer does.
-    const TerrainKind kind =
-        terrainAt(*sd, director_.scrollY() + kPlayH - r.pos.y);
-    return def.ship ? kind != TerrainKind::Ocean   // ships need open water
-                    : kind == TerrainKind::Ocean;  // land units need land
+    // line maps screen y -> worldY exactly like the renderer does. Land
+    // units additionally clear the rendered coastline margin (Coastline.h):
+    // the baker draws a curved waterline past the shore band's edge, and
+    // spawning inside that fringe would leave tanks standing in the sea.
+    const float worldY = director_.scrollY() + kPlayH - r.pos.y;
+    if (def.ship) return terrainAt(*sd, worldY) != TerrainKind::Ocean;
+    return !groundSurfaceAt(*sd, worldY);
 }
 void Simulation::spawnBoss(int defRef) {
     if (defRef < 0 || defRef >= static_cast<int>(data_.bosses.size())) return;
