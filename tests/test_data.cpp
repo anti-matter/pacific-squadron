@@ -34,6 +34,20 @@ void test_shipped_data() {
         CHECK(s.bossRef >= 0 && s.bossRef < static_cast<int>(data.bosses.size()));
     }
 
+    // Stage 1: scripted scenery landmarks (environment baker set pieces).
+    const StageDef& st1 = data.stages[0];
+    CHECK(st1.landmarks.size() == 3);
+    if (st1.landmarks.size() == 3) {
+        CHECK(st1.landmarks[0].kind == "farmstead");
+        CHECK(st1.landmarks[1].kind == "hamlet");
+        CHECK(st1.landmarks[2].kind == "farmstead");
+        for (const auto& lm : st1.landmarks) {
+            // Inside stage 1's single island land segment.
+            CHECK(lm.y > 2760.0f && lm.y < 4600.0f);
+            CHECK(lm.x > 48.0f && lm.x < 336.0f);
+        }
+    }
+
     // Stage 3: the destroyer hunt.
     const StageDef& st3 = data.stages[2];
     CHECK(st3.name == "HUNT THE STEEL SEA");

@@ -158,6 +158,12 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
   the arena terrain must cover the scroll depth at `bossTime` (use
   `toY: 99999` for the arena tail). Boss x is 192: airfield runway lanes are
   tile columns 5–6 = screen x 160..224; align hull-sprite runways to that.
+- Stage JSON may carry `"landmarks": [{ "kind", "x", "y" }]` — intentional
+  scenery set pieces (`farmstead` | `hamlet` | `depot`) baked by the
+  environment baker at fixed world Y (same coords as terrain segments).
+  They are stamped before the random set-piece scatter, which is suppressed
+  within 88 px of any landmark; purely decorative, silently skipped when the
+  spot is not on composed land.
 - Scroll freezes while a boss is engaged (`setScrollFrozen`). Ground units
   are held/dropped when they'd spawn on the wrong surface
   (`groundSpawnMismatch`), and all terrain-borne spawns are dropped during

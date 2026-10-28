@@ -338,7 +338,7 @@ struct BakeCtx {
 // (kEnvSpriteNames / kEnvSpriteCount live in EnvironmentArt.h)
 
 void runBake(BakeCtx& ctx, PixelBuf& canvas, LandMask& land, int cy,
-             float lo, float hi) {
+             float lo, float hi, const StageDef& stage) {
     const std::uint64_t salt =
         static_cast<std::uint64_t>(static_cast<std::int64_t>(std::lround(lo * 4.0))) *
         0x9E3779B97F4A7C15ull;
@@ -627,6 +627,95 @@ void runBake(BakeCtx& ctx, PixelBuf& canvas, LandMask& land, int cy,
         ras.lineW(x, y, x + dx * 0.96f, y + dy * 0.96f, 0.4f, col(0x9C7F58));
     };
 
+    // Set-piece bodies, shared by the random 128px-cell scatter below and
+    // by scripted stage landmarks (kind=yaml below). i/j only feed variant
+    // hashes; landmark callers pass world-derived keys.
+    auto placeFarmstead = [&](std::int64_t i, std::int64_t j, std::uint64_t cellH,
+                              float cxw, float cyw, bool jitter) {
+        const float ox = jitter ? static_cast<float>((cellH >> 8) % 41) - 20.0f : 0.0f;
+        const float oy = jitter ? static_cast<float>((cellH >> 14) % 41) - 20.0f : 0.0f;
+        const float hx = cxw + ox, hy = cyw + oy;
+        if (landAtW(hx, hy) < 255) return;
+        softDiscW(ras, hx, hy, 16.0f, 0x77603F, 120);
+        softDiscW(ras, hx - 4.0f, hy + 3.0f, 9.0f, 0x83704B, 110);
+        occ.mark(hx, hy, 5.0f);
+        const bool gotHouse =
+            tryStamp("env_farmhouse_0", hx, hy, 11.0f) ||
+            tryStamp("env_farmhouse_1", hx, hy, 11.0f);
+        if (gotHouse) {
+            const float ba = hf(i, j, 71) * 6.2831853f;
+            tryStamp("env_barn_0", hx + std::cos(ba) * 22.0f,
+                     hy + std::sin(ba) * 19.0f, 12.0f) ||
+                tryStamp("env_barn_1", hx + std::cos(ba) * 22.0f,
+                         hy + std::sin(ba) * 19.0f, 12.0f);
+            if (hf(i, j, 73) < 0.70f)
+                tryStamp("env_shed_0", hx + 16.0f, hy - 14.0f, 6.0f) ||
+                    tryStamp("env_shed_1", hx + 16.0f, hy - 14.0f, 6.0f);
+            if (hf(i, j, 79) < 0.65f)
+                tryStamp("env_haystack", hx - 15.0f, hy - 13.0f, 4.0f);
+            if (hf(i, j, 83) < 0.30f)
+                tryStamp("env_well", hx + 6.0f, hy + 12.0f, 4.0f);
+            driveway(hx, hy - 12.0f);
+        }
+    };
+    auto placeHamlet = [&](std::int64_t i, std::int64_t j, std::uint64_t cellH,
+                           float cxw, float cyw) {
+        if (landAtW(cxw, cyw) < 255) return;
+        const int houses = 3 + static_cast<int>((cellH >> 16) % 4u);
+        int placed = 0;
+        for (int k = 0; k < houses; ++k) {
+            const float a = 6.2831853f * k / houses + hf(i, j, 91 + k) * 0.9f;
+            const float d = 9.0f + hf(i, j, 101 + k) * 17.0f;
+            const char* hn[3] = {"env_house_0", "env_house_1", "env_house_2"};
+            if (tryStamp(hn[(cellH >> (k * 2)) % 3u],
+                         cxw + std::cos(a) * d, cyw + std::sin(a) * d * 0.85f, 8.0f))
+                ++placed;
+            if (k == houses - 1 && hf(i, j, 111) < 0.45f)
+                tryStamp("env_shed_1", cxw + std::cos(a) * (d + 12.0f),
+                         cyw + std::sin(a) * (d + 10.0f), 5.0f);
+        }
+        if (placed >= 2) {
+            if (hf(i, j, 121) < 0.40f) tryStamp("env_well", cxw, cyw, 4.0f);
+            driveway(cxw, cyw + 14.0f);
+        }
+    };
+    auto placeDepot = [&](std::int64_t i, std::int64_t j, std::uint64_t cellH,
+                          float cxw, float cyw) {
+        (void)i; (void)j; (void)cellH;
+        if (landAtW(cxw, cyw) < 255) return;
+        softDiscW(ras, cxw, cyw, 22.0f, 0x6E5F45, 150);
+        softDiscW(ras, cxw + 5.0f, cyw - 4.0f, 13.0f, 0x7A6C50, 130);
+        occ.mark(cxw, cyw, 4.0f);
+        const bool gotWh =
+            tryStamp("env_warehouse_0", cxw - 4.0f, cyw + 6.0f, 14.0f) ||
+            tryStamp("env_warehouse_1", cxw - 4.0f, cyw + 6.0f, 14.0f);
+        tryStamp("env_barracks_0", cxw + 10.0f, cyw - 12.0f, 10.0f) ||
+            tryStamp("env_barracks_1", cxw + 10.0f, cyw - 12.0f, 10.0f);
+        tryStamp("env_fuel_tank_0", cxw - 16.0f, cyw - 12.0f, 8.0f);
+        tryStamp("env_fuel_tank_1", cxw - 4.0f, cyw - 16.0f, 8.0f);
+        if (gotWh) driveway(cxw, cyw - 20.0f);
+    };
+
+    // ---- 4a. scripted landmarks: intentional set pieces from stage data ----
+    // Stamped before the random scatter so their occupancy marks suppress
+    // nearby random structures; positions are pure world data, so every
+    // chunk that sees one paints it identically.
+    for (const LandmarkDef& lm : stage.landmarks) {
+        if (lm.y < lo + 20.0f || lm.y > hi - 20.0f) continue;
+        if (lm.y < wyBase - 40.0f || lm.y > wyBase + kCanvasH + 40.0f) continue;
+        const std::int64_t li = static_cast<std::int64_t>(std::lround(lm.x));
+        const std::int64_t lj = static_cast<std::int64_t>(std::lround(lm.y));
+        const std::uint64_t lh = hsh(li, lj, salt ^ 0x5EED1u);
+        if (lm.kind == "farmstead") placeFarmstead(li, lj, lh, lm.x, lm.y, false);
+        else if (lm.kind == "hamlet") placeHamlet(li, lj, lh, lm.x, lm.y);
+        else if (lm.kind == "depot") placeDepot(li, lj, lh, lm.x, lm.y);
+    }
+    auto nearLandmark = [&](float x, float y) {
+        for (const LandmarkDef& lm : stage.landmarks)
+            if (std::fabs(lm.x - x) < 88.0f && std::fabs(lm.y - y) < 88.0f) return true;
+        return false;
+    };
+
     const int b0 = static_cast<int>(std::floor(static_cast<float>(wyBase) / 128.0f)) - 1;
     for (int j = b0; j <= b0 + 3; ++j) {
         for (int i = 0; i <= 3; ++i) {
@@ -636,78 +725,23 @@ void runBake(BakeCtx& ctx, PixelBuf& canvas, LandMask& land, int cy,
                               (hf(i, j, salt ^ 0x5EED3) - 0.5f) * 56.0f;
             if (cyw < lo + 20.0f || cyw > hi - 20.0f) continue;
             if (cyw < wyBase - 40.0f || cyw > wyBase + kCanvasH + 40.0f) continue;
+            if (nearLandmark(cxw, cyw)) continue;
             const float fa = vnoise(cxw, cyw, 150.0f, SEED + 2);
             const float fo = vnoise(cxw, cyw, 170.0f, SEED + 1);
 
             // Farmstead on farmland: yard pad, house, barn, shed, haystack.
             if (fa > 0.50f && fo < 0.55f && (cellH % 100u) < 46u) {
-                const float ox = static_cast<float>((cellH >> 8) % 41) - 20.0f;
-                const float oy = static_cast<float>((cellH >> 14) % 41) - 20.0f;
-                const float hx = cxw + ox, hy = cyw + oy;
-                if (landAtW(hx, hy) >= 255) {
-                    softDiscW(ras, hx, hy, 16.0f, 0x77603F, 120);
-                    softDiscW(ras, hx - 4.0f, hy + 3.0f, 9.0f, 0x83704B, 110);
-                    occ.mark(hx, hy, 5.0f);
-                    const bool gotHouse =
-                        tryStamp("env_farmhouse_0", hx, hy, 11.0f) ||
-                        tryStamp("env_farmhouse_1", hx, hy, 11.0f);
-                    if (gotHouse) {
-                        const float ba = hf(i, j, 71) * 6.2831853f;
-                        tryStamp("env_barn_0", hx + std::cos(ba) * 22.0f,
-                                 hy + std::sin(ba) * 19.0f, 12.0f) ||
-                            tryStamp("env_barn_1", hx + std::cos(ba) * 22.0f,
-                                     hy + std::sin(ba) * 19.0f, 12.0f);
-                        if (hf(i, j, 73) < 0.70f)
-                            tryStamp("env_shed_0", hx + 16.0f, hy - 14.0f, 6.0f) ||
-                                tryStamp("env_shed_1", hx + 16.0f, hy - 14.0f, 6.0f);
-                        if (hf(i, j, 79) < 0.65f)
-                            tryStamp("env_haystack", hx - 15.0f, hy - 13.0f, 4.0f);
-                        if (hf(i, j, 83) < 0.30f)
-                            tryStamp("env_well", hx + 6.0f, hy + 12.0f, 4.0f);
-                        driveway(hx, hy - 12.0f);
-                    }
-                }
+                placeFarmstead(i, j, cellH, cxw, cyw, true);
                 continue;
             }
             // Hamlet on open ground: ring of houses, well/green, sheds.
             if (fa < 0.58f && fo < 0.50f && ((cellH >> 7) % 100u) < 34u) {
-                if (landAtW(cxw, cyw) >= 255) {
-                    const int houses = 3 + static_cast<int>((cellH >> 16) % 4u);
-                    int placed = 0;
-                    for (int k = 0; k < houses; ++k) {
-                        const float a = 6.2831853f * k / houses + hf(i, j, 91 + k) * 0.9f;
-                        const float d = 9.0f + hf(i, j, 101 + k) * 17.0f;
-                        const char* hn[3] = {"env_house_0", "env_house_1", "env_house_2"};
-                        if (tryStamp(hn[(cellH >> (k * 2)) % 3u],
-                                     cxw + std::cos(a) * d, cyw + std::sin(a) * d * 0.85f,
-                                     8.0f))
-                            ++placed;
-                        if (k == houses - 1 && hf(i, j, 111) < 0.45f)
-                            tryStamp("env_shed_1", cxw + std::cos(a) * (d + 12.0f),
-                                     cyw + std::sin(a) * (d + 10.0f), 5.0f);
-                    }
-                    if (placed >= 2) {
-                        if (hf(i, j, 121) < 0.40f) tryStamp("env_well", cxw, cyw, 4.0f);
-                        driveway(cxw, cyw + 14.0f);
-                    }
-                }
+                placeHamlet(i, j, cellH, cxw, cyw);
                 continue;
             }
             // Military depot (rare): cleared pad, warehouse, barracks, fuels.
             if (((cellH >> 11) % 100u) < 12u && fo < 0.60f) {
-                if (landAtW(cxw, cyw) >= 255) {
-                    softDiscW(ras, cxw, cyw, 22.0f, 0x6E5F45, 150);
-                    softDiscW(ras, cxw + 5.0f, cyw - 4.0f, 13.0f, 0x7A6C50, 130);
-                    occ.mark(cxw, cyw, 4.0f);
-                    const bool gotWh =
-                        tryStamp("env_warehouse_0", cxw - 4.0f, cyw + 6.0f, 14.0f) ||
-                        tryStamp("env_warehouse_1", cxw - 4.0f, cyw + 6.0f, 14.0f);
-                    tryStamp("env_barracks_0", cxw + 10.0f, cyw - 12.0f, 10.0f) ||
-                        tryStamp("env_barracks_1", cxw + 10.0f, cyw - 12.0f, 10.0f);
-                    tryStamp("env_fuel_tank_0", cxw - 16.0f, cyw - 12.0f, 8.0f);
-                    tryStamp("env_fuel_tank_1", cxw - 4.0f, cyw - 16.0f, 8.0f);
-                    if (gotWh) driveway(cxw, cyw - 20.0f);
-                }
+                placeDepot(i, j, cellH, cxw, cyw);
                 continue;
             }
             // Big props: pond in open country, rock outcrops anywhere.
@@ -876,7 +910,7 @@ int EnvironmentBaker::get(Renderer& r, const StageDef& stage, int cx, int cy) {
                 static_cast<std::uint8_t>(a);
     }
 
-    runBake(ctx, canvas, land, cy, lo, hi);
+    runBake(ctx, canvas, land, cy, lo, hi, stage);
 
 #ifndef NDEBUG
     if (const char* dd = SDL_getenv("WWII_DUMP_CHUNKS")) {

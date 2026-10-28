@@ -11,6 +11,11 @@
     { "fromY": 4600, "toY": 4760, "kind": "shore" },
     { "fromY": 4760, "toY": 99999, "kind": "ocean" }
   ],
+  "landmarks": [
+    { "kind": "farmstead", "x": 110, "y": 3150 },
+    { "kind": "hamlet",    "x": 250, "y": 3620 },
+    { "kind": "farmstead", "x": 150, "y": 4150 }
+  ],
   "events": [
     { "trigger": 2,  "enemy": "fighter_light", "formation": "h_line", "count": 3, "x": 192, "y": -30 },
     { "trigger": 5,  "enemy": "fighter_light", "formation": "single", "count": 1, "x": 110, "y": -30 },

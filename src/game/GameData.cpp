@@ -393,6 +393,16 @@ bool parseStageJson(const std::string& text, StageDef& out, std::string& error) 
             out.terrain.push_back(seg);
         }
     }
+    if (j.contains("landmarks") && j["landmarks"].is_array()) {
+        for (const auto& l : j["landmarks"]) {
+            if (!l.is_object()) continue;
+            LandmarkDef lm;
+            lm.kind = getS(l, "kind", "farmstead");
+            lm.x = getF(l, "x", 192.0f);
+            lm.y = getF(l, "y", 0.0f);
+            out.landmarks.push_back(lm);
+        }
+    }
     if (j.contains("events") && j["events"].is_array()) {
         for (const auto& e : j["events"]) {
             if (!e.is_object()) continue;

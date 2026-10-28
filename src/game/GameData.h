@@ -235,6 +235,14 @@ struct TerrainSegment {
     TerrainKind kind = TerrainKind::Ocean;
 };
 
+// An intentional scenery set piece placed at a fixed world position by the
+// environment baker ("farmstead", "hamlet" or "depot"). Purely decorative.
+struct LandmarkDef {
+    std::string kind = "farmstead";
+    float x = 192.0f;
+    float y = 0.0f;   // world Y (≈ scroll distance), matches terrain seg coords
+};
+
 struct SpawnEvent {
     float trigger = 0.0f;         // seconds since stage start
     std::string enemy;            // EnemyDef name
@@ -265,6 +273,7 @@ struct StageDef {
     float duration = 90.0f;       // playable length before boss window
     float scrollSpeed = 60.0f;    // world px/s
     std::vector<TerrainSegment> terrain;
+    std::vector<LandmarkDef> landmarks;
     std::vector<SpawnEvent> events;
     std::string boss = "";
     float bossTime = 80.0f;
