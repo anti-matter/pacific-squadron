@@ -39,6 +39,20 @@ public:
     bool createTextureFromPng(const std::string& name, const std::string& path);
     int texture(const std::string& name) const;
     bool textureSize(int id, int& w, int& h) const;
+    // RGBA bytes of the last upload for env_* textures (see
+    // createTextureFromPixels); nullptr for other textures.
+    const std::vector<std::uint8_t>* envPixels(int id) const {
+        return id >= 0 && id < static_cast<int>(envPixels_.size()) &&
+                       !envPixels_[static_cast<std::size_t>(id)].empty()
+                   ? &envPixels_[static_cast<std::size_t>(id)]
+                   : nullptr;
+    }
+    int envPixelSize(int id, int& w, int& h) const {
+        if (id < 0 || id >= static_cast<int>(envW_.size())) return 0;
+        w = envW_[static_cast<std::size_t>(id)];
+        h = envH_[static_cast<std::size_t>(id)];
+        return w > 0 ? w * h * 4 : 0;
+    }
 
     // ---- frame --------------------------------------------------------
     void beginFrame(const Color& clearColor = Color::rgb(0x000000));
@@ -113,6 +127,8 @@ private:
     int canvasW_ = 384, canvasH_ = 512;  // current logical canvas size
     std::vector<SDL_Texture*> textures_;
     std::vector<int> texW_, texH_;
+    std::vector<std::vector<std::uint8_t>> envPixels_;  // env_* RGBA store
+    std::vector<int> envW_, envH_;
     std::unordered_map<std::string, int> texByName_;
     std::vector<TextEntry> textQueue_;
     std::unordered_map<int, int> fontTexByScale_;  // px*16 -> font atlas id

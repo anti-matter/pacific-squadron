@@ -77,7 +77,14 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
 
 - `src/game/` — simulation, data loading (`GameData.*`), stage script
   (`LevelScript.*`), tuning constants (`Tuning.h`).
-- `src/graphics/ProceduralArt.cpp` — **all** sprite generation.
+- `src/graphics/ProceduralArt.cpp` — entity/boss/HUD sprite generation.
+- `src/graphics/EnvironmentArt.cpp` — scenery sprite generation (`env_*`:
+  trees, buildings, rocks, pond) consumed by the terrain baker.
+- `src/graphics/Environment.cpp` — `EnvironmentBaker`: bakes full-width
+  64 px land "chunks" (farmland, roads, set pieces, trees) into pooled
+  `env_chunk_N` textures; falls back to the legacy 32 px filler tiles.
+- `src/graphics/SpriteKit.h` — shared `kit::` raster toolkit (`Hi`,
+  `shade`, `mix24`, `mixPacked`, `outlineSilhouette`, `softBlendEllipse`).
 - `src/app/Application.cpp` — rendering, menus/help, smoke harness.
 - `assets/data/{weapons,enemies,bosses,stages,anims,...}/*.json`.
 - `tests/test_data.cpp` — data pins (see below).
@@ -97,6 +104,21 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
   `rm ~/.local/share/pacific-squadron/pacific-squadron/art_cache.bin` first.
 - Shared look helpers: `softDisc` (AA'd discs), `outlineSilhouette` (crisp
   contour), `mix`/`shadeBy`, deterministic `hash`/`frand`.
+- **`kit::mix24` takes raw `0xRRGGBB`; `col()`-packed `0xRRGGBBAA` values
+  need `kit::mixPacked`** — passing packed operands into `mix24` double-
+  shifts the channels (the famous purple-sprite bug).
+- **Terrain chunks** (`Environment.cpp`): land rows in `Island`/`Jungle`
+  segments render as baked 384×64 `env_chunk_N` textures instead of 32 px
+  tiles. Everything in a bake is keyed to **absolute world coordinates**
+  (candidate grids, hash keys, structure cells) so neighbouring padded
+  canvases make identical decisions — any per-chunk-relative keying shows
+  up as a visible band every 64 px. Verify seams with
+  `WWII_DUMP_CHUNKS=/tmp/dir` (Debug; dumps canvas PPMs; compare chunk N
+  canvas row 32 vs chunk N+1 row 95 — seam diff should be in the same
+  range as adjacent interior rows, ~5–10).
+- **`env_*` sprites are PNG-overridable** from `assets/sprites/<name>.png`
+  like all other sprites; the baker reads them through the Renderer's env
+  pixel store, so authored art and procedural fallbacks both bake.
 
 ## Data conventions
 

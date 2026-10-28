@@ -9,6 +9,7 @@
 #include "core/Rng.h"
 #include "game/Game.h"
 #include "graphics/Renderer.h"
+#include "graphics/Environment.h"
 #include "input/Input.h"
 #include "ui/Hud.h"
 
@@ -72,6 +73,7 @@ private:
     void waitForSplashDismiss();
 
     Renderer renderer_;
+    EnvironmentBaker env_;  // composed land terrain chunks (see Environment.h)
     Input input_;
     Audio audio_;
     GameData data_;

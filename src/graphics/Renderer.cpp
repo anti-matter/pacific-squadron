@@ -92,6 +92,9 @@ bool Renderer::init(const std::string& title, bool fullscreen) {
 void Renderer::shutdown() {
     for (auto* t : textures_) SDL_DestroyTexture(t);
     textures_.clear();
+    envPixels_.clear();
+    envW_.clear();
+    envH_.clear();
     if (canvas_) SDL_DestroyTexture(canvas_);
     canvas_ = nullptr;
     if (sdl_) SDL_DestroyRenderer(sdl_);
@@ -113,6 +116,9 @@ int Renderer::createTextureFromPixels(const std::string& name,
         textures_.push_back(nullptr);
         texW_.push_back(w);
         texH_.push_back(h);
+        envPixels_.emplace_back();
+        envW_.push_back(0);
+        envH_.push_back(0);
     }
     SDL_Texture* tex = SDL_CreateTexture(sdl_, SDL_PIXELFORMAT_RGBA8888,
                                          SDL_TEXTUREACCESS_STATIC, w, h);
@@ -121,6 +127,16 @@ int Renderer::createTextureFromPixels(const std::string& name,
     SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
     SDL_UpdateTexture(tex, nullptr, rgba, w * 4);
     textures_[static_cast<std::size_t>(id)] = tex;
+    // Pixel store for the environment baker, which stamps the env sprites
+    // into its chunk canvases at runtime and so needs their RGBA values
+    // regardless of whether they came from the generators, the art cache or
+    // an assets/sprites/*.png override. Only the small env_* set is kept.
+    if (name.rfind("env_", 0) == 0 && name.rfind("env_chunk_", 0) != 0) {
+        auto& dst = envPixels_[static_cast<std::size_t>(id)];
+        dst.assign(rgba, rgba + static_cast<std::size_t>(w) * h * 4);
+        envW_[static_cast<std::size_t>(id)] = w;
+        envH_[static_cast<std::size_t>(id)] = h;
+    }
     if (replace) {
         texW_[static_cast<std::size_t>(id)] = w;
         texH_[static_cast<std::size_t>(id)] = h;

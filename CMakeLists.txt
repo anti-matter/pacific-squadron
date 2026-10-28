@@ -73,6 +73,8 @@ add_executable(pacific-squadron
     src/graphics/Renderer.cpp
     src/graphics/BitmapFont.cpp
     src/graphics/ProceduralArt.cpp
+    src/graphics/EnvironmentArt.cpp
+    src/graphics/Environment.cpp
     src/audio/Audio.cpp
     src/audio/ProceduralSfx.cpp
     src/input/Input.cpp

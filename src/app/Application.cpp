@@ -259,6 +259,7 @@ bool Application::init() {
         showSplash(0.12f + 0.60f * p, "ASSEMBLING THE SQUADRON");
     });
     loadPngOverrides(renderer_, assetDir_);
+    env_.init(renderer_);  // pooled chunk textures for composed land
     phase("art");
 
     // Audio buffers: synthesized once, then cached like the art. The audio
@@ -824,6 +825,7 @@ void Application::updateMusic() {
 // Rendering
 // ---------------------------------------------------------------------------
 void Application::renderTerrain(const StageDef* stage, float scrollY) {
+    env_.beginFrame();
     const int cols = 12;
     // Tile choice for a plain (non-shore) terrain kind. Ocean variants are
     // picked from the STATIC tile hash only — never from time. (A time term
@@ -856,11 +858,20 @@ void Application::renderTerrain(const StageDef* stage, float scrollY) {
     const float base = scrollY + kPlayH;   // screenY = base - worldY
     const int rowFirst = static_cast<int>(std::floor(scrollY / kTile)) - 1;
     const int rowLast = static_cast<int>(std::floor(base / kTile)) + 1;
+    // Composed land (Island/Jungle) skips the 32px filler pass: entire rows
+    // are painted by the EnvironmentBaker chunks drawn after this loop, so
+    // no per-tile lattice ever shows through. Fallback tiles stay for the
+    // (unexpected) case where chunk baking is unavailable.
+    auto composedLand = [&](TerrainKind kind) {
+        return env_.ready() && stage &&
+               (kind == TerrainKind::Island || kind == TerrainKind::Jungle);
+    };
     for (int row = rowFirst; row <= rowLast; ++row) {
         const float tileCenterY = base - (static_cast<float>(row) + 0.5f) * kTile;
         const float worldY = (static_cast<float>(row) + 0.5f) * kTile;
         const TerrainKind kind = stage ? terrainAt(*stage, worldY)
                                        : TerrainKind::Ocean;
+        if (composedLand(kind)) continue;
         for (int i = 0; i < cols; ++i) {
             const std::uint32_t h = hashXY(i, row);
             const char* texName = "tile_ocean_a";
@@ -916,6 +927,44 @@ void Application::renderTerrain(const StageDef* stage, float scrollY) {
             renderer_.drawRegion(tid, 0, 0, 32, 32,
                                  static_cast<float>(i) * kTile + 16.0f,
                                  tileCenterY);
+        }
+    }
+
+    // Composed land chunks: 64px baked landscape (fields, roads, farms,
+    // woodland) keyed to world position; deterministic and cached. Rows
+    // whose chunk bake is unavailable fall back to the filler tiles above.
+    if (stage && env_.ready()) {
+        const int chunkFirst =
+            static_cast<int>(std::floor(scrollY / EnvironmentBaker::kChunk)) - 1;
+        const int chunkLast =
+            static_cast<int>(std::floor(base / EnvironmentBaker::kChunk)) + 1;
+        for (int cy = chunkFirst; cy <= chunkLast; ++cy) {
+            const int tex = env_.get(renderer_, *stage, 0, cy);
+            if (tex < 0) {
+                // No chunk (e.g. bake failure): keep the old filler so the
+                // ground never holes out.
+                const float worldY = (static_cast<float>(cy) + 0.5f) *
+                                     EnvironmentBaker::kChunk;
+                if (composedLand(terrainAt(*stage, worldY))) {
+                    const float tileCenterY0 =
+                        base - (static_cast<float>(cy) + 0.5f) * EnvironmentBaker::kChunk;
+                    for (int i = 0; i < 384 / 32; ++i)
+                        for (int j = 0; j < 2; ++j) {
+                            const std::uint32_t h = hashXY(i, cy * 2 + j);
+                            const int t = renderer_.texture(tileForKind(
+                                TerrainKind::Jungle, h, i));
+                            renderer_.drawRegion(
+                                t, 0, 0, 32, 32,
+                                static_cast<float>(i) * kTile + 16.0f,
+                                tileCenterY0 + static_cast<float>(j) * kTile -
+                                    kTile * 0.5f);
+                        }
+                }
+                continue;
+            }
+            const float ccy =
+                base - (static_cast<float>(cy) + 0.5f) * EnvironmentBaker::kChunk;
+            renderer_.draw(tex, 192.0f, ccy);
         }
     }
 
