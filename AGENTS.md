@@ -116,6 +116,20 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
   `WWII_DUMP_CHUNKS=/tmp/dir` (Debug; dumps canvas PPMs; compare chunk N
   canvas row 32 vs chunk N+1 row 95 — seam diff should be in the same
   range as adjacent interior rows, ~5–10).
+- **Composed-land coastlines are baked, not tiled**: each span's bake extends
+  through its adjacent shore band to the real waterline (`Coast`/`CoastEdge`
+  in Environment.cpp). The land/water edge is a curved waterline
+  (`coastEdgeY`, coherent noise keyed to world X — identical in every canvas),
+  with a curved sand→grass coverage ramp in the LandMask (features only stamp
+  at full coverage, so the tree line follows the curve), an alpha fade of a few
+  px at the water edge, and a baked soft broken-cream foam fringe (never a
+  solid white line). Where the neighbour beyond the shore band is land
+  (fortress/airfield), the edge is a dry `joint` blend instead. In
+  `Application::renderTerrain`, shore bands adjacent to composed land draw
+  **plain sea filler** (the chunk paints beach/land/foam over them) and a
+  filler tile is skipped only when its full 32 px range lies inside a span
+  (`composedTileCovered`); centre-based skipping leaves clear-colour
+  (`0x06101C`) stripes at every coastline.
 - **`env_*` sprites are PNG-overridable** from `assets/sprites/<name>.png`
   like all other sprites; the baker reads them through the Renderer's env
   pixel store, so authored art and procedural fallbacks both bake.

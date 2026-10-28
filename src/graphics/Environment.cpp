@@ -53,6 +53,29 @@ float vnoise(float x, float y, float cell, std::uint64_t seed) {
 }
 
 // ---------------------------------------------------------------------------
+// Composed-land coast shaping. The land/water boundary is never a straight
+// segment edge: the waterline undulates with two coherent-noise octaves
+// keyed to world X and the edge's base Y, so every chunk canvas computes
+// the identical curve (padded neighbours agree, no seams).
+// ---------------------------------------------------------------------------
+float coastEdgeY(float x, float baseY) {
+    return baseY + (vnoise(x, baseY * 0.5f, 90.0f, SEED + 0xC057) - 0.5f) * 22.0f +
+           (vnoise(x, baseY * 0.5f, 26.0f, SEED + 0xC058) - 0.5f) * 9.0f;
+}
+
+// Treatment at one end of a composed-land span.
+struct CoastEdge {
+    bool water = false;  // open sea beyond: curved foam waterline at baseY
+    bool joint = false;  // dry sand blend across a band to other land kinds
+    float baseY = 0.0f;  // outer bake boundary (waterline / band edge)
+    float ramp = 60.0f;  // sand -> full land blend depth
+};
+struct Coast {
+    CoastEdge lo, hi;
+    float loExt = 0.0f, hiExt = 0.0f;  // extended bake span (incl. beach/fringe)
+};
+
+// ---------------------------------------------------------------------------
 // Chunk canvas. The bake canvas spans the FULL play width plus x padding
 // (kCanvasW x kCanvasH px) and the chunk's world rows [chunkLo - kPad,
 // chunkLo + kChunk + kPad). Canvas row 0 is the TOP (screen space); world Y
@@ -338,7 +361,7 @@ struct BakeCtx {
 // (kEnvSpriteNames / kEnvSpriteCount live in EnvironmentArt.h)
 
 void runBake(BakeCtx& ctx, PixelBuf& canvas, LandMask& land, int cy,
-             float lo, float hi, const StageDef& stage) {
+             float lo, float hi, const Coast& coast, const StageDef& stage) {
     const std::uint64_t salt =
         static_cast<std::uint64_t>(static_cast<std::int64_t>(std::lround(lo * 4.0))) *
         0x9E3779B97F4A7C15ull;
@@ -368,11 +391,14 @@ void runBake(BakeCtx& ctx, PixelBuf& canvas, LandMask& land, int cy,
             const float m = vnoise(wx, wy, 95.0f, SEED + 3) +
                             (vnoise(wx, wy, 38.0f, SEED + 4) - 0.5f) * 0.40f;
             float& g0 = m0[k]; float& g1 = m1[k]; float& g2 = m2[k]; float& g3 = m3[k];
-            g0 = 1.0f; g1 = g2 = g3 = 0.0f;
-            const int best = std::min(3, static_cast<int>(m * 4.0f));
-            if (best == 1) { g0 = 0.0f; g1 = 1.0f; }
-            else if (best == 2) { g0 = 0.0f; g2 = 1.0f; }
-            else if (best == 3) { g0 = 0.0f; g3 = 1.0f; }
+            // Smooth triangle-basis weights across the material ramp (hard
+            // per-node selection read as a 4px grid wherever open ground was
+            // exposed, e.g. the beach bands).
+            const float mm = std::clamp(m, 0.0f, 1.0f) * 3.0f;
+            auto tri = [mm](int i) {
+                return std::max(0.0f, 1.0f - std::abs(mm - static_cast<float>(i)));
+            };
+            g0 = tri(0); g1 = tri(1); g2 = tri(2); g3 = tri(3);
             if (f > 0.62f) {  // forest floor takes over in dense woodland
                 const float w = std::min(1.0f, (f - 0.62f) / 0.20f);
                 g3 = std::max(g3, w);
@@ -413,7 +439,22 @@ void runBake(BakeCtx& ctx, PixelBuf& canvas, LandMask& land, int cy,
             const float n2 = hf(px / 4, wy / 4, SEED + 6) - 0.5f;
             c = shade(c, 1.0f + n1 * 0.06f + n2 * 0.10f);
             if (la < 255) c = mixPacked(sandC, c, la / 255.0f);
-            canvas.px[pk] = c | 0xFFu;
+            // Antialiased land edge: alpha fades only within a few px of the
+            // curved waterlines; everywhere else land is fully solid.
+            int al = 255;
+            const float wyf = static_cast<float>(wy);
+            if (coast.lo.water && wyf < lo + 1.0f) {
+                const float d =
+                    wyf - coastEdgeY(static_cast<float>(px - kPadX), coast.lo.baseY);
+                al = std::min(al, std::max(0, static_cast<int>(d * 36.0f)));
+            }
+            if (coast.hi.water && wyf > hi - 1.0f) {
+                const float d =
+                    coastEdgeY(static_cast<float>(px - kPadX), coast.hi.baseY) - wyf;
+                al = std::min(al, std::max(0, static_cast<int>(d * 36.0f)));
+            }
+            if (al <= 0) continue;
+            canvas.px[pk] = (c & ~0xFFu) | static_cast<std::uint32_t>(al);
         }
     }
 
@@ -580,11 +621,16 @@ void runBake(BakeCtx& ctx, PixelBuf& canvas, LandMask& land, int cy,
 
     // ---- 4. structures ------------------------------------------------------
     Occ occ;
+    // Feature bounds: the curved full-coverage contour of the coast (where
+    // present) instead of the raw span edges, so the tree line follows the
+    // organic coastline while the land mask still rejects anything on sand.
+    const float gLo = coast.lo.water ? coast.lo.baseY + coast.lo.ramp + 3.0f : lo;
+    const float gHi = coast.hi.water ? coast.hi.baseY - coast.hi.ramp - 3.0f : hi;
     auto tryStamp = [&](const char* name, float x, float y, float clearR,
                         bool markOcc = true) -> bool {
         if (occ.blocked(x, y, clearR)) return false;
         if (landAtW(x, y) < 255) return false;
-        if (y - clearR < lo + 14.0f || y + clearR > hi - 14.0f) return false;
+        if (y - clearR < gLo + 8.0f || y + clearR > gHi - 8.0f) return false;
         int sw = 0, sh = 0;
         const std::uint32_t* sp = ctx.pixels(name, sw, sh);
         if (!sp) return false;
@@ -849,26 +895,94 @@ int EnvironmentBaker::get(Renderer& r, const StageDef& stage, int cx, int cy) {
     }
     if (frameBakes_ >= kBakesPerFrame) return -1;  // spread bakes over frames
     ++frameBakes_;
-    const float cyW = (static_cast<float>(cy) + 0.5f) * kChunk;
-    const TerrainKind kind = terrainAt(stage, cyW);
-    if (kind != TerrainKind::Island && kind != TerrainKind::Jungle) return -1;
 
-    // Contiguous composed-land segment bounds around this chunk.
+    // ---- composed-land span covering this cell, with coast treatment ----
+    // The bake cell intersects the EXTENDED span: the base span plus any
+    // adjacent shore band (composed land owns the whole coast transition
+    // down to the real waterline or a dry joint into other land kinds, so
+    // no 32px filler art ever shows beside it), plus a small fringe beyond
+    // a waterline for the soft foam edge.
+    const float cellLo = static_cast<float>(cy) * kChunk;
+    const float cellHi = cellLo + static_cast<float>(kChunk);
     float lo = 0.0f, hi = 1e9f;
+    Coast coast;
+    bool found = false;
     {
         const std::size_t n = stage.terrain.size();
-        std::size_t seg = 0;
-        for (std::size_t s = 0; s < n; ++s)
-            if (cyW >= stage.terrain[s].fromY) seg = s;
-        lo = stage.terrain[seg].fromY;
-        std::size_t e = seg;
-        while (e + 1 < n &&
-               (stage.terrain[e + 1].kind == TerrainKind::Island ||
-                stage.terrain[e + 1].kind == TerrainKind::Jungle) &&
-               stage.terrain[e + 1].fromY <= stage.terrain[e].toY + 1.0f)
-            ++e;
-        hi = e + 1 < n ? stage.terrain[e + 1].fromY : stage.terrain[e].toY;
+        std::size_t s0 = 0;
+        while (!found) {
+            while (s0 < n && stage.terrain[s0].kind != TerrainKind::Island &&
+                   stage.terrain[s0].kind != TerrainKind::Jungle)
+                ++s0;
+            if (s0 >= n) break;
+            std::size_t e = s0;
+            while (e + 1 < n &&
+                   (stage.terrain[e + 1].kind == TerrainKind::Island ||
+                    stage.terrain[e + 1].kind == TerrainKind::Jungle) &&
+                   stage.terrain[e + 1].fromY <= stage.terrain[e].toY + 1.0f)
+                ++e;
+            Coast c;
+            const float sLo = stage.terrain[s0].fromY;
+            const float sHi =
+                e + 1 < n ? stage.terrain[e + 1].fromY : stage.terrain[e].toY;
+            c.loExt = sLo;
+            c.hiExt = sHi;
+            if (s0 > 0) {  // what bounds the span below shapes the low edge
+                const TerrainKind nb = stage.terrain[s0 - 1].kind;
+                const float bandY = stage.terrain[s0 - 1].fromY;
+                if (nb == TerrainKind::Ocean) {
+                    c.lo.water = true;
+                    c.lo.baseY = sLo;
+                    c.lo.ramp = 60.0f;
+                    c.loExt = sLo - 26.0f;  // room for the foam fringe
+                } else if (nb == TerrainKind::Shore) {
+                    c.loExt = bandY;
+                    const bool seaBeyond =
+                        s0 >= 2 && stage.terrain[s0 - 2].kind == TerrainKind::Ocean;
+                    if (seaBeyond) {
+                        c.lo.water = true;
+                        c.lo.baseY = bandY;
+                        c.lo.ramp = 96.0f;  // beach -> dunes -> inland
+                    } else {
+                        c.lo.joint = true;
+                        c.lo.baseY = bandY;
+                        c.lo.ramp = sLo - bandY;
+                    }
+                }
+            }
+            if (e + 1 < n) {  // the high edge mirrors it
+                const TerrainKind nx = stage.terrain[e + 1].kind;
+                const float bandY = stage.terrain[e + 1].toY;
+                if (nx == TerrainKind::Ocean) {
+                    c.hi.water = true;
+                    c.hi.baseY = sHi;
+                    c.hi.ramp = 60.0f;
+                    c.hiExt = sHi + 26.0f;
+                } else if (nx == TerrainKind::Shore) {
+                    c.hiExt = bandY;
+                    const bool seaBeyond =
+                        e + 2 < n && stage.terrain[e + 2].kind == TerrainKind::Ocean;
+                    if (seaBeyond) {
+                        c.hi.water = true;
+                        c.hi.baseY = bandY;
+                        c.hi.ramp = 96.0f;
+                    } else {
+                        c.hi.joint = true;
+                        c.hi.baseY = bandY;
+                        c.hi.ramp = bandY - sHi;
+                    }
+                }
+            }
+            if (cellHi > c.loExt && cellLo < c.hiExt) {
+                lo = sLo;
+                hi = sHi;
+                coast = c;
+                found = true;
+            }
+            s0 = e + 1;
+        }
     }
+    if (!found) return -1;
 
     if (cache_.size() >= kPoolSize) {  // LRU eviction
         auto victim = cache_.begin();
@@ -885,32 +999,88 @@ int EnvironmentBaker::get(Renderer& r, const StageDef& stage, int cx, int cy) {
     BakeCtx ctx{r, sprId};
     PixelBuf canvas(kCanvasW, kCanvasH);
     LandMask land;
+    // Per-pixel coverage: full land inside the span, a curved sand->land
+    // beach through each coast/joint edge (the mask blends sand under
+    // partial coverage in the base ground pass, and features only stamp
+    // where coverage is solid, so vegetation stops at the tree line).
     for (int py = 0; py < kCanvasH; ++py) {
         const float wy = static_cast<float>(cy) * kChunk - kPadY + (kCanvasH - 1 - py);
-        if (wy < lo || wy >= hi) continue;
-        float f = 1.0f;
-        if (lo > 1.0f) {  // coastline below (water behind)
-            const float d = wy - lo;
-            if (d < 14.0f) f = 0.0f;
-            else if (d < 30.0f)
-                f = (d - 14.0f) / 16.0f +
-                    (hf(0, static_cast<std::int64_t>(wy), SEED) - 0.5f) * 0.55f;
+        if (wy < coast.loExt || wy >= coast.hiExt) continue;
+        const std::size_t rowK = static_cast<std::size_t>(py) * kCanvasW;
+        for (int px = 0; px < kCanvasW; ++px) {
+            const float wx = static_cast<float>(px - kPadX);
+            float f = 1.0f;
+            if (wy < lo) {
+                if (coast.lo.water) {
+                    const float d = wy - coastEdgeY(wx, coast.lo.baseY);
+                    f = d < 3.0f ? 0.0f
+                                 : std::min(1.0f, (d - 3.0f) / coast.lo.ramp);
+                } else if (coast.lo.joint) {
+                    f = std::min(1.0f, (wy - coast.lo.baseY) / coast.lo.ramp);
+                } else {
+                    f = 0.0f;
+                }
+            } else if (wy >= hi) {
+                if (coast.hi.water) {
+                    const float d = coastEdgeY(wx, coast.hi.baseY) - wy;
+                    f = d < 3.0f ? 0.0f
+                                 : std::min(1.0f, (d - 3.0f) / coast.hi.ramp);
+                } else if (coast.hi.joint) {
+                    f = std::min(1.0f, (coast.hi.baseY - wy) / coast.hi.ramp);
+                } else {
+                    f = 0.0f;
+                }
+            }
+            if (f <= 0.0f) continue;
+            land.w[rowK + static_cast<std::size_t>(px)] =
+                static_cast<std::uint8_t>(
+                    std::min(255, static_cast<int>(f * 255.0f + 0.5f)));
         }
-        if (hi < 1e8f) {  // coastline above (water ahead)
-            const float d = hi - wy;
-            if (d < 14.0f) f = 0.0f;
-            else if (d < 30.0f)
-                f = std::min(f, (d - 14.0f) / 16.0f +
-                                    (hf(7, static_cast<std::int64_t>(wy), SEED) - 0.5f) * 0.55f);
-        }
-        if (f <= 0.0f) continue;
-        const int a = std::min(255, static_cast<int>(f * 255.0f + 0.5f));
-        for (int px = 0; px < kCanvasW; ++px)
-            land.w[static_cast<std::size_t>(py) * kCanvasW + px] =
-                static_cast<std::uint8_t>(a);
     }
 
-    runBake(ctx, canvas, land, cy, lo, hi, stage);
+    runBake(ctx, canvas, land, cy, lo, hi, coast, stage);
+
+    // ---- foam fringe on the curved waterlines ----
+    // Soft, broken cream surf a few px wide plus a damp darker-sand band
+    // just inland. Baked after all features so nothing overprints it, and
+    // keyed purely to world coordinates so every canvas paints the same
+    // line (padded neighbours agree). Deliberately low-alpha and warm:
+    // a bright solid white line reads as a seam.
+    const std::int64_t wyBase = static_cast<std::int64_t>(cy) * kChunk - kPadY;
+    auto foam = [&](bool lower, float baseY) {
+        for (int px = 0; px < kCanvasW; ++px) {
+            const float wx = static_cast<float>(px - kPadX);
+            const float w = coastEdgeY(wx, baseY);
+            const float brk =
+                0.45f + 0.55f * vnoise(wx, baseY, 13.0f, SEED + 0xC059);
+            for (int d = -5; d <= 12; ++d) {
+                const std::int64_t wy = static_cast<std::int64_t>(
+                    std::lround(lower ? w + static_cast<float>(d)
+                                      : w - static_cast<float>(d)));
+                const std::int64_t py = kCanvasHN - 1 - (wy - wyBase);
+                if (py < 0 || py >= kCanvasHN || brk < 0.28f) continue;
+                int a = 0;
+                std::uint32_t rgb = 0xEADFCA;
+                if (d >= -4 && d <= 4) {  // surf line, peak just inland
+                    rgb = 0xEADFCA;
+                    a = static_cast<int>((1.0f - std::abs(static_cast<float>(d) - 0.5f) /
+                                          4.5f) * 150.0f * brk) +
+                        static_cast<int>((hf(px, wy, SEED + 0xC05A) - 0.5f) * 22.0f);
+                } else if (d > 4 && d <= 12) {  // damp sand shading
+                    rgb = 0x7C6440;
+                    a = static_cast<int>((1.0f - static_cast<float>(d - 5) / 8.0f) *
+                                         70.0f * brk);
+                    // Only darkens sand that is actually there (skip sea).
+                    if ((canvas.get(px, static_cast<int>(py)) & 0xFFu) < 40) continue;
+                }
+                if (a <= 0) continue;
+                canvas.blend(px, static_cast<int>(py),
+                             col(rgb, static_cast<std::uint8_t>(std::min(a, 190))));
+            }
+        }
+    };
+    if (coast.lo.water) foam(true, coast.lo.baseY);
+    if (coast.hi.water) foam(false, coast.hi.baseY);
 
 #ifndef NDEBUG
     if (const char* dd = SDL_getenv("WWII_DUMP_CHUNKS")) {

@@ -28,7 +28,11 @@ struct StageDef;
 //      + yard), hamlets (clustered houses + well/pond), military depots
 //      (warehouse + fuel tanks on a cleared pad), ponds, rock outcrops;
 //   5. scattered trees/vegetation with biome-driven density, avoiding roads,
-//      buildings and crops (orchards and hedgerows excepted).
+//      buildings and crops (orchards and hedgerows excepted);
+//   6. the full coast transition: the bake extends through adjacent shore
+//      bands, ending in a curved noise waterline with a sand->grass tree
+//      line, antialiased land alpha and a soft broken foam fringe (dry
+//      sand joints where the land beyond the band is not sea).
 //
 // Everything is keyed by world position + the land segment's bounds, so a
 // replay of the same stage sees exactly the same landscape, and the layout

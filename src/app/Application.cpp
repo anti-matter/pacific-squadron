@@ -866,12 +866,65 @@ void Application::renderTerrain(const StageDef* stage, float scrollY) {
         return env_.ready() && stage &&
                (kind == TerrainKind::Island || kind == TerrainKind::Jungle);
     };
+    // A filler tile may only be skipped when a baked chunk covers the WHOLE
+    // tile. Composed spans start/end at arbitrary world Y (never tile- or
+    // chunk-aligned) and the bake leaves every row outside its [lo, hi) span
+    // transparent, so a tile whose centre is composed land but whose edge
+    // crosses the span boundary would otherwise leave an uncovered clear-
+    // colour stripe (and a hard cut) at every coastline. Straddling tiles
+    // keep their filler art: the chunk paints opaquely over its part.
+    auto composedTileCovered = [&](float worldY) {
+        if (!stage || !env_.ready()) return false;
+        if (!composedLand(terrainAt(*stage, worldY))) return false;
+        const auto& segs = stage->terrain;
+        std::size_t s = 0;
+        for (std::size_t i2 = 0; i2 < segs.size(); ++i2)
+            if (worldY >= segs[i2].fromY) s = i2;
+        const float lo = segs[s].fromY;
+        std::size_t e = s;
+        while (e + 1 < segs.size() &&
+               (segs[e + 1].kind == TerrainKind::Island ||
+                segs[e + 1].kind == TerrainKind::Jungle) &&
+               segs[e + 1].fromY <= segs[e].toY + 1.0f)
+            ++e;
+        const float hi = e + 1 < segs.size() ? segs[e + 1].fromY : segs[e].toY;
+        return worldY - 16.0f >= lo && worldY + 16.0f <= hi;
+    };
+    // Shore bands that border composed land: the baked chunks own that
+    // coastline end-to-end (curved waterline + foam are baked in), so the
+    // filler under them is plain sea - the old straight sand/foam tile
+    // rows must not show through the chunk's soft alpha edge.
+    auto coastBand = [&](float worldY) {
+        if (!stage || !env_.ready()) return false;
+        if (terrainAt(*stage, worldY) != TerrainKind::Shore) return false;
+        const auto& segs = stage->terrain;
+        std::size_t idx = 0;
+        for (std::size_t s = 0; s < segs.size(); ++s)
+            if (worldY >= segs[s].fromY) idx = s;
+        const auto isLand = [](TerrainKind k) {
+            return k == TerrainKind::Island || k == TerrainKind::Jungle;
+        };
+        const bool prevLand = idx > 0 && isLand(segs[idx - 1].kind);
+        const bool nextLand = idx + 1 < segs.size() && isLand(segs[idx + 1].kind);
+        return prevLand || nextLand;
+    };
     for (int row = rowFirst; row <= rowLast; ++row) {
         const float tileCenterY = base - (static_cast<float>(row) + 0.5f) * kTile;
         const float worldY = (static_cast<float>(row) + 0.5f) * kTile;
         const TerrainKind kind = stage ? terrainAt(*stage, worldY)
                                        : TerrainKind::Ocean;
-        if (composedLand(kind)) continue;
+        if (composedTileCovered(worldY)) continue;
+        if (coastBand(worldY)) {
+            // Plain sea base: the baked coastline chunk paints beach, land
+            // and foam over this; its alpha edge blends into these tiles.
+            for (int i = 0; i < cols; ++i) {
+                const int tid = renderer_.texture(oceanFor(hashXY(i, row)));
+                renderer_.drawRegion(tid, 0, 0, 32, 32,
+                                     static_cast<float>(i) * kTile + 16.0f,
+                                     tileCenterY);
+            }
+            continue;
+        }
         for (int i = 0; i < cols; ++i) {
             const std::uint32_t h = hashXY(i, row);
             const char* texName = "tile_ocean_a";
