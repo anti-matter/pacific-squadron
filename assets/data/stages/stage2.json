@@ -41,7 +41,13 @@
     { "trigger": 74, "enemy": "bunker", "formation": "single", "count": 1, "x": 192, "y": -30 },
     { "trigger": 76, "enemy": "heavy_fighter", "formation": "arc", "count": 4, "x": 192, "y": -40, "hpMul": 1.25 },
     { "trigger": 80, "enemy": "fighter_formation", "formation": "v_formation", "count": 7, "x": 192, "y": -40, "movement": "arc_left" },
+    { "trigger": 81, "enemy": "hangar", "formation": "single", "count": 1, "x": 88, "y": -30 },
+    { "trigger": 82, "enemy": "parked_plane", "formation": "h_line", "count": 3, "x": 290, "y": -30, "spacing": 54 },
     { "trigger": 84, "enemy": "bomber", "formation": "single", "count": 1, "x": 192, "y": -60 },
-    { "trigger": 86, "enemy": "interceptor", "formation": "v_line", "count": 4, "x": 180, "y": -40 }
+    { "trigger": 84.5, "enemy": "control_tower", "formation": "single", "count": 1, "x": 96, "y": -30 },
+    { "trigger": 85.5, "enemy": "parked_plane", "formation": "staggered", "count": 3, "x": 84, "y": -30 },
+    { "trigger": 86, "enemy": "interceptor", "formation": "v_line", "count": 4, "x": 180, "y": -40 },
+    { "trigger": 88, "enemy": "hangar", "formation": "single", "count": 1, "x": 290, "y": -30 },
+    { "trigger": 90, "enemy": "parked_plane", "formation": "h_line", "count": 2, "x": 96, "y": -30, "spacing": 54 }
   ]
 }

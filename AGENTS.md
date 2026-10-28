@@ -192,6 +192,14 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
   They are stamped before the random set-piece scatter, which is suppressed
   within 88 px of any landmark; purely decorative, silently skipped when the
   spot is not on composed land.
+- **Airfield structures are silent shootable ground targets**: `parked_plane`
+  (44×40, hp 2), `hangar` (56×34, hp 12) and `control_tower` (36×38, hp 16)
+  at the END of `enemies.json` (indices 11-13; tests reference earlier
+  indices). `weapon: ""` => never fires. They are placed by stage events
+  inside each airfield segment (stage2 5200..5900, stage4 1770..2600,
+  stage7 5980+): a trigger t puts the spawn line at worldY `scrollSpeed*t+542`
+  (or `+552` for y:-40 events), and side lanes x≈90/290 keep the apron clear
+  of the runway columns 5-6.
 - Scroll freezes while a boss is engaged (`setScrollFrozen`). Ground units
   are held/dropped when they'd spawn on the wrong surface
   (`groundSpawnMismatch`), and all terrain-borne spawns are dropped during
@@ -207,11 +215,12 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
 `renderHelp()` / `renderHelpCatalog()` in `Application.cpp`; pages defined
 by `kHelpPages` (sprite catalog rows: icon fit-box + one-line description),
 page count by `Game::kHelpPages`. **Add new bosses/sprites to the catalog
-pages when you create them.** Flagship catalogs hold at most 5 rows per page
-(56×56 icons, 56 px rows); descriptions start at the page's `textX` — keep
-them ≤ 36 chars at the boss pages' textX 88. The stroke font is ASCII-only
-(no `&`, no em-dashes); at scale 1 budget ≈7 px/char and test screenshots
-for overflow.
+pages when you create them.** Page order: 1 aircraft, 2 sea/ground,
+3 airfield targets, 4+ flagship catalogs. Flagship catalogs hold at most
+5 rows per page (56×56 icons, 56 px rows); descriptions start at the page's
+`textX` — keep them ≤ 36 chars at the boss pages' textX 88. The stroke font
+is ASCII-only (no `&`, no em-dashes); at scale 1 budget ≈7 px/char and test
+screenshots for overflow.
 
 ## Art direction
 

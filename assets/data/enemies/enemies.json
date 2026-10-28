@@ -65,5 +65,23 @@
     "path": "drift_down", "ship": true, "ground": true,
     "weapon": "e_burst3", "fireInterval": 3.0, "aimAtPlayer": true,
     "dropChance": 0.42, "drop": "random", "deathEffect": 2,
-    "deathSound": "explosion_large", "smokeWhileDamaged": 0.55 }
+    "deathSound": "explosion_large", "smokeWhileDamaged": 0.55 },
+
+  { "name": "parked_plane", "sprite": "parked_plane", "width": 44, "height": 40,
+    "hitbox": [0, 0, 26, 26], "hp": 2, "score": 150, "speed": 0,
+    "path": "static", "ground": true,
+    "weapon": "", "dropChance": 0.08, "deathEffect": 1,
+    "deathSound": "explosion_medium" },
+
+  { "name": "hangar", "sprite": "hangar", "width": 56, "height": 34,
+    "hitbox": [0, 0, 46, 22], "hp": 12, "score": 500, "speed": 0,
+    "path": "static", "ground": true,
+    "weapon": "", "dropChance": 0.22, "deathEffect": 2,
+    "deathSound": "explosion_large" },
+
+  { "name": "control_tower", "sprite": "control_tower", "width": 36, "height": 38,
+    "hitbox": [0, 0, 24, 28], "hp": 16, "score": 750, "speed": 0,
+    "path": "static", "ground": true,
+    "weapon": "", "dropChance": 0.45, "drop": "random", "deathEffect": 2,
+    "deathSound": "explosion_large" }
 ]

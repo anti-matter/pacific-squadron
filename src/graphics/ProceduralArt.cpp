@@ -946,6 +946,182 @@ PixelBuf makeBunker() {
     return p;
 }
 
+// Parked land-based fighter on the apron: engine stopped (static props,
+// chocks under the gear), nose pointing screen-down like every other
+// ground threat. Fuel-loaded target: explodes big for its size.
+PixelBuf makeParkedPlane() {
+    Hi hi(44, 40);
+    const float cx = 22.0f;
+    // Cast shadow to the bottom-right (sun from the top-left).
+    hi.fillPoly({{3.0f, 25.5f}, {43.5f, 25.5f}, {40.5f, 31.5f}, {6.0f, 31.5f}},
+                col(0x0A0C06, 56));
+    hi.fillEllipse(cx + 2.0f, 24.0f, 4.6f, 14.0f, col(0x0A0C06, 56));
+    // Wings: tapered low-wing slab, trailing edge straight.
+    hi.fillPoly({{2.5f, 19.0f}, {41.5f, 19.0f}, {38.0f, 27.5f}, {6.0f, 27.5f}},
+                col(0x3E4A2E));
+    hi.fillPoly({{2.5f, 19.0f}, {41.5f, 19.0f}, {40.6f, 21.0f}, {3.4f, 21.0f}},
+                col(0x4C5A38));  // lit leading edge
+    // Dark camo blotches over both planes.
+    for (const auto b : {std::pair<float, float>{9.0f, 23.0f}, {35.0f, 24.0f},
+                         {cx - 1.0f, 16.0f}, {cx + 2.0f, 30.0f}})
+        hi.fillEllipse(b.first, b.second, 3.4f, 2.2f, col(0x333F24));
+    // Hinomaru on each wing (white ring for target readability).
+    for (const float wx : {11.0f, 33.0f}) {
+        hi.fillEllipse(wx, 23.2f, 3.1f, 2.7f, col(0xD8D4C8));
+        hi.fillEllipse(wx, 23.2f, 2.1f, 1.8f, col(0xB03428));
+    }
+    // Horizontal stabiliser near the tail.
+    hi.fillPoly({{12.5f, 8.0f}, {31.5f, 8.0f}, {29.0f, 12.5f}, {15.0f, 12.5f}},
+                col(0x3E4A2E));
+    hi.fillPoly({{12.5f, 8.0f}, {31.5f, 8.0f}, {30.8f, 9.4f}, {13.2f, 9.4f}},
+                col(0x4C5A38));
+    hi.fillEllipse(15.5f, 10.2f, 2.0f, 1.5f, col(0xD8D4C8));
+    hi.fillEllipse(15.5f, 10.2f, 1.3f, 1.0f, col(0xB03428));
+    hi.fillEllipse(28.5f, 10.2f, 2.0f, 1.5f, col(0xD8D4C8));
+    hi.fillEllipse(28.5f, 10.2f, 1.3f, 1.0f, col(0xB03428));
+    // Fin + rudder at the tail.
+    hi.fillPoly({{cx - 1.6f, 4.0f}, {cx + 1.6f, 4.0f}, {cx + 1.2f, 10.0f},
+                 {cx - 1.2f, 10.0f}}, col(0x46523A));
+    hi.stroke({{cx, 4.6f}, {cx, 9.6f}}, 0.6f, col(0x333F24));
+    // Fuselage: long body, cowling at the nose, seam lines, canopy.
+    hi.fillRoundRect(cx - 3.4f, 5.0f, 6.8f, 30.0f, 2.6f, col(0x3A4630));
+    hi.fillRoundRect(cx - 2.6f, 5.8f, 4.6f, 28.4f, 2.0f, col(0x4E5A38));
+    hi.fillRoundRect(cx - 2.2f, 6.4f, 1.8f, 26.0f, 0.9f, col(0x5C6A44));  // top-left light
+    hi.fillRoundRect(cx - 2.0f, 21.0f, 4.0f, 6.2f, 1.6f, col(0x232A22));  // cockpit
+    hi.fillRoundRect(cx - 1.5f, 21.6f, 2.2f, 4.4f, 1.0f, col(0x6E8894));  // glass
+    hi.stroke({{cx - 2.6f, 17.4f}, {cx + 2.6f, 17.4f}}, 0.5f, col(0x333F24));
+    // Engine cowling + stopped three-blade prop (parked pose) and hub.
+    hi.fillEllipse(cx, 34.0f, 3.9f, 3.4f, col(0x2A2E2A));
+    hi.fillEllipse(cx - 0.8f, 33.2f, 2.4f, 2.0f, col(0x4A4E48));
+    for (const float a : {-1.9f, 0.0f, 1.9f}) {
+        const float dx = 7.4f * std::cos(a + 1.5708f), dy = 7.4f * std::sin(a + 1.5708f);
+        hi.stroke({{cx, 34.4f}, {cx + dx, 34.4f + dy * 0.62f}}, 1.1f, col(0x1C1E1C));
+    }
+    hi.fillEllipse(cx, 34.4f, 1.4f, 1.2f, col(0x5A5E58));
+    // Main gear + tail wheel with yellow chocks.
+    for (const float gx : {cx - 6.5f, cx + 6.5f}) {
+        hi.fillRoundRect(gx - 0.9f, 24.0f, 1.8f, 5.6f, 0.7f, col(0x2A2E32));
+        hi.fillEllipse(gx, 29.0f, 1.6f, 1.9f, col(0x14161A));
+        hi.fillEllipse(gx - 0.4f, 28.4f, 0.6f, 0.8f, col(0x3E444A));
+        hi.fillPoly({{gx - 2.4f, 31.0f}, {gx - 0.2f, 31.0f}, {gx - 0.2f, 27.4f}},
+                    col(0xB0913C));
+        hi.fillPoly({{gx + 2.4f, 31.0f}, {gx + 0.2f, 31.0f}, {gx + 0.2f, 27.4f}},
+                    col(0x8E7430));
+    }
+    hi.fillEllipse(cx, 12.4f, 0.9f, 1.2f, col(0x14161A));
+    // Oil stain seeping forward of the cowling.
+    hi.fillEllipse(cx + 1.0f, 38.0f, 3.6f, 1.3f, col(0x101410, 90));
+    PixelBuf p = hi.bake();
+    outlineSilhouette(p, col(0x101408, 150));
+    return p;
+}
+
+// Corrugated arched hangar: long axis across the screen, open bays and a
+// concrete apron facing the player (screen-down), weathered metal roof.
+PixelBuf makeHangar() {
+    Hi hi(56, 34);
+    // Cast shadow to the bottom-right.
+    hi.fillRoundRect(6.0f, 7.5f, 50.0f, 26.0f, 9.0f, col(0x0A0C06, 56));
+    // Barrel-vault roof: the arch reads through a vertical shade ramp —
+    // eaves dark, crown lit (sun from the top-left).
+    hi.fillRoundRect(3.0f, 4.0f, 50.0f, 26.0f, 9.0f, col(0x525C54));
+    hi.fillRoundRect(4.2f, 5.2f, 47.6f, 23.0f, 8.2f, col(0x64706A));
+    hi.fillRoundRect(5.4f, 6.6f, 45.2f, 13.0f, 6.5f, col(0x76847C));
+    hi.fillRoundRect(6.6f, 7.6f, 42.8f, 4.6f, 2.3f, col(0x8A9890));  // ridge lit
+    // Corrugation ribs running down the arch, fading toward the ridge.
+    for (int k = 0; k < 23; ++k) {
+        const float rx = 5.0f + k * 2.2f;
+        hi.stroke({{rx, 14.0f}, {rx, 26.0f}}, 0.55f, col(0x46524A, 150));
+        hi.stroke({{rx + 1.0f, 6.0f}, {rx + 1.0f, 13.0f}}, 0.5f, col(0x5E6C64, 90));
+    }
+    // Arch ribs (structural bands across the vault).
+    for (const float bx : {14.0f, 28.0f, 42.0f})
+        hi.stroke({{bx, 5.4f}, {bx, 26.4f}}, 0.7f, col(0x3E4A42, 210));
+    // Weather streaks staining the lower slope.
+    for (int k = 0; k < 7; ++k) {
+        const float sx = 8.0f + k * 6.4f;
+        hi.stroke({{sx, 17.0f}, {sx - 0.7f, 25.0f}}, 0.6f, col(0x39443C, 80));
+    }
+    // Eave trim + side end walls.
+    hi.fillRoundRect(3.0f, 24.0f, 50.0f, 2.2f, 1.0f, col(0x39443C));
+    hi.stroke({{3.6f, 8.0f}, {3.6f, 25.0f}}, 0.7f, col(0x39443C));
+    hi.stroke({{52.4f, 8.0f}, {52.4f, 25.0f}}, 0.7f, col(0x39443C));
+    // Front wall with two dark open bays (interior shade, gear silhouettes).
+    hi.fillRoundRect(4.5f, 25.4f, 47.0f, 4.8f, 1.4f, col(0x8A8A7E));
+    hi.fillRoundRect(5.0f, 25.6f, 46.0f, 1.0f, 0.5f, col(0xA4A498));  // lintel lit
+    for (const float bx : {9.5f, 31.5f}) {
+        hi.fillRoundRect(bx, 26.6f, 15.0f, 3.8f, 0.8f, col(0x14181A));
+        hi.fillRoundRect(bx + 0.8f, 26.9f, 13.4f, 0.8f, 0.4f, col(0x2A3034));
+        hi.fillEllipse(bx + 5.0f, 29.6f, 1.4f, 0.8f, col(0x33383A));  // parked gear in bay
+        hi.fillEllipse(bx + 10.0f, 29.8f, 1.1f, 0.7f, col(0x2A2E30));
+    }
+    hi.fillRoundRect(26.2f, 26.6f, 3.4f, 3.8f, 0.6f, col(0x5E5E54));  // divider pier
+    // Concrete apron with expansion joints.
+    hi.fillRoundRect(6.5f, 30.0f, 44.0f, 3.2f, 0.6f, col(0x7E7E72));
+    for (int k = 0; k < 6; ++k)
+        hi.stroke({{10.0f + k * 7.2f, 30.2f}, {9.4f + k * 7.2f, 33.0f}}, 0.5f,
+                  col(0x5E5E54, 200));
+    PixelBuf p = hi.bake();
+    outlineSilhouette(p, col(0x101408, 160));
+    return p;
+}
+
+// Airfield control tower: concrete shaft, octagonal glass cab, admin hut
+// annex and a whip antenna — the prize target of a strafing run.
+PixelBuf makeControlTower() {
+    Hi hi(36, 38);
+    const float cx = 13.5f;
+    // Cast shadow to the bottom-right.
+    hi.fillEllipse(cx + 6.0f, 33.0f, 15.0f, 4.2f, col(0x0A0C06, 60));
+    hi.fillPoly({{cx + 3.0f, 10.0f}, {cx + 6.0f, 10.0f}, {cx + 8.0f, 32.0f},
+                 {cx + 4.0f, 32.0f}}, col(0x0A0C06, 50));
+    // Admin hut annex to the right: hip roof with ridge, walls below.
+    hi.fillPoly({{21.0f, 26.5f}, {34.0f, 26.5f}, {32.5f, 21.5f}, {22.5f, 21.5f}},
+                col(0x6E5A44));
+    hi.fillPoly({{22.5f, 21.5f}, {32.5f, 21.5f}, {29.0f, 19.6f}, {26.0f, 19.6f}},
+                col(0x7E6A52));
+    hi.stroke({{26.0f, 19.8f}, {29.0f, 19.8f}}, 0.6f, col(0x8E7E66));
+    hi.fillRoundRect(21.8f, 26.4f, 12.4f, 6.2f, 0.8f, col(0x84836F));
+    hi.fillRoundRect(21.8f, 26.4f, 12.4f, 1.0f, 0.4f, col(0x9A9984));
+    hi.fillRoundRect(23.4f, 28.2f, 2.6f, 2.8f, 0.4f, col(0x2A3034));  // doors
+    hi.fillRoundRect(27.6f, 28.2f, 2.6f, 2.8f, 0.4f, col(0x2A3034));
+    hi.fillEllipse(32.2f, 28.0f, 0.9f, 0.9f, col(0x3E4A2E));          // sentry box
+    // Tower shaft: tapered concrete with brace lines and a service door.
+    hi.fillPoly({{cx - 4.6f, 33.0f}, {cx + 4.6f, 33.0f}, {cx + 3.2f, 12.0f},
+                 {cx - 3.2f, 12.0f}}, col(0x8A8A7E));
+    hi.fillPoly({{cx - 4.6f, 33.0f}, {cx - 1.4f, 33.0f}, {cx - 1.8f, 12.0f},
+                 {cx - 3.2f, 12.0f}}, col(0x9C9C90));  // lit left face
+    hi.fillPoly({{cx + 2.0f, 33.0f}, {cx + 4.6f, 33.0f}, {cx + 3.2f, 12.0f},
+                 {cx + 2.4f, 12.0f}}, col(0x6E6E66));  // shaded right face
+    for (int k = 0; k < 4; ++k)
+        hi.stroke({{cx - 4.2f + k * 0.3f, 16.0f + k * 4.2f},
+                   {cx + 4.2f - k * 0.3f, 16.0f + k * 4.2f}}, 0.45f, col(0x66665E, 190));
+    hi.fillRoundRect(cx - 1.4f, 28.6f, 2.8f, 4.2f, 0.5f, col(0x33383A));
+    // Blast collar at the base.
+    hi.fillRoundRect(cx - 6.2f, 32.0f, 12.4f, 2.6f, 0.8f, col(0x5E5E54));
+    hi.fillRoundRect(cx - 6.2f, 32.0f, 12.4f, 0.8f, 0.4f, col(0x848478));
+    // Octagonal glass cab: roof cap, glass band with mullions, gallery.
+    hi.fillPoly({{cx - 6.4f, 12.2f}, {cx + 6.4f, 12.2f}, {cx + 7.6f, 10.4f},
+                 {cx - 7.6f, 10.4f}}, col(0x4E4E48));
+    hi.fillPoly({{cx - 6.0f, 10.4f}, {cx + 6.0f, 10.4f}, {cx + 5.2f, 5.4f},
+                 {cx - 5.2f, 5.4f}}, col(0x33474E));
+    hi.fillPoly({{cx - 5.2f, 5.4f}, {cx + 5.2f, 5.4f}, {cx + 4.2f, 3.2f},
+                 {cx - 4.2f, 3.2f}}, col(0x55554C));  // roof
+    hi.fillPoly({{cx - 5.2f, 5.8f}, {cx + 1.0f, 5.8f}, {cx + 0.6f, 4.0f},
+                 {cx - 4.4f, 4.0f}}, col(0x6A6A60));  // lit roof slope
+    for (int k = 0; k < 5; ++k)
+        hi.stroke({{cx - 5.4f + k * 2.7f, 5.6f}, {cx - 6.2f + k * 3.1f, 10.2f}},
+                  0.5f, col(0x2A363C));
+    hi.fillPoly({{cx - 5.6f, 8.0f}, {cx + 5.6f, 8.0f}, {cx + 5.3f, 7.2f},
+                 {cx - 5.3f, 7.2f}}, col(0x8FB4C4, 120));  // glint
+    // Antenna mast with red beacon.
+    hi.stroke({{cx + 5.6f, 3.0f}, {cx + 6.6f, 10.0f}}, 0.55f, col(0x2A2E32));
+    hi.fillEllipse(cx + 5.5f, 2.6f, 0.8f, 0.8f, col(0xC04838));
+    PixelBuf p = hi.bake();
+    outlineSilhouette(p, col(0x101408, 160));
+    return p;
+}
+
 PixelBuf makeShip(int w, int h, bool destroyer) {
     Hi hi(w, h);
     const float cx = w * 0.5f;
@@ -5827,7 +6003,7 @@ namespace {
 constexpr std::uint32_t kArtCacheMagic = 0x50534152u;  // "PSAR"
 // Bump whenever any generated art changes (v10: A6M Zero redesign of the
 // primary enemy fighter and interceptor).
-constexpr std::uint32_t kArtCacheVersion = 35u;
+constexpr std::uint32_t kArtCacheVersion = 36u;
 
 void wr32(std::ostream& o, std::uint32_t v) {
     o.write(reinterpret_cast<const char*>(&v), 4);
@@ -5968,6 +6144,9 @@ bool generateAllArt(Renderer& r, const std::string& cachePath,
     add("turret_aa", makeAATurret());
     add("tank", makeTank());
     add("bunker", makeBunker());
+    add("parked_plane", makeParkedPlane());
+    add("hangar", makeHangar());
+    add("control_tower", makeControlTower());
     add("boat_patrol", makeShip(22, 44, false));
     add("ship_destroyer", makeShip(34, 64, true));
     step(0.32f);

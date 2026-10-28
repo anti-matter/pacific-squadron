@@ -1692,7 +1692,13 @@ const HelpSpriteEntry kHelpGround[] = {
     {"boat_patrol", "PATROL BOAT - FAST, LIGHTLY ARMED"},
     {"ship_destroyer", "DESTROYER - THREE-GUN SALVOS"},
 };
-// Page 4 & 5: enemy flagships (boss hulls), five rows per page maximum.
+// Page 4: airfield structures - silent destructible ground targets.
+const HelpSpriteEntry kHelpAirfield[] = {
+    {"parked_plane", "PARKED FIGHTER - FUEL-LOADED, FRAGILE"},
+    {"hangar", "HANGAR - REINFORCED STRUCTURE"},
+    {"control_tower", "CONTROL TOWER - BASE HEADQUARTERS"},
+};
+// Page 5 & 6: enemy flagships (boss hulls), five rows per page maximum.
 const HelpSpriteEntry kHelpBosses[] = {
     {"boss_battleship_hull", "BATTLESHIP - HEAVY SHELL BARRAGES"},
     {"boss_bomber_hull", "SKY FORTRESS - TURRETED BOMBER"},
@@ -1711,6 +1717,7 @@ const HelpSpriteEntry kHelpBosses2[] = {
 const HelpPageDef kHelpPages[] = {
     {"ENEMY AIRCRAFT", kHelpAircraft, 5, 34, 34, 46.0f, 76.0f},
     {"SEA AND GROUND TARGETS", kHelpGround, 5, 34, 40, 46.0f, 76.0f},
+    {"AIRFIELD TARGETS", kHelpAirfield, 3, 44, 40, 46.0f, 76.0f},
     {"ENEMY FLAGSHIPS", kHelpBosses, 5, 56, 56, 56.0f, 88.0f},
     {"ENEMY FLAGSHIPS II", kHelpBosses2, 5, 56, 56, 56.0f, 88.0f},
 };
