@@ -149,6 +149,18 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
   self-motion that would leave the grounded surface while keeping the world
   scroll carry. The formation check tests the LOWEST member (offsets hang
   below the anchor) and projects spawn overshoot landward.
+- **Ships never beach** (mirror of the above, same file): `seaSurfaceAt()` =
+  Ocean rows clear of `coast::kShipMargin` (waterline wobble + foam) at any
+  shore band's sea-facing edge. The spawn gate keeps a ship's CENTRE on raw
+  Ocean (fringe hulls are kept, not dropped); the formation controller
+  (`holdsAtSea` + `seaBowDrop` = half hull height) and the solo ship branch in
+  `updateEnemies` then refuse `DriftDown` self-motion that would drag the bow
+  into the rendered shore and nudge spawn-fringe hulls seaward, always keeping
+  the scroll carry. Both ship holds are skipped while an `arenaOcean` boss is
+  alive (that arena renders open sea regardless of the stage terrain under it;
+  sortie ships must not be held by the raw segment kinds). Pre-fix, ships
+  spawned over ocean sailed landward at their own speed and grounded on the
+  beach (visible in stage 6's exit-coast escort wave).
 - **`env_*` sprites are PNG-overridable** from `assets/sprites/<name>.png`
   like all other sprites; the baker reads them through the Renderer's env
   pixel store, so authored art and procedural fallbacks both bake.

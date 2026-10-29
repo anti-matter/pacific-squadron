@@ -45,6 +45,14 @@ bool groundHoldsAtScreenY(const LevelDirector& dir, float screenY) {
     return groundSurfaceAt(*sd, dir.scrollY() + kPlayH - screenY);
 }
 
+// Does the world row under a ship's screen position offer visually open
+// water (see Coastline.h)? The bow hangs below the centre on screen.
+bool seaHoldsAtScreenY(const LevelDirector& dir, float screenY, float bowDrop) {
+    const StageDef* sd = dir.stageDef();
+    if (!sd || sd->terrain.empty()) return true;
+    return seaSurfaceAt(*sd, dir.scrollY() + kPlayH - (screenY + bowDrop));
+}
+
 Vec2 playerAimDir(Vec2 from, Vec2 to) {
     Vec2 d = to - from;
     if (lengthSq(d) < 1e-6f) return {0.0f, -1.0f};
@@ -245,6 +253,9 @@ void Simulation::update() {
                                                 it->speedMul * mods_.speedMul);
                     f.scrollsWithTerrain = def.ground;
                     f.holdsAtShore = def.ground && !def.ship;
+                    f.holdsAtSea = def.ground && def.ship;
+                    f.seaBowDrop =
+                        def.ship ? static_cast<float>(def.height) * 0.5f : 0.0f;
                     if (it->pathRef >= 0 &&
                         it->pathRef < static_cast<int>(data_.paths.size())) {
                         f.lead.pathRef = it->pathRef;
@@ -640,41 +651,48 @@ void Simulation::updateFormations(float dt) {
         const Vec2 prevAnchor = f.anchor;
         f.anchor = advanceMovement(f.lead, f.anchor, player_.pos, leadPath,
                                    f.scrollsWithTerrain ? scroll : 0.0f, dt);
-        // Ground groups never wade. The check covers the LOWEST formation
-        // member (offsets hang below the anchor); if its world row is not a
-        // grounded surface, the group is projected back to the nearest
-        // grounded row. This both refuses drift into the sea (the projection
+        // Ground groups never wade and ship groups never beach. The check
+        // covers the LOWEST formation member (offsets hang below the anchor;
+        // for ships the bow hangs below that again); if its world row is not
+        // a valid surface, the group is projected back to the nearest valid
+        // row. This both refuses drift across the coast (the projection
         // lands on the row it came from, welded to the terrain) and corrects
         // spawn overshoot, where the anchor passed the gate but member
-        // offsets hung into the sea-margin.
-        if (f.holdsAtShore) {
+        // offsets hung into the waterline margin.
+        if (f.holdsAtShore || f.holdsAtSea) {
             float maxOffY = 0.0f;
             for (const Vec2& o : f.offsets) maxOffY = std::max(maxOffY, o.y);
             const StageDef* sd = director_.stageDef();
-            if (sd && !sd->terrain.empty()) {
+            if (sd && !sd->terrain.empty() &&
+                !(f.holdsAtSea && seaArenaActive())) {
+                const float drop = maxOffY + f.seaBowDrop;
                 const float base = director_.scrollY() + kPlayH;
-                const float wy = base - (f.anchor.y + maxOffY);
-                if (!groundSurfaceAt(*sd, wy)) {
-                    const float prevWy = base - (prevAnchor.y + maxOffY);
-                    if (groundSurfaceAt(*sd, prevWy)) {
+                const float wy = base - (f.anchor.y + drop);
+                const auto holds = [sd, &f](float row) {
+                    return f.holdsAtShore ? groundSurfaceAt(*sd, row)
+                                          : seaSurfaceAt(*sd, row);
+                };
+                if (!holds(wy)) {
+                    const float prevWy = base - (prevAnchor.y + drop);
+                    if (holds(prevWy)) {
                         // Refuse the drift: welded to the terrain at the
-                        // last grounded row.
+                        // last valid row.
                         f.anchor = {prevAnchor.x, prevAnchor.y +
                                                       (f.scrollsWithTerrain ? scroll : 0.0f) * dt};
                     } else {
-                        // Spawned into the sea-margin (anchor passed the
-                        // gate, member offsets hung into the water): walk
-                        // landward to the nearest grounded row.
+                        // Spawned into the coast margin (anchor passed the
+                        // gate, member offsets hung into the water/sand):
+                        // walk to the nearest valid row.
                         float best = wy;
                         bool ok = false;
                         for (int i = 1; i <= 40 && !ok; ++i) {
                             const float up = wy + 8.0f * static_cast<float>(i);
-                            if (groundSurfaceAt(*sd, up)) { best = up; ok = true; break; }
+                            if (holds(up)) { best = up; ok = true; break; }
                             const float dn = wy - 8.0f * static_cast<float>(i);
-                            if (groundSurfaceAt(*sd, dn)) { best = dn; ok = true; break; }
+                            if (holds(dn)) { best = dn; ok = true; break; }
                         }
                         if (ok)
-                            f.anchor = {prevAnchor.x, base - best - maxOffY};
+                            f.anchor = {prevAnchor.x, base - best - drop};
                     }
                     f.lead.lastPos = f.anchor;  // keep the movement accumulator in sync
                 }
@@ -764,6 +782,39 @@ void Simulation::updateEnemies(float dt) {
                 !groundHoldsAtScreenY(director_, e.pos.y)) {
                 e.pos.y = prevPos.y + scroll * dt;  // carried, not wading
                 e.move.lastPos = e.pos;             // keep the accumulator in sync
+            } else if (e.shipUnit && !seaArenaActive() &&
+                       e.pos.y != prevPos.y) {
+                // Surface vessels never beach: DriftDown carries a ship
+                // landward relative to the terrain at its own speed, so
+                // refuse self-motion that would drag the bow onto the
+                // rendered shore (see Coastline.h). The world scroll carry
+                // keeps the hull welded to its open-water row. Skipped
+                // while an arenaOcean boss is alive: that arena renders
+                // open sea regardless of the stage terrain underneath.
+                const float bowDrop = static_cast<float>(
+                    data_.enemies[static_cast<std::size_t>(e.enemyDef)].height) * 0.5f;
+                const StageDef* sd = director_.stageDef();
+                if (sd && !sd->terrain.empty() &&
+                    !seaHoldsAtScreenY(director_, e.pos.y, bowDrop)) {
+                    if (seaHoldsAtScreenY(director_, prevPos.y, bowDrop)) {
+                        e.pos.y = prevPos.y + scroll * dt;  // refuse the drift
+                    } else {
+                        // Spawned inside the waterline fringe: walk the
+                        // whole ship seaward to the nearest open-water row.
+                        const float base = director_.scrollY() + kPlayH;
+                        const float wy = base - (e.pos.y + bowDrop);
+                        float best = wy;
+                        bool ok = false;
+                        for (int step = 1; step <= 40 && !ok; ++step) {
+                            const float up = wy + 8.0f * static_cast<float>(step);
+                            if (seaSurfaceAt(*sd, up)) { best = up; ok = true; break; }
+                            const float dn = wy - 8.0f * static_cast<float>(step);
+                            if (seaSurfaceAt(*sd, dn)) { best = dn; ok = true; break; }
+                        }
+                        if (ok) e.pos.y = base - best - bowDrop;
+                    }
+                    e.move.lastPos = e.pos;  // keep the accumulator in sync
+                }
             }
         } else {
             e.move.lastPos = e.pos;  // position owned by the formation controller
@@ -910,6 +961,11 @@ bool Simulation::groundSpawnMismatch(const SpawnRequest& r) const {
     // the baker draws a curved waterline past the shore band's edge, and
     // spawning inside that fringe would leave tanks standing in the sea.
     const float worldY = director_.scrollY() + kPlayH - r.pos.y;
+    // Ships only need their centre on Ocean at the spawn line: hulls whose
+    // bow hangs into the waterline fringe are nudged seaward by the
+    // containment in updateEnemies/updateFormations (dropping the whole
+    // event here would silently delete escort waves that time near a
+    // coastline).
     if (def.ship) return terrainAt(*sd, worldY) != TerrainKind::Ocean;
     return !groundSurfaceAt(*sd, worldY);
 }

@@ -206,6 +206,12 @@ private:
         // Ground (non-ship) groups stop dead at the coast instead of
         // drifting into the rendered sea.
         bool holdsAtShore = false;
+        // Ship groups are the mirror image: they stop before the coast
+        // instead of beaching, and their spawn line must clear the
+        // waterline fringe by the whole hull (bow hangs below the anchor's
+        // lowest member, tracked in seaBowDrop).
+        bool holdsAtSea = false;
+        float seaBowDrop = 0.0f;
     };
 
     struct BossInstance {

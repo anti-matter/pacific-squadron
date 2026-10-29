@@ -30,6 +30,13 @@ constexpr float kGroundMargin = 48.0f;
 static_assert(kGroundMargin > kMaxWobble + 16.0f,
               "ground margin must clear the waterline wobble and foam");
 
+// A ship's bow must stay this far seaward of a shore band's sea-facing edge:
+// worst-case waterline wobble + the foam fringe + a little clearance, so a
+// hull never reads as grounded on the rendered beach.
+constexpr float kShipMargin = kMaxWobble + 8.0f;
+static_assert(kShipMargin > kMaxWobble + 4.0f,
+              "ship margin must clear the waterline wobble and foam");
+
 }  // namespace coast
 
 // True when the world row is a visually grounded surface for a land unit:
@@ -51,6 +58,30 @@ inline bool groundSurfaceAt(const StageDef& stage, float worldY) {
     const float highEdge =
         idx + 1 < segs.size() ? segs[idx + 1].fromY : segs[idx].toY;
     if (seaHigh && worldY > highEdge - coast::kGroundMargin) return false;
+    return true;
+}
+
+// True when the world row is visually open water for a surface vessel:
+// Ocean, and clear of the curved rendered waterline fringe that the baker
+// wobbles past any shore band's sea-facing edge. Ships use this to refuse
+// self-motion that would beach them (the DriftDown pattern carries a vessel
+// landward relative to the terrain at its own speed).
+inline bool seaSurfaceAt(const StageDef& stage, float worldY) {
+    if (terrainAt(stage, worldY) != TerrainKind::Ocean) return false;
+    const auto& segs = stage.terrain;
+    for (std::size_t s = 0; s < segs.size(); ++s) {
+        if (segs[s].kind != TerrainKind::Shore) continue;
+        // Ocean below the band: rows just above the sea-facing edge can
+        // render as beach where the waterline bulges seaward.
+        if (s > 0 && segs[s - 1].kind == TerrainKind::Ocean &&
+            worldY < segs[s].fromY + coast::kShipMargin)
+            return false;
+        // Ocean above the band: rows just past the band's top edge, where
+        // the waterline bulges seaward into the ocean.
+        if (s + 1 < segs.size() && segs[s + 1].kind == TerrainKind::Ocean &&
+            worldY < segs[s + 1].fromY + coast::kShipMargin)
+            return false;
+    }
     return true;
 }
 
