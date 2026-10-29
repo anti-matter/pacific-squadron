@@ -11,8 +11,9 @@
     { "fromY": 880,  "toY": 1650,  "kind": "jungle" },
     { "fromY": 1650, "toY": 1770,  "kind": "shore" },
     { "fromY": 1770, "toY": 2600,  "kind": "airfield" },
-    { "fromY": 2600, "toY": 2740,  "kind": "shore" },
-    { "fromY": 2740, "toY": 99999, "kind": "ocean" }
+    { "fromY": 2600, "toY": 2950,  "kind": "jungle" },
+    { "fromY": 2950, "toY": 3110,  "kind": "shore" },
+    { "fromY": 3110, "toY": 99999, "kind": "ocean" }
   ],
   "events": [
     { "trigger": 2,   "enemy": "fighter_formation", "formation": "arc", "count": 6, "x": 192, "y": -30 },

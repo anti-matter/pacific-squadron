@@ -208,10 +208,19 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
   get the baked curved waterline + foam; a band bordering Fortress/Airfield
   falls back to the legacy 32 px `tile_shore_in`/`tile_sand` rows in
   `renderTerrain` — a hard straight line with a visible tile lattice (the
-  old stage-2 opening coast). Keep a beachhead strip of jungle/island
-  between the shore band and fortress/airfield ground (stage 2 jungle
-  1340..1560; stage 3/4's sea exits still border the legacy path directly
-  — known look debt, same fix if they ever get reworked).
+  old stage-2/3/4 coasts). Keep a beachhead strip of jungle/island between
+  the shore band and fortress/airfield ground (stage 2 jungle 1340..1560,
+  stage 3 jungle 3600..3940, stage 4 jungle 2600..2950). The exit wedges
+  were placed so the coast's seaward edge also lands mistimed coastal
+  events that the spawn gate used to discard (stage 3's 3-gun AA battery
+  at t=60..62, stage 4's tank/bunker at t=38/41): spawn-line worldY is
+  `scrollSpeed*t + 542`, and the sea-facing beach margin is `kGroundMargin`
+  (48 px) — size the band so event rows sit inside both.
+- Remaining known mistimed events (silently dropped by the spawn gate,
+  follow-up data pass): stage 3 boat_patrol t=15 / destroyer t=35 /
+  boat_patrol t=48 over land, bunker+tank t=76/77 over sea; stage 4
+  boat_patrol t=15 / destroyer t=30 over land, aa_turrets t=52..54 and
+  tank/aa t=95/98 over sea.
 - Stage JSON may carry `"landmarks": [{ "kind", "x", "y" }]` — intentional
   scenery set pieces (`farmstead` | `hamlet` | `depot`) baked by the
   environment baker at fixed world Y (same coords as terrain segments).
