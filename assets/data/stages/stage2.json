@@ -8,7 +8,8 @@
   "terrain": [
     { "fromY": 0,    "toY": 1200, "kind": "ocean" },
     { "fromY": 1200, "toY": 1340, "kind": "shore" },
-    { "fromY": 1340, "toY": 3600, "kind": "fortress" },
+    { "fromY": 1340, "toY": 1560, "kind": "jungle" },
+    { "fromY": 1560, "toY": 3600, "kind": "fortress" },
     { "fromY": 3600, "toY": 3740, "kind": "shore" },
     { "fromY": 3740, "toY": 5200, "kind": "jungle" },
     { "fromY": 5200, "toY": 5900, "kind": "airfield" },

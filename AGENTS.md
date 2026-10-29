@@ -203,6 +203,15 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
   the arena terrain must cover the scroll depth at `bossTime` (use
   `toY: 99999` for the arena tail). Boss x is 192: airfield runway lanes are
   tile columns 5–6 = screen x 160..224; align hull-sprite runways to that.
+- **A shore band that touches Ocean must have Island/Jungle on its land
+  side.** The EnvironmentBaker only composes those two kinds, so only they
+  get the baked curved waterline + foam; a band bordering Fortress/Airfield
+  falls back to the legacy 32 px `tile_shore_in`/`tile_sand` rows in
+  `renderTerrain` — a hard straight line with a visible tile lattice (the
+  old stage-2 opening coast). Keep a beachhead strip of jungle/island
+  between the shore band and fortress/airfield ground (stage 2 jungle
+  1340..1560; stage 3/4's sea exits still border the legacy path directly
+  — known look debt, same fix if they ever get reworked).
 - Stage JSON may carry `"landmarks": [{ "kind", "x", "y" }]` — intentional
   scenery set pieces (`farmstead` | `hamlet` | `depot`) baked by the
   environment baker at fixed world Y (same coords as terrain segments).
