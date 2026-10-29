@@ -54,6 +54,12 @@ bool Renderer::init(const std::string& title, bool fullscreen) {
         SDL_Log("CreateWindow failed: %s", SDL_GetError());
         return false;
     }
+    if (!fullscreen) {
+        // SDL_CreateWindow leaves placement to the OS; center explicitly so
+        // the splash (which shows immediately) opens mid-screen.
+        SDL_SetWindowPosition(window_, SDL_WINDOWPOS_CENTERED,
+                              SDL_WINDOWPOS_CENTERED);
+    }
     sdl_ = SDL_CreateRenderer(window_, nullptr);
     if (!sdl_) {
         SDL_Log("CreateRenderer failed: %s", SDL_GetError());
@@ -77,14 +83,14 @@ bool Renderer::init(const std::string& title, bool fullscreen) {
     if (fullscreen) {
         SDL_GetWindowSizeInPixels(window_, &winW_, &winH_);
     } else {
-        // Fit a 3x scaled canvas with a modest window.
-        SDL_SetWindowSize(window_, kCanvasW * 2, kCanvasH * 2);
+        // Fit a 2x scaled canvas with a modest window (setWindowSize also
+        // keeps the window centered after the resize).
         // Remember this as the game's natural footprint: the splash may
         // resize the window, and restoreWindowSize() must bring it back
         // here (not to the larger CreateWindow request).
         baseW_ = kCanvasW * 2;
         baseH_ = kCanvasH * 2;
-        SDL_GetWindowSizeInPixels(window_, &winW_, &winH_);
+        setWindowSize(baseW_, baseH_);
     }
     return true;
 }
@@ -494,6 +500,11 @@ bool Renderer::setSplashCanvas(bool on, int w, int h) {
 void Renderer::setWindowSize(int w, int h) {
     if (fullscreen_) return;  // let the display own the size in fullscreen
     SDL_SetWindowSize(window_, w, h);
+    // A resize anchors the window's top-left corner, which would push a
+    // centered window off-centre (the splash resize and the restore after
+    // it). Keep the window centered on the display across every resize.
+    SDL_SetWindowPosition(window_, SDL_WINDOWPOS_CENTERED,
+                          SDL_WINDOWPOS_CENTERED);
     SDL_GetWindowSizeInPixels(window_, &winW_, &winH_);
 }
 
