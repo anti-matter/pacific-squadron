@@ -2773,8 +2773,9 @@ PixelBuf makeFortressHull(int damage) {
     };
     auto cl = [](float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); };
     auto hash = [](int x, int y, int s) {
-        std::uint32_t h = static_cast<std::uint32_t>(x * 374761393 + y * 668265263 +
-                                                     s * 1274126177);
+        std::uint32_t h = static_cast<std::uint32_t>(x) * 374761393u +
+                          static_cast<std::uint32_t>(y) * 668265263u +
+                          static_cast<std::uint32_t>(s) * 1274126177u;
         h = (h ^ (h >> 13)) * 1274126177u;
         return (h ^ (h >> 16)) & 0xFFFFu;
     };
@@ -4387,8 +4388,9 @@ PixelBuf makeAirfieldHull(int damage) {
                static_cast<std::uint32_t>(al + 0.5f);
     };
     auto hash = [](int x, int y, int s) {
-        std::uint32_t h = static_cast<std::uint32_t>(x * 374761393 + y * 668265263 +
-                                                     s * 1274126177);
+        std::uint32_t h = static_cast<std::uint32_t>(x) * 374761393u +
+                          static_cast<std::uint32_t>(y) * 668265263u +
+                          static_cast<std::uint32_t>(s) * 1274126177u;
         h = (h ^ (h >> 13)) * 1274126177u;
         return (h ^ (h >> 16)) & 0xFFFFu;
     };
@@ -4608,8 +4610,9 @@ PixelBuf makeBombCrater() {
     constexpr int W = 36, H = 30;
     PixelBuf p(W, H);
     auto hash = [](int x, int y, int s) {
-        std::uint32_t h = static_cast<std::uint32_t>(x * 374761393 + y * 668265263 +
-                                                     s * 1274126177);
+        std::uint32_t h = static_cast<std::uint32_t>(x) * 374761393u +
+                          static_cast<std::uint32_t>(y) * 668265263u +
+                          static_cast<std::uint32_t>(s) * 1274126177u;
         h = (h ^ (h >> 13)) * 1274126177u;
         return (h ^ (h >> 16)) & 0xFFFFu;
     };
@@ -4685,8 +4688,9 @@ PixelBuf makeDrydockHull(int damage) {
                static_cast<std::uint32_t>(al + 0.5f);
     };
     auto hash = [](int x, int y, int s) {
-        std::uint32_t h = static_cast<std::uint32_t>(x * 374761393 + y * 668265263 +
-                                                     s * 1274126177);
+        std::uint32_t h = static_cast<std::uint32_t>(x) * 374761393u +
+                          static_cast<std::uint32_t>(y) * 668265263u +
+                          static_cast<std::uint32_t>(s) * 1274126177u;
         h = (h ^ (h >> 13)) * 1274126177u;
         return (h ^ (h >> 16)) & 0xFFFFu;
     };
@@ -5064,8 +5068,9 @@ PixelBuf makeDrydockPontoon() {
                static_cast<std::uint32_t>(al + 0.5f);
     };
     auto hash = [](int x, int y, int s) {
-        std::uint32_t h = static_cast<std::uint32_t>(x * 374761393 + y * 668265263 +
-                                                     s * 1274126177);
+        std::uint32_t h = static_cast<std::uint32_t>(x) * 374761393u +
+                          static_cast<std::uint32_t>(y) * 668265263u +
+                          static_cast<std::uint32_t>(s) * 1274126177u;
         h = (h ^ (h >> 13)) * 1274126177u;
         return (h ^ (h >> 16)) & 0xFFFFu;
     };
@@ -5181,8 +5186,9 @@ PixelBuf makeFortress2Hull(int damage, bool baysOpen) {
                static_cast<std::uint32_t>(al + 0.5f);
     };
     auto hash = [](int x, int y, int s) {
-        std::uint32_t h = static_cast<std::uint32_t>(x * 374761393 + y * 668265263 +
-                                                     s * 1274126177);
+        std::uint32_t h = static_cast<std::uint32_t>(x) * 374761393u +
+                          static_cast<std::uint32_t>(y) * 668265263u +
+                          static_cast<std::uint32_t>(s) * 1274126177u;
         h = (h ^ (h >> 13)) * 1274126177u;
         return (h ^ (h >> 16)) & 0xFFFFu;
     };
@@ -5460,8 +5466,9 @@ PixelBuf makeYamatoHull(int damage) {
                static_cast<std::uint32_t>(al + 0.5f);
     };
     auto hash = [](int x, int y, int s) {
-        std::uint32_t h = static_cast<std::uint32_t>(x * 374761393 + y * 668265263 +
-                                                     s * 1274126177);
+        std::uint32_t h = static_cast<std::uint32_t>(x) * 374761393u +
+                          static_cast<std::uint32_t>(y) * 668265263u +
+                          static_cast<std::uint32_t>(s) * 1274126177u;
         h = (h ^ (h >> 13)) * 1274126177u;
         return (h ^ (h >> 16)) & 0xFFFFu;
     };
@@ -6099,7 +6106,9 @@ bool generateAllArt(Renderer& r, const std::string& cachePath,
     }
     auto add = [&](const std::string& name, const PixelBuf& p) {
         r.createTextureFromPixels(name, p.bytes(), p.w, p.h);
+#ifndef NDEBUG
         dumpSpriteDbg(name, p);
+#endif
         if (wantCache) captured.emplace_back(name, p);
     };
     auto step = [&progress](float p) { if (progress) progress(p); };
