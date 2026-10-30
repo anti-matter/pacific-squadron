@@ -148,6 +148,10 @@ public:
     int score() const { return score_; }
     // Carry a run's score across a stage transition (startStage resets it).
     void setScore(int s) { score_ = s > 0 ? s : 0; }
+    // Extra lives picked up mid-run carry across stages the same way
+    // (startStage resets the whole player); Game captures at stage clear.
+    int lives() const { return player_.lives; }
+    void setLives(int l) { player_.lives = l > 0 ? l : 0; }
     bool playerAlive() const { return player_.alive; }
 
     struct BossView {

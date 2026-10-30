@@ -151,12 +151,16 @@ void Game::finishStage() {
     score_ = sim_.score();
     if (stageIndex_ + 1 < static_cast<int>(data_.stages.size())) {
         const int carried = score_;
+        const int carriedLives = sim_.lives();
         ++stageIndex_;
         startStage();
         // The simulation resets its score for the new stage; carry the
         // previous stage's points across so the run total is preserved.
         sim_.setScore(carried);
         score_ = carried;
+        // Same for 1UP pickups: bonus lives earned in a stage carry into
+        // the next one (startStage resets the player to the default).
+        sim_.setLives(carriedLives);
     } else {
         // Final mission complete: record the run (this path previously
         // skipped high-score recording entirely).

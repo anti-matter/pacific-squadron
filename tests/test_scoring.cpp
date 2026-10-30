@@ -77,4 +77,42 @@ void test_scoring() {
     while (game.popEvent(ev))
         if (ev.type == GameEvent::Type::SaveHighScores) sawSave = true;
     CHECK(sawSave);
+
+    // Bonus lives picked up mid-run carry across a stage transition, like
+    // the score does: startStage resets the player, and Game re-applies the
+    // captured lives afterwards.
+    {
+        const char* bossesJson = R"([
+          { "name": "LIVES BOSS", "hullSprite": "boss_battleship_hull",
+            "hullWidth": 120, "hullHeight": 80, "hullHp": 1, "hullScore": 100,
+            "entryY": 120, "components": [] }
+        ])";
+        GameData data2;
+        CHECK(parseWeaponsJson(weaponsJson, data2.weapons, err));
+        CHECK(parseBossesJson(bossesJson, data2.bosses, err));
+        StageDef s1; s1.name = "one"; s1.duration = 300; s1.bossTime = 1e9f;
+        StageDef s2; s2.name = "two"; s2.duration = 300; s2.bossTime = 1e9f;
+        data2.stages.push_back(s1);
+        data2.stages.push_back(s2);
+        CHECK(data2.linkReferences(err));
+
+        Game game2(data2);
+        game2.debugStartAtStage(0);
+        for (int f = 0; f < 60 * 4 && game2.state() == GameState::StageIntro; ++f)
+            game2.update(1.0f / 60.0f);
+        CHECK(game2.state() == GameState::Playing);
+
+        game2.sim().setGodMode(true);
+        game2.sim().setLives(4);  // as if two 1UP pickups landed this stage
+        game2.sim().debugSpawnBoss(0);
+        for (int f = 0; f < 60 * 30 && game2.stageIndex() == 0; ++f) {
+            GameInput in;
+            in.fire = true;
+            game2.submitInput(in);
+            game2.update(1.0f / 60.0f);
+        }
+        CHECK(game2.stageIndex() == 1);
+        CHECK(game2.sim().lives() == 4);    // carried, not reset to the default 2
+        CHECK(game2.sim().score() >= 100);  // the score carry-over still works
+    }
 }
