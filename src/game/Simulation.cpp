@@ -693,6 +693,13 @@ void Simulation::updateFormations(float dt) {
                         }
                         if (ok)
                             f.anchor = {prevAnchor.x, base - best - drop};
+                        else
+                            // No valid row within reach: weld to the terrain
+                            // at the carried position rather than accepting
+                            // landward self-motion (a ship must never sail
+                            // onto land, whatever the terrain data says).
+                            f.anchor = {prevAnchor.x, prevAnchor.y +
+                                                          (f.scrollsWithTerrain ? scroll : 0.0f) * dt};
                     }
                     f.lead.lastPos = f.anchor;  // keep the movement accumulator in sync
                 }
@@ -811,7 +818,14 @@ void Simulation::updateEnemies(float dt) {
                             const float dn = wy - 8.0f * static_cast<float>(step);
                             if (seaSurfaceAt(*sd, dn)) { best = dn; ok = true; break; }
                         }
-                        if (ok) e.pos.y = base - best - bowDrop;
+                        if (ok)
+                            e.pos.y = base - best - bowDrop;
+                        else
+                            // No valid row within reach: weld to the terrain
+                            // at the carried position rather than accepting
+                            // landward self-motion (a ship must never sail
+                            // onto land, whatever the terrain data says).
+                            e.pos.y = prevPos.y + scroll * dt;
                     }
                     e.move.lastPos = e.pos;  // keep the accumulator in sync
                 }

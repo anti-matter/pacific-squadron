@@ -160,7 +160,15 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
   alive (that arena renders open sea regardless of the stage terrain under it;
   sortie ships must not be held by the raw segment kinds). Pre-fix, ships
   spawned over ocean sailed landward at their own speed and grounded on the
-  beach (visible in stage 6's exit-coast escort wave).
+  beach (visible in stage 6's exit-coast escort wave). A second leak of the
+  same symptom: the fringe tests must be BOUNDED to the outside of the band
+  edge (`fromY - m < y < fromY` / `topEdge <= y < topEdge + m`) — an
+  unbounded `y < edge + m` rejects the entire ocean on one side of every
+  shore band, so the hold never latched anywhere, the rescue walk found
+  nothing, and ships again sailed landward (stage 5 destroyer report).
+  `test_sea_surface_fringe` pins the semantics; if a rescue walk fails, the
+  holds now weld the ship to the terrain carry instead of accepting the
+  landward step.
 - **`env_*` sprites are PNG-overridable** from `assets/sprites/<name>.png`
   like all other sprites; the baker reads them through the Renderer's env
   pixel store, so authored art and procedural fallbacks both bake.

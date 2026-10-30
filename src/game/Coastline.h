@@ -71,14 +71,22 @@ inline bool seaSurfaceAt(const StageDef& stage, float worldY) {
     const auto& segs = stage.terrain;
     for (std::size_t s = 0; s < segs.size(); ++s) {
         if (segs[s].kind != TerrainKind::Shore) continue;
-        // Ocean below the band: rows just above the sea-facing edge can
-        // render as beach where the waterline bulges seaward.
+        // Rows inside the band itself never reach here (they are not
+        // Ocean), so each sea-facing edge only endangers the fringe of
+        // ocean rows just OUTSIDE it. The side bounds matter: testing the
+        // margin without them rejects the entire ocean on one side of the
+        // band (every row is trivially "< edge + margin"), the sea-hold
+        // then never latches anywhere and ships drift landward unheld.
+        // Ocean below the band: the fringe under the band's lower edge,
+        // where the waterline bulges seaward.
         if (s > 0 && segs[s - 1].kind == TerrainKind::Ocean &&
-            worldY < segs[s].fromY + coast::kShipMargin)
+            worldY > segs[s].fromY - coast::kShipMargin &&
+            worldY < segs[s].fromY)
             return false;
-        // Ocean above the band: rows just past the band's top edge, where
+        // Ocean above the band: the fringe past the band's top edge, where
         // the waterline bulges seaward into the ocean.
         if (s + 1 < segs.size() && segs[s + 1].kind == TerrainKind::Ocean &&
+            worldY >= segs[s + 1].fromY &&
             worldY < segs[s + 1].fromY + coast::kShipMargin)
             return false;
     }

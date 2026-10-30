@@ -17,6 +17,7 @@ int main() {
     test_boss_slot_pinning();
     test_formation_edge_despawn();
     test_ground_scroll_anchor();
+    test_sea_surface_fringe();
     test_sfx_explosions();
     test_menu_quit();
     test_menu_move_sfx();
