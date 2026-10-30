@@ -47,6 +47,23 @@ beside it) — the smoke-harness commands below need that path, or configure wit
 `-DPACIFIC_SQUADRON_MAC_BUNDLE=OFF` to keep the plain `./build/pacific-squadron`
 path the docs assume.
 
+**Release artifacts (Linux)** come from the same staged install tree:
+`cpack --config build/CPackConfig.cmake -G "TGZ;ZIP"` (run from the repo
+root; bare `cd build && cpack` also works — `cpack -B` only redirects output,
+it does not locate the config file) produces the zip/tarball with bundled
+SDL3, generated README + `install.sh`, hicolor icons; `cmake --build build
+--target appimage` builds the single-file AppImage (needs `appimagetool` on
+PATH or `-DAPPIMAGETOOL=` — from the maintained `AppImage/appimagetool`
+repo, never the archived AppImageKit one: only the
+maintained tool embeds the static
+[`type2-runtime`](https://github.com/AppImage/type2-runtime), which needs no
+libfuse on the user's system; `-DAPPIMAGE_RUNTIME=` pins it for offline
+builds). See README "Linux distributions".
+`PACIFIC_SQUADRON_BUNDLE_SDL` now covers Linux too (ON by default):
+`cmake/BundleSDLUnix.cmake` copies libSDL3 under its SONAME to
+`<prefix>/lib/pacific-squadron` and the install rpath is
+`$ORIGIN/../lib/pacific-squadron`.
+
 **Version**: `major.minor.bugfix` lives only in `project(wwii_fighter VERSION
 …)` at the top of `CMakeLists.txt`. Bump that one line, re-run `cmake -S . -B
 build`; `cmake/version.h.in` generates `build/generated/version.h`
@@ -307,6 +324,20 @@ The boss-index-1 "SKY FORTRESS GX-7" remains as an early-stage set piece;
 the finale is a distinct boss (index 9).
 
 ## Gotchas
+
+- **Linux packaging traps** (all cost a debug cycle; the scripts encode the
+  fixes): inside `install(SCRIPT)`, CMake **auto-prefixes `ENV{DESTDIR}` onto
+  `file(INSTALL)` destinations** — prepend it yourself and you get a doubled
+  tree (the reason `BundleSDLUnix.cmake` just uses `CMAKE_INSTALL_PREFIX`);
+  CPack's TGZ/ZIP generators **already wrap** the archive in
+  `CPACK_PACKAGE_FILE_NAME`, so `CPACK_PACKAGING_INSTALL_PREFIX` must stay
+  `/` (or you get `name/name/bin/...`); TGZ/ZIP **ignore
+  `CPACK_RESOURCE_FILE_README/LICENSE`** (installer-only), which is why the
+  archive-root README + SDL license travel via a staged `pkgroot/` dir in
+  `CPACK_INSTALLED_DIRECTORIES`; and `cmake --install` has no `--destdir`
+  flag — pass `DESTDIR=` in the environment (what `MakeAppImage.cmake` does).
+  Also: script mode (`cmake -P`) does not read the build cache, so the
+  `appimage` target forwards `-DAPPIMAGETOOL=` explicitly.
 
 - **Never verify text/splash visuals with `SDL_VIDEODRIVER=dummy`.** The
   native-resolution stroke font is baked at `scale × window-scale` pixels; the

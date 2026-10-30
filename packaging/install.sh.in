@@ -1,0 +1,59 @@
+#!/bin/sh
+# Pacific Squadron @PROJECT_VERSION@ — installs a prebuilt package tree.
+#
+#   ./install.sh              install into ~/.local (no root needed)
+#   ./install.sh /usr/local   install into another prefix (usually with sudo)
+#   ./install.sh --uninstall  remove a previous ~/.local install
+#
+# The package tree (bin/, share/, lib/) sits next to this script; the binary
+# finds its assets through <exe>/../share/pacific-squadron/assets and the
+# bundled SDL3 through its "$ORIGIN" rpath, so the same tree works installed
+# under any prefix.
+set -e
+
+cd "$(dirname "$0")"
+# The package tree (bin/ share/ lib/) sits at the package root: either next
+# to this script (source-tree layout) or two levels up (this script living
+# in share/pacific-squadron/ inside the package or an install prefix).
+if [ -d bin ]; then
+    ROOT=.
+elif [ -d ../../bin ]; then
+    ROOT=../..
+else
+    echo "install.sh: cannot find bin/ next to this script or two levels up" >&2
+    exit 1
+fi
+cd "$ROOT"
+
+PREFIX="${1:-$HOME/.local}"
+
+if [ "$1" = "--uninstall" ]; then
+    PREFIX="${2:-$HOME/.local}"
+    echo "Removing Pacific Squadron from $PREFIX"
+    rm -f  "$PREFIX/bin/pacific-squadron"
+    rm -rf "$PREFIX/share/pacific-squadron"
+    rm -f  "$PREFIX/share/applications/pacific-squadron.desktop"
+    rm -rf "$PREFIX/lib/pacific-squadron"
+    find "$PREFIX/share/icons/hicolor" -name pacific-squadron.png -delete 2>/dev/null || true
+    echo "Done."
+    exit 0
+fi
+
+echo "Installing Pacific Squadron @PROJECT_VERSION@ into $PREFIX"
+for d in bin share lib; do
+    if [ -d "$d" ]; then
+        mkdir -p "$PREFIX"
+        cp -a "$d" "$PREFIX/"
+    fi
+done
+
+command -v update-desktop-database >/dev/null 2>&1 \
+    && update-desktop-database "$PREFIX/share/applications" 2>/dev/null || true
+command -v gtk-update-icon-cache >/dev/null 2>&1 \
+    && gtk-update-icon-cache -q "$PREFIX/share/icons/hicolor" 2>/dev/null || true
+
+case ":$PATH:" in
+    *":$PREFIX/bin:"*) ;;
+    *) echo "NOTE: $PREFIX/bin is not in your PATH; add it to use the 'pacific-squadron' command." ;;
+esac
+echo "Done. Launch 'pacific-squadron' or use the Desktop menu entry."

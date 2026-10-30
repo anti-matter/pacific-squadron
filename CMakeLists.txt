@@ -233,6 +233,33 @@ if(UNIX AND NOT APPLE)
     install(FILES ${GAME_ICO} DESTINATION share/pacific-squadron)
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/packaging/pacific-squadron.desktop
             DESTINATION share/applications)
+
+    # Ship SDL3 inside the install tree (mirrors the macOS embedding): the
+    # real dylib is copied under its SONAME to <prefix>/lib/pacific-squadron
+    # and the executable's install rpath becomes $ORIGIN-relative, so the
+    # install tree -- and the zip/tarball and AppImage cut from it -- runs on
+    # machines without SDL3. Disable with -DPACIFIC_SQUADRON_BUNDLE_SDL=OFF
+    # to keep linking against the system copy.
+    option(PACIFIC_SQUADRON_BUNDLE_SDL
+           "Install the SDL3 shared library inside the install tree" ON)
+    get_target_property(SDL3_TARGET_TYPE SDL3::SDL3 TYPE)
+    if(PACIFIC_SQUADRON_BUNDLE_SDL AND SDL3_TARGET_TYPE STREQUAL "SHARED_LIBRARY")
+        set_target_properties(pacific-squadron PROPERTIES
+            INSTALL_RPATH "\$ORIGIN/../lib/pacific-squadron")
+        install(CODE "set(SDL_LIB \"$<TARGET_FILE:SDL3::SDL3>\")")
+        install(SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/cmake/BundleSDLUnix.cmake)
+    elseif(PACIFIC_SQUADRON_BUNDLE_SDL)
+        message(STATUS "SDL bundling skipped: SDL3::SDL3 is not a shared "
+                       "library (${SDL3_TARGET_TYPE})")
+    endif()
+
+    # Tiny installer for the zip/tarball (run from inside the extracted
+    # package; see packaging/install.sh.in). Lives under the app's own share
+    # dir so system installs are not polluted by it.
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/packaging/install.sh.in
+                   ${CMAKE_CURRENT_BINARY_DIR}/install.sh @ONLY)
+    install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/install.sh
+            DESTINATION share/pacific-squadron)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -258,3 +285,63 @@ target_link_libraries(wwii_tests PRIVATE gamecore SDL3::SDL3)
 target_sources(wwii_tests PRIVATE src/audio/ProceduralSfx.cpp src/input/Input.cpp)
 target_set_warnings(wwii_tests)
 add_test(NAME unit_tests COMMAND wwii_tests)
+
+# ---------------------------------------------------------------------------
+# Distribution (Linux): zip/tarball via CPack, and a single-file AppImage.
+# Both are cut from the same staged install tree (bin/, lib/, share/) and
+# share the bundled-SDL3 + $ORIGIN-rpath setup above, so what you test is
+# what users get. Build artifacts come from a Release build:
+#   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
+#   cpack -G "TGZ;ZIP" -C Release              # -> build/*.tar.gz and *.zip
+#   cmake --build build --target appimage      # -> build/*.AppImage
+# Publish both from an old-distro (or containerized) build: binaries only run
+# on machines whose glibc is at least as new as the build machine's.
+# ---------------------------------------------------------------------------
+if(UNIX AND NOT APPLE)
+    set(CPACK_PACKAGE_NAME "pacific-squadron")
+    set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+        "Fast-paced 2D WWII vertical-scrolling arcade shooter")
+    set(CPACK_PACKAGE_FILE_NAME
+        "pacific-squadron-${PROJECT_VERSION}-linux-${CMAKE_SYSTEM_PROCESSOR}")
+    # Artifacts always land in the build dir, never in the cwd cpack runs from.
+    set(CPACK_PACKAGE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+    set(CPACK_GENERATOR "TGZ;ZIP")
+    # The archive already wraps everything in a single top-level dir named
+    # after the package; install.sh travels at share/pacific-squadron/
+    # install.sh and locates that root three levels up (see packaging/
+    # install.sh.in).
+    set(CPACK_PACKAGING_INSTALL_PREFIX "/")
+    # Archive-root README + SDL3 license. The TGZ/ZIP generators do NOT embed
+    # CPACK_RESOURCE_FILE_* (installer-only), so stage a pkgroot/ dir and add
+    # it to the archive root via CPACK_INSTALLED_DIRECTORIES.
+    set(PS_PKG_ROOT ${CMAKE_CURRENT_BINARY_DIR}/pkgroot)
+    file(MAKE_DIRECTORY ${PS_PKG_ROOT})
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/packaging/README-linux.txt.in
+                   ${PS_PKG_ROOT}/README.txt @ONLY)
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/licenses/LICENSE.SDL3.txt
+                   ${PS_PKG_ROOT}/LICENSE.txt COPYONLY)
+    set(CPACK_INSTALLED_DIRECTORIES "${PS_PKG_ROOT};/")
+    include(CPack)
+
+    # Optional override for the AppImage packer (script mode does not see the
+    # build cache, so the found/configured path is forwarded explicitly).
+    find_program(APPIMAGETOOL appimagetool)
+    # Optional: pin the embedded runtime (AppImage/type2-runtime release
+    # file) for offline builds; empty = appimagetool fetches the latest.
+    set(APPIMAGE_RUNTIME "" CACHE FILEPATH
+        "Local AppImage runtime file to embed (empty = tool default)")
+    add_custom_target(appimage
+        COMMAND ${CMAKE_COMMAND}
+            -DBUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+            -DSRC_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -DOUT=${CMAKE_CURRENT_BINARY_DIR}/Pacific-Squadron-${PROJECT_VERSION}-${CMAKE_SYSTEM_PROCESSOR}.AppImage
+            -DARCH=${CMAKE_SYSTEM_PROCESSOR}
+            -DAPPIMAGETOOL=${APPIMAGETOOL}
+            -DAPPIMAGE_RUNTIME=${APPIMAGE_RUNTIME}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/MakeAppImage.cmake
+        DEPENDS pacific-squadron
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Building AppImage"
+        VERBATIM)
+endif()

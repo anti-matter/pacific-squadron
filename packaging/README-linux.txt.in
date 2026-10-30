@@ -1,0 +1,24 @@
+Pacific Squadron @PROJECT_VERSION@ — Linux prebuilt package
+==============================================================
+
+Requires x86_64 Linux; SDL3 is bundled, nothing else needs installing
+(standard system graphics/audio libraries — X11/Wayland, PulseAudio/ALSA —
+are used through SDL).
+
+Run without installing:
+
+    ./bin/pacific-squadron
+
+Install (desktop menu entry + icons + `pacific-squadron` command):
+
+    ./install.sh                  # into ~/.local (no root needed)
+    sudo ./install.sh /usr/local  # or into a system prefix
+
+The installer lives at share/pacific-squadron/install.sh in this archive;
+from the extracted directory:
+
+    sh share/pacific-squadron/install.sh
+
+Uninstall a ~/.local install:
+
+    sh share/pacific-squadron/install.sh --uninstall

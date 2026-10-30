@@ -73,6 +73,43 @@ will block it when downloaded from elsewhere — that needs a Developer ID
 certificate and notarization, which is out of scope here. Locally, `open`
 works; if quarantine is applied, right-click → Open.
 
+### Linux distributions (zip/tarball and AppImage)
+
+Linux mirrors the macOS embedding: with `PACIFIC_SQUADRON_BUNDLE_SDL=ON`
+(the default), the install tree carries the SDL3 shared library under
+`lib/pacific-squadron/` (copied under its SONAME by
+`cmake/BundleSDLUnix.cmake`) and the binary's install rpath becomes
+`$ORIGIN/../lib/pacific-squadron`, so an extracted package runs on machines
+without SDL3. Two artifact families are cut from that same install tree:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
+cpack --config build/CPackConfig.cmake -G "TGZ;ZIP"   # zip + tar.gz in build/
+cmake --build build --target appimage  # single-file AppImage in build/
+```
+
+- **zip / tar.gz** (`pacific-squadron-<ver>-linux-<arch>.{zip,tar.gz}` via
+  CPack) — extract, run `bin/pacific-squadron` directly, or
+  `sh share/pacific-squadron/install.sh` to install into `~/.local` (pass a
+  prefix to install elsewhere, `--uninstall` to remove). The archive root
+  carries a generated `README.txt` and SDL3's `LICENSE.txt`.
+- **AppImage** (`Pacific-Squadron-<ver>-<arch>.AppImage`) — one file,
+  `chmod +x` and run. Building one needs
+  [`appimagetool`](https://github.com/AppImage/appimagetool/releases)
+  (a standalone static binary; put it on `PATH` or configure
+  `-DAPPIMAGETOOL=/path/to/appimagetool`). Use that maintained repo, **not**
+  the archived AppImageKit build: the maintained tool embeds the static
+  musl [`type2-runtime`](https://github.com/AppImage/type2-runtime), so the
+  produced AppImage needs no `libfuse2`/`libfuse3` on the user's system and
+  runs from a plain double-click even on FUSE-less distros. Offline builds
+  can pin a downloaded runtime with
+  `-DAPPIMAGE_RUNTIME=/path/to/runtime-x86_64`.
+
+Build release artifacts on the oldest distro you want to support: binaries
+only run where glibc is at least as new as the build machine's — a container
+build is the usual answer, and both artifact families should come from the
+same one.
+
 At startup the
 game disables SDL's HIDAPI-libusb fallback (the hidraw backend covers normal
 desktop gamepads); on hosts with unresponsive USB devices the libusb scan can
