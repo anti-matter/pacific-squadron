@@ -98,6 +98,20 @@ void Simulation::kill(int i) {
     e.alive = false;
     if (e.kind == EKind::Shot) --shotCount_;
     --liveCount_;
+    // Drop formation membership immediately: the index goes straight to
+    // freeList_, and a spawn before the next updateFormations sweep could
+    // reuse it, which would leave the stale formation holding a live
+    // stranger (hijacked positions, and members never empties so the
+    // formation never completes).
+    if (e.kind == EKind::Enemy && e.formation >= 0) {
+        for (auto& f : formations_) {
+            if (f.id != e.formation) continue;
+            f.members.erase(std::remove(f.members.begin(), f.members.end(), i),
+                            f.members.end());
+            f.aliveCount = static_cast<int>(f.members.size());
+            break;
+        }
+    }
     // Boss hull/component slots are PINNED for the whole encounter: bosses_
     // stores raw pool indices (armor gate, death chain). If a dead
     // component's index were recycled by a new shot/enemy, the gate would
@@ -108,19 +122,45 @@ void Simulation::kill(int i) {
         freeList_.push_back(static_cast<std::uint16_t>(i));
 }
 
+void Simulation::compactPool() {
+    // Rebuild the pool keeping only live entities, remapping every raw
+    // entity index still referenced. Formations hold members by pool index:
+    // without the remap a compacted formation points at shifted strangers
+    // (ships drop out of their controller, stop moving AND stop being held,
+    // then slide landward with the terrain while the world scrolls under
+    // their frozen screen position — the stage-5/6 beached-ships report).
+    std::vector<int> remap(pool_.size(), -1);
+    std::vector<Entity> dense;
+    dense.reserve(pool_.size());
+    for (std::size_t i = 0; i < pool_.size(); ++i)
+        if (pool_[i].alive) {
+            remap[i] = static_cast<int>(dense.size());
+            dense.push_back(pool_[i]);
+        }
+    pool_ = std::move(dense);
+    freeList_.clear();
+    for (auto& f : formations_) {
+        std::vector<int> kept;
+        kept.reserve(f.members.size());
+        for (const int old : f.members)
+            if (old >= 0 && old < static_cast<int>(remap.size()) &&
+                remap[static_cast<std::size_t>(old)] >= 0)
+                kept.push_back(remap[static_cast<std::size_t>(old)]);
+        f.members = std::move(kept);
+        f.aliveCount = static_cast<int>(f.members.size());
+    }
+    // `rammed` is filled/consumed within one updateEnemies pass and
+    // compaction never runs mid-pass, so no other index holders exist:
+    // boss slots are guarded by the caller, e.formation is a formation id.
+}
+
 void Simulation::compactIfNeeded() {
     // Keep the pool from growing unbounded after heavy fights.
     // Never while a boss is active: bosses_ holds raw entity indices.
     for (const auto& b : bosses_)
         if (b.state < 3) return;
-    if (pool_.size() > 256 && freeList_.size() * 2 > pool_.size()) {
-        std::vector<Entity> dense;
-        dense.reserve(pool_.size());
-        for (const auto& e : pool_)
-            if (e.alive) dense.push_back(e);
-        pool_ = std::move(dense);
-        freeList_.clear();
-    }
+    if (pool_.size() > 256 && freeList_.size() * 2 > pool_.size())
+        compactPool();
 }
 
 bool Simulation::popEvent(SimEvent& out) {

@@ -277,6 +277,7 @@ add_executable(wwii_tests
     tests/test_boss.cpp
     tests/test_ground_scroll.cpp
     tests/test_coastline.cpp
+    tests/test_compaction.cpp
     tests/test_data.cpp
     tests/test_input.cpp
     tests/test_sfx.cpp

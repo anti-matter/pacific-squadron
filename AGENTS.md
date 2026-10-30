@@ -186,6 +186,18 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
   `test_sea_surface_fringe` pins the semantics; if a rescue walk fails, the
   holds now weld the ship to the terrain carry instead of accepting the
   landward step.
+- **Pool compaction must remap every raw entity index holder** (`Simulation`):
+  `FormationInstance::members` stores raw pool indices, so `compactPool()` rebuilds
+  `pool_` *and* rewrites the member lists through an old→new remap; `kill()` removes
+  formation membership immediately (the index goes straight to `freeList_` and could be
+  reused before the next `updateFormations` sweep). A compaction without the remap leaves
+  formations steering shifted strangers while their real members orphan: formation members
+  get no solo motion, so frozen hulls sit at a fixed screen Y while the world scroll walks
+  them landward — "ships on land" mid-stage, immune to off-screen despawn (stage 5/6 report;
+  only fires when compaction runs while a ship formation is alive, which no headless smoke
+  run hit). `test_pool_compaction_remaps_formations` forces `debugCompact()` with dead
+  indices below the ships and pins center-on-ocean + never-frozen + never-immortal. Boss
+  slots stay safe the old way: `compactIfNeeded()` never runs during an engaged boss.
 - **`env_*` sprites are PNG-overridable** from `assets/sprites/<name>.png`
   like all other sprites; the baker reads them through the Renderer's env
   pixel store, so authored art and procedural fallbacks both bake.

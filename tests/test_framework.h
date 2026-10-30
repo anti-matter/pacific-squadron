@@ -44,6 +44,7 @@ void test_boss_slot_pinning();
 void test_formation_edge_despawn();
 void test_ground_scroll_anchor();
 void test_sea_surface_fringe();
+void test_pool_compaction_remaps_formations();
 void test_sfx_explosions();
 void test_menu_quit();
 void test_menu_move_sfx();

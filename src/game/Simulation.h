@@ -183,6 +183,9 @@ public:
     void setGodMode(bool g) { godMode_ = g; }
     // Headless smoke-testing hook.
     void debugSpawnBoss(int defRef) { spawnBoss(defRef); }
+    // Debug/testing: force one pool compaction now (bypasses the size
+    // thresholds) to exercise the entity-index remap deterministically.
+    void debugCompact() { compactPool(); }
     // Debug: trigger the current stage's boss at this stage-clock time
     // (see LevelDirector::setBossTimeOverride / WWII_BOSS_NOW).
     void debugSetBossTime(float t) { director_.setBossTimeOverride(t); }
@@ -256,6 +259,7 @@ private:
     int alloc();
     void kill(int i);
     void compactIfNeeded();
+    void compactPool();
 
     // spawning
     int spawnEnemy(int defRef, Vec2 pos, float hpMul, float rateMul,

@@ -18,6 +18,7 @@ int main() {
     test_formation_edge_despawn();
     test_ground_scroll_anchor();
     test_sea_surface_fringe();
+    test_pool_compaction_remaps_formations();
     test_sfx_explosions();
     test_menu_quit();
     test_menu_move_sfx();
