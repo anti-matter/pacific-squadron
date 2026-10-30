@@ -233,6 +233,18 @@ if(UNIX AND NOT APPLE)
     install(FILES ${GAME_ICO} DESTINATION share/pacific-squadron)
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/packaging/pacific-squadron.desktop
             DESTINATION share/applications)
+    # AppStream metainfo: repository/version/license/developer metadata read
+    # by app centers and AppImage tooling. The file must be named after the
+    # component id (reverse-DNS; underscores replace the GitHub hyphen).
+    set(APPDATA_ID io.github.anti_matter.pacific_squadron)
+    string(TIMESTAMP PS_APPDATA_DATE "%Y-%m-%d" UTC)
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/packaging/${APPDATA_ID}.appdata.xml.in
+                   ${CMAKE_CURRENT_BINARY_DIR}/${APPDATA_ID}.appdata.xml @ONLY)
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${APPDATA_ID}.appdata.xml
+            DESTINATION share/metainfo)
+    # Project license travels with the install tree (FHS: share/licenses).
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE
+            DESTINATION share/licenses/pacific-squadron RENAME copyright)
 
     # Ship SDL3 inside the install tree (mirrors the macOS embedding): the
     # real dylib is copied under its SONAME to <prefix>/lib/pacific-squadron
@@ -322,6 +334,9 @@ if(UNIX AND NOT APPLE)
                    ${PS_PKG_ROOT}/README.txt @ONLY)
     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/licenses/LICENSE.SDL3.txt
                    ${PS_PKG_ROOT}/LICENSE.txt COPYONLY)
+    # The project's own MIT license sits beside SDL's at the archive root.
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/LICENSE
+                   ${PS_PKG_ROOT}/LICENSE.pacific-squadron.txt COPYONLY)
     set(CPACK_INSTALLED_DIRECTORIES "${PS_PKG_ROOT};/")
     include(CPack)
 
@@ -332,12 +347,22 @@ if(UNIX AND NOT APPLE)
     # file) for offline builds; empty = appimagetool fetches the latest.
     set(APPIMAGE_RUNTIME "" CACHE FILEPATH
         "Local AppImage runtime file to embed (empty = tool default)")
+    # Update information embedded in the AppImage (read by AppImageUpdate,
+    # Gearlever, zypper's AppImage support ...). Default points at GitHub
+    # releases of this repo; set to "" to embed nothing, or to any string
+    # from the AppImage update-info spec (zsync|... forms included).
+    set(APPIMAGE_UPDATE_INFO
+        "gh-releases-zsync|anti-matter|pacific-squadron|latest|Pacific-Squadron-*${CMAKE_SYSTEM_PROCESSOR}.AppImage.zsync"
+        CACHE STRING
+        "AppImage update information string (empty = do not embed)")
     add_custom_target(appimage
         COMMAND ${CMAKE_COMMAND}
             -DBUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
             -DSRC_DIR=${CMAKE_CURRENT_SOURCE_DIR}
             -DOUT=${CMAKE_CURRENT_BINARY_DIR}/Pacific-Squadron-${PROJECT_VERSION}-${CMAKE_SYSTEM_PROCESSOR}.AppImage
             -DARCH=${CMAKE_SYSTEM_PROCESSOR}
+            -DVERSION=${PROJECT_VERSION}
+            -DAPPIMAGE_UPDATE_INFO=${APPIMAGE_UPDATE_INFO}
             -DAPPIMAGETOOL=${APPIMAGETOOL}
             -DAPPIMAGE_RUNTIME=${APPIMAGE_RUNTIME}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/MakeAppImage.cmake

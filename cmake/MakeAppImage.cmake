@@ -3,7 +3,8 @@
 # Configure-time wrapper: the `appimage` custom target invokes this with
 #   cmake -DBUILD_DIR=<cmake build dir> -DSRC_DIR=<repo>
 #        -DOUT=<output .AppImage path> [-DAPPIMAGETOOL=<path>]
-#        -DARCH=<arch> -P cmake/MakeAppImage.cmake
+#        -DARCH=<arch> -DVERSION=<ver> [-DAPPIMAGE_UPDATE_INFO=<str>]
+#        -P cmake/MakeAppImage.cmake
 #
 # Steps: stage `cmake --install --prefix /usr --destdir <AppDir>` (which
 # already carries the bundled SDL3 via the $ORIGIN rpath and the assets +
@@ -85,10 +86,34 @@ if(APPIMAGE_RUNTIME)
     endif()
     set(ps_runtime "--runtime-file=${APPIMAGE_RUNTIME}")
 endif()
+# Update information (empty = embed nothing). Read back from the ELF by
+# AppImageUpdate/Gearlever/zypper to check for new releases.
+set(ps_update "")
+if(APPIMAGE_UPDATE_INFO)
+    set(ps_update "--updateinformation=${APPIMAGE_UPDATE_INFO}")
+endif()
+# Validate the staged AppStream metainfo ourselves, offline. appimagetool's
+# built-in check does ONLINE URL reachability probes and treats even
+# warnings as fatal -- an unpublished repo or a sandboxed CI would fail the
+# pack for reasons unrelated to the package. --no-net keeps the structural
+# validation (id/filename/license/urls-format) deterministic.
+find_program(APPSTREAM_CLI appstreamcli)
+file(GLOB ps_metainfo "${APP_DIR}/usr/share/metainfo/*.xml")
+if(APPSTREAM_CLI AND ps_metainfo)
+    execute_process(COMMAND "${APPSTREAM_CLI}" validate --no-net ${ps_metainfo}
+                    RESULT_VARIABLE ps_as_rc)
+    if(NOT ps_as_rc EQUAL 0)
+        message(FATAL_ERROR "AppStream metainfo failed appstreamcli validation")
+    endif()
+endif()
 get_filename_component(ps_out_dir "${OUT}" DIRECTORY)
 file(MAKE_DIRECTORY "${ps_out_dir}")
-execute_process(COMMAND "${APPIMAGETOOL}" ${ps_runtime} "${APP_DIR}" "${OUT}"
+# VERSION makes the tool stamp X-AppImage-Version into the root desktop
+# file, which is where app-integration daemons read the package version.
+# -n: skip appimagetool's own (online) AppStream check -- done above.
+execute_process(COMMAND "${APPIMAGETOOL}" ${ps_runtime} ${ps_update} -n "${APP_DIR}" "${OUT}"
                 ENVIRONMENT "ARCH=${ARCH}"
+                ENVIRONMENT "VERSION=${VERSION}"
                 ENVIRONMENT "APPIMAGE_EXTRACT_AND_RUN=1"
                 RESULT_VARIABLE ps_rc)
 if(NOT ps_rc EQUAL 0)

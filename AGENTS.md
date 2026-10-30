@@ -351,6 +351,20 @@ the finale is a distinct boss (index 9).
   Also: script mode (`cmake -P`) does not read the build cache, so the
   `appimage` target forwards `-DAPPIMAGETOOL=` explicitly.
 
+- **AppImage packaging metadata**: the install tree carries AppStream
+  metainfo (`packaging/io.github.anti_matter.pacific_squadron.appdata.xml.in`,
+  configured from `PROJECT_VERSION` — the component id is reverse-DNS and the
+  file must keep the `<id>.appdata.xml` naming) plus a root `LICENSE` (MIT,
+  installed to `share/licenses/`). `MakeAppImage.cmake` validates the
+  metainfo with `appstreamcli validate --no-net` itself and passes `-n` to
+  appimagetool: the tool's own check probes the repo URLs ONLINE and treats
+  warnings as fatal, so an unpublished repo or sandboxed CI would otherwise
+  fail the pack. The `VERSION` env makes appimagetool stamp
+  `X-AppImage-Version` into the root desktop file; update info
+  (`-DAPPIMAGE_UPDATE_INFO`, default `gh-releases-zsync` against this repo —
+  empty disables) is embedded in the runtime's `.upd_info` ELF section (not
+  `.updinfo`) and yields a `.zsync` beside the AppImage when `zsyncmake`
+  exists — upload both together for updates to work.
 - **Never verify text/splash visuals with `SDL_VIDEODRIVER=dummy`.** The
   native-resolution stroke font is baked at `scale × window-scale` pixels; the
   dummy driver settles on a ~1.08 canvas scale, where the ~1 px pen strokes

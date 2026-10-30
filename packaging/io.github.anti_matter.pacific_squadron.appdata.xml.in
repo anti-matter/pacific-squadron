@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metainfo for Pacific Squadron.
+     Consumed by app centers, software catalogs and the AppImage tooling
+     (appimagetool validates it while packing). @VARS@ are substituted by
+     CMake from the single project() version source of truth. -->
+<component type="desktop-application">
+  <id>io.github.anti_matter.pacific_squadron</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Pacific Squadron</name>
+  <summary>Fast-paced 2D WWII vertical-scrolling arcade shooter</summary>
+  <developer id="io.github.anti-matter">
+    <name>anti-matter</name>
+  </developer>
+  <url type="homepage">https://github.com/anti-matter/pacific-squadron</url>
+  <url type="bugtracker">https://github.com/anti-matter/pacific-squadron/issues</url>
+  <url type="vcs-browser">https://github.com/anti-matter/pacific-squadron</url>
+  <launchable type="desktop-id">pacific-squadron.desktop</launchable>
+  <icon type="stock">pacific-squadron</icon>
+  <description>
+    <p>
+      An original WWII arcade shooter in the classic vertical-scrolling
+      tradition: ten escalating stages over islands, airfields and lagoons,
+      each closing with a multi-component flagship boss.
+    </p>
+    <p>
+      Every sprite, sound and music track is generated procedurally and
+      cached; gameplay content (weapons, enemies, formations, bosses,
+      stages) ships as plain JSON data files. Built with modern C++20 and
+      SDL3 on a deterministic 60 Hz simulation.
+    </p>
+  </description>
+  <categories>
+    <category>Game</category>
+  </categories>
+  <keywords>
+    <keyword>shooter</keyword>
+    <keyword>wwii</keyword>
+    <keyword>arcade</keyword>
+    <keyword>scrolling</keyword>
+    <keyword>plane</keyword>
+  </keywords>
+  <releases>
+    <release version="@PROJECT_VERSION@" date="@PS_APPDATA_DATE@">
+      <description>
+        <p>Ten-stage Pacific campaign ending with the Sky Fortress finale.</p>
+      </description>
+    </release>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>

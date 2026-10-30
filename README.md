@@ -92,7 +92,8 @@ cmake --build build --target appimage  # single-file AppImage in build/
   CPack) — extract, run `bin/pacific-squadron` directly, or
   `sh share/pacific-squadron/install.sh` to install into `~/.local` (pass a
   prefix to install elsewhere, `--uninstall` to remove). The archive root
-  carries a generated `README.txt` and SDL3's `LICENSE.txt`.
+  carries a generated `README.txt`, SDL3's `LICENSE.txt` and the project's
+  own `LICENSE.pacific-squadron.txt` (MIT).
 - **AppImage** (`Pacific-Squadron-<ver>-<arch>.AppImage`) — one file,
   `chmod +x` and run. Building one needs
   [`appimagetool`](https://github.com/AppImage/appimagetool/releases)
@@ -104,6 +105,16 @@ cmake --build build --target appimage  # single-file AppImage in build/
   runs from a plain double-click even on FUSE-less distros. Offline builds
   can pin a downloaded runtime with
   `-DAPPIMAGE_RUNTIME=/path/to/runtime-x86_64`.
+  The package carries full app metadata: AppStream metainfo
+  (`io.github.anti_matter.pacific_squadron.appdata.xml` — version, repo
+  URLs, MIT license, developer; validated offline with
+  `appstreamcli --no-net` during packing), an `X-AppImage-Version` stamp
+  in the desktop entry, and GitHub-releases **update information** in the
+  runtime's `.upd_info` section so AppImageUpdate/Gearlever/zypper can
+  check for new releases (a `.zsync` file is generated beside the AppImage
+  when `zsyncmake` is installed — upload both together). Override or
+  disable the embedded update info with
+  `-DAPPIMAGE_UPDATE_INFO=<string|"" >`.
 
 Build release artifacts on the oldest distro you want to support: binaries
 only run where glibc is at least as new as the build machine's — a container
