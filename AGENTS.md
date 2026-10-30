@@ -47,6 +47,14 @@ beside it) — the smoke-harness commands below need that path, or configure wit
 `-DPACIFIC_SQUADRON_MAC_BUNDLE=OFF` to keep the plain `./build/pacific-squadron`
 path the docs assume.
 
+**macOS release assets come from CI** (`.github/workflows/macos-release.yml`):
+publishing a GitHub release triggers a `macos-latest` (arm64) build that zips
+the `.app` with `ditto -c -k --keepParent` and `gh release upload`s
+`Pacific-Squadron-<ver>-macos-arm64.zip`. SDL3 embedding needs no CI-specific
+handling — it is the POST_BUILD bundler. Re-run manually (workflow_dispatch,
+tag input) to re-attach after a broken build. The workflow is the only CI;
+Linux artifacts stay locally packed (cpack + appimage target).
+
 **Release artifacts (Linux)** come from the same staged install tree:
 `cpack --config build/CPackConfig.cmake -G "TGZ;ZIP"` (run from the repo
 root; bare `cd build && cpack` also works — `cpack -B` only redirects output,

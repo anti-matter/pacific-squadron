@@ -1,0 +1,54 @@
+# Builds the self-contained macOS .app (SDL3 embedded + ad-hoc signed by the
+# BundleSDL.cmake POST_BUILD step) on a GitHub-hosted Apple Silicon runner
+# and attaches it to the release as Pacific-Squadron-<ver>-macos-arm64.zip.
+#
+# Triggers automatically when a release is published (alongside the Linux
+# artifacts packed locally), and manually via "Run workflow" with a tag --
+# use that to (re)attach a build to an existing release.
+name: macOS release build
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to attach the build to (e.g. v1.0.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-latest # Apple Silicon -> arm64 asset
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL3
+        run: brew install sdl3
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+             -DCMAKE_PREFIX_PATH="$(brew --prefix)"
+
+      - name: Build
+        run: cmake --build build -j "$(sysctl -n hw.ncpu)"
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Zip the .app bundle
+        run: |
+          cd build
+          ditto -c -k --keepParent pacific-squadron.app \
+            "Pacific-Squadron-${TAG#v}-macos-arm64.zip"
+
+      - name: Attach to the release
+        run: gh release upload "$TAG"
+             "build/Pacific-Squadron-${TAG#v}-macos-arm64.zip" --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

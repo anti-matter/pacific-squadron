@@ -73,6 +73,14 @@ will block it when downloaded from elsewhere — that needs a Developer ID
 certificate and notarization, which is out of scope here. Locally, `open`
 works; if quarantine is applied, right-click → Open.
 
+**macOS releases**: `.github/workflows/macos-release.yml` builds the `.app`
+on a GitHub-hosted Apple Silicon runner (SDL3 embedding runs exactly as
+locally — it is a POST_BUILD step) and attaches
+`Pacific-Squadron-<ver>-macos-arm64.zip` to the release automatically when
+one is published. To (re)attach a build to an existing release, run the
+workflow manually ("Run workflow") with its tag. Downloaded copies need the
+right-click → Open first-launch gesture above.
+
 ### Linux distributions (zip/tarball and AppImage)
 
 Linux mirrors the macOS embedding: with `PACIFIC_SQUADRON_BUNDLE_SDL=ON`
