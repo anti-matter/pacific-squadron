@@ -899,42 +899,57 @@ void Simulation::updateEnemies(float dt) {
                                   rgba(40, 40, 40, 160), 1.5f});
         }
 
-        // Firing.
+        // Firing. NOTE: spawnShot/spawnVolley call alloc(), which can grow
+        // pool_ and REALLOCATE it — the `e` reference dangles the moment one
+        // returns (ASan caught writes to freed memory here). Capture what the
+        // spawn needs first, then re-acquire pool_[i] for every write after.
         if (e.weaponDef >= 0 && e.age > def.firstFireDelay &&
             e.pos.y > 4.0f && e.pos.y < kPlayH + 10.0f) {
             e.fireTimer -= dt;
             if (e.fireTimer <= 0.0f) {
                 const WeaponDef& w = data_.weapons[static_cast<std::size_t>(e.weaponDef)];
-                if (w.burstCount > 1 && e.aimAtPlayer) {
-                    spawnShot(e.weaponDef, e.pos + w.muzzle,
-                              playerAimDir(e.pos, player_.pos), Team::Enemy);
-                    e.burstLeft = w.burstCount - 1;
-                    e.burstTimer = w.burstDelay;
-                } else {
-                    spawnVolley(e.weaponDef, e.pos, Team::Enemy, e.aimAtPlayer);
+                const bool burstAimed = w.burstCount > 1 && e.aimAtPlayer;
+                const int weaponDef = e.weaponDef;
+                const Vec2 pos = e.pos;
+                if (burstAimed)
+                    spawnShot(weaponDef, pos + w.muzzle,
+                              playerAimDir(pos, player_.pos), Team::Enemy);
+                else
+                    spawnVolley(weaponDef, pos, Team::Enemy, e.aimAtPlayer);
+                Entity& f = pool_[i];  // fresh reference post-spawn
+                if (burstAimed) {
+                    f.burstLeft = w.burstCount - 1;
+                    f.burstTimer = w.burstDelay;
                 }
-                e.fireTimer = def.fireInterval * e.rateMul;
+                f.fireTimer = def.fireInterval * f.rateMul;
                 emitSound(w.sound.c_str());
             }
         }
-        if (e.burstLeft > 0) {
-            e.burstTimer -= dt;
-            if (e.burstTimer <= 0.0f) {
-                const WeaponDef& w = data_.weapons[static_cast<std::size_t>(e.weaponDef)];
-                spawnShot(e.weaponDef, e.pos + w.muzzle,
-                          playerAimDir(e.pos, player_.pos), Team::Enemy);
-                --e.burstLeft;
-                e.burstTimer = w.burstDelay;
+        {
+            Entity& f = pool_[i];  // fresh: the fire block above may have grown the pool
+            if (f.burstLeft > 0) {
+                f.burstTimer -= dt;
+                if (f.burstTimer <= 0.0f) {
+                    const WeaponDef& w = data_.weapons[static_cast<std::size_t>(f.weaponDef)];
+                    const int weaponDef = f.weaponDef;
+                    const Vec2 pos = f.pos;
+                    spawnShot(weaponDef, pos + w.muzzle,
+                              playerAimDir(pos, player_.pos), Team::Enemy);
+                    Entity& g = pool_[i];  // fresh reference post-spawn
+                    --g.burstLeft;
+                    g.burstTimer = w.burstDelay;
+                }
             }
         }
 
         // Despawn when far off-screen. Formation members never advance
         // their own move.t (the controller owns their motion), so gate on
         // age for them; otherwise an escaped member is immortal.
+        Entity& f = pool_[i];  // fresh: spawns above may have grown the pool
         const bool spawnedLongAgo =
-            e.formation >= 0 ? e.age > 0.5f : e.move.t > 0.5f;
-        if (e.pos.y > kPlayH + kMargin * 2 || e.pos.y < -kMargin * 6 ||
-            e.pos.x < -kMargin * 3 || e.pos.x > kPlayW + kMargin * 3) {
+            f.formation >= 0 ? f.age > 0.5f : f.move.t > 0.5f;
+        if (f.pos.y > kPlayH + kMargin * 2 || f.pos.y < -kMargin * 6 ||
+            f.pos.x < -kMargin * 3 || f.pos.x > kPlayW + kMargin * 3) {
             if (spawnedLongAgo) kill(static_cast<int>(i));  // don't kill at spawn
         }
     }
@@ -1271,31 +1286,47 @@ void Simulation::updateBosses(float dt) {
                 e.angle = std::atan2(-(tgt.x - e.pos.x), tgt.y - e.pos.y);
             }
             if (b.state != 1) continue;
+            // spawnShot/spawnVolley may grow pool_ and reallocate it, so the
+            // component reference must be re-acquired after every spawn (the
+            // enemy-firing loop in updateEnemies documents the same hazard).
             if (e.weaponDef >= 0) {
                 e.fireTimer -= dt;
                 if (e.fireTimer <= 0.0f) {
                     const WeaponDef& w = data_.weapons[static_cast<std::size_t>(e.weaponDef)];
-                    if (w.burstCount > 1) {
-                        spawnShot(e.weaponDef, e.pos + w.muzzle,
-                                  playerAimDir(e.pos, player_.pos), Team::Enemy);
-                        e.burstLeft = w.burstCount - 1;
-                        e.burstTimer = w.burstDelay;
+                    const bool burst = w.burstCount > 1;
+                    const int weaponDef = e.weaponDef;
+                    const Vec2 pos = e.pos;
+                    const float compInterval = def.components[c].fireInterval;
+                    if (burst) {
+                        spawnShot(weaponDef, pos + w.muzzle,
+                                  playerAimDir(pos, player_.pos), Team::Enemy);
                     } else {
-                        spawnVolley(e.weaponDef, e.pos, Team::Enemy, true);
+                        spawnVolley(weaponDef, pos, Team::Enemy, true);
                     }
-                    e.fireTimer = def.components[c].fireInterval *
-                                  e.rateMul * phaseRate;
+                    Entity& f = pool_[static_cast<std::size_t>(b.components[c])];
+                    if (burst) {
+                        f.burstLeft = w.burstCount - 1;
+                        f.burstTimer = w.burstDelay;
+                    }
+                    f.fireTimer = compInterval * f.rateMul * phaseRate;
                     emitSound(w.sound.c_str());
                 }
             }
-            if (e.burstLeft > 0) {
-                e.burstTimer -= dt;
-                if (e.burstTimer <= 0.0f) {
-                    const WeaponDef& w = data_.weapons[static_cast<std::size_t>(e.weaponDef)];
-                    spawnShot(e.weaponDef, e.pos + w.muzzle,
-                              playerAimDir(e.pos, player_.pos), Team::Enemy);
-                    --e.burstLeft;
-                    e.burstTimer = w.burstDelay;
+            {
+                Entity& f = pool_[static_cast<std::size_t>(b.components[c])];
+                if (f.burstLeft > 0) {
+                    f.burstTimer -= dt;
+                    if (f.burstTimer <= 0.0f) {
+                        const WeaponDef& w =
+                            data_.weapons[static_cast<std::size_t>(f.weaponDef)];
+                        const int weaponDef = f.weaponDef;
+                        const Vec2 pos = f.pos;
+                        spawnShot(weaponDef, pos + w.muzzle,
+                                  playerAimDir(pos, player_.pos), Team::Enemy);
+                        Entity& g = pool_[static_cast<std::size_t>(b.components[c])];
+                        --g.burstLeft;
+                        g.burstTimer = w.burstDelay;
+                    }
                 }
             }
         }
@@ -1463,7 +1494,9 @@ void Simulation::resolveCollisions() {
         if (p.hitPlayer && p.target == -1) {
             // Enemy bullet hits the player.
             if (player_.invuln <= 0.0f && player_.alive) {
-                if (p.shot >= 0 && pool_[static_cast<std::size_t>(p.shot)].alive)
+                // Kind check: an earlier killEnemy may have recycled this index.
+                if (p.shot >= 0 && pool_[static_cast<std::size_t>(p.shot)].alive &&
+                    pool_[static_cast<std::size_t>(p.shot)].kind == EKind::Shot)
                     kill(p.shot);
                 damagePlayer();
             }
@@ -1534,6 +1567,15 @@ void Simulation::resolveCollisions() {
         Entity& shot = pool_[static_cast<std::size_t>(p.shot)];
         Entity& target = pool_[static_cast<std::size_t>(p.target)];
         if (!shot.alive || !target.alive) continue;
+        // killEnemy()/kill() above push indices straight onto the LIFO free
+        // list, and a power-up spawned by a later pending kill can reuse an
+        // index this pair still names — alive alone does not prove it is the
+        // SAME entity. Re-validate kinds/refs before touching payload data
+        // (a recycled shot index was crashing on data_.weapons[-1]).
+        if (shot.kind != EKind::Shot || shot.weaponDef < 0 ||
+            shot.weaponDef >= static_cast<int>(data_.weapons.size())) continue;
+        if (target.kind != EKind::Enemy && target.kind != EKind::BossComponent &&
+            target.kind != EKind::BossHull) continue;
         const int targetKind = static_cast<int>(target.kind);
         const int bossInst = target.bossInstance;
         const int compIndex = target.componentIndex;
@@ -1597,8 +1639,13 @@ void Simulation::resolveCollisions() {
                 emitSoundAt("boss_breakup", b.pos);
             }
         }
-        if (consumeShot) kill(p.shot);
-        else --pool_[static_cast<std::size_t>(p.shot)].penetration;
+        // Consume the shot — but only if the index still names a live shot:
+        // a killEnemy above may have recycled it (see re-validation above).
+        Entity& sh = pool_[static_cast<std::size_t>(p.shot)];
+        if (sh.alive && sh.kind == EKind::Shot) {
+            if (consumeShot) kill(p.shot);
+            else --sh.penetration;
+        }
     }
 }
 
@@ -1654,20 +1701,25 @@ void Simulation::killEnemy(int i, bool byPlayer) {
     Entity& e = pool_[static_cast<std::size_t>(i)];
     if (!e.alive || e.kind != EKind::Enemy) return;
     const EnemyDef& def = data_.enemies[static_cast<std::size_t>(e.enemyDef)];
+    // spawnPowerup() below can grow pool_ and REALLOCATE it, dangling `e`.
+    // Capture everything still needed after the drops.
+    const Vec2 pos = e.pos;
+    const int forceDrop = e.forceDrop;
+    const int formation = e.formation;
     if (byPlayer) {
         addScore(def.score);
-        events_.push_back({SimEvent::Type::EnemyKilled, def.name, def.score, e.pos});
+        events_.push_back({SimEvent::Type::EnemyKilled, def.name, def.score, pos});
     }
     const bool overWater = !def.ground;  // simple effect placement heuristic
-    explosions_.push_back({e.pos, 0.0f, def.deathEffect, overWater && def.deathEffect > 0});
-    emitSoundAt(def.deathSound.c_str(), e.pos);
+    explosions_.push_back({pos, 0.0f, def.deathEffect, overWater && def.deathEffect > 0});
+    emitSoundAt(def.deathSound.c_str(), pos);
 
     // Debris/spark particles.
     const int puffs = 6 + def.deathEffect * 6;
     for (int k = 0; k < puffs; ++k) {
         const Vec2 v = fromAngle(rng_.nextFloat() * 2.0f * kPi,
                                   rng_.range(20.0f, 40.0f + static_cast<float>(def.deathEffect) * 50.0f));
-        particles_.push_back({e.pos, v, rng_.range(0.3f, 0.8f), 0.8f,
+        particles_.push_back({pos, v, rng_.range(0.3f, 0.8f), 0.8f,
                               rng_.range(1.5f, 3.5f),
                               rng_.chance(0.6f) ? rgba(255, 200, 80, 255)
                                                 : rgba(120, 120, 120, 180),
@@ -1675,11 +1727,11 @@ void Simulation::killEnemy(int i, bool byPlayer) {
     }
 
     // Drops.
-    if (e.forceDrop >= 0) {
-        spawnPowerup(e.forceDrop, e.pos);
+    if (forceDrop >= 0) {
+        spawnPowerup(forceDrop, pos);
     } else if (def.dropChance > 0.0f && rng_.chance(def.dropChance)) {
         if (def.dropKind == DropKind::WeaponSpecific) {
-            spawnPowerup(data_.findPowerup(def.dropWeapon), e.pos);
+            spawnPowerup(data_.findPowerup(def.dropWeapon), pos);
         } else {
             // Weighted random drop table.
             static const int weights[] = {30, 12, 10, 12, 16, 10, 5};  // WeaponUp, Spread, Cannon, Rocket, Bomb, Repair, Life
@@ -1695,14 +1747,14 @@ void Simulation::killEnemy(int i, bool byPlayer) {
                                               "powerup_cannon", "powerup_rocket",
                                               "powerup_bomb", "powerup_repair",
                                               "powerup_life"};
-            spawnPowerup(data_.findPowerup(dropNames[idx]), e.pos);
+            spawnPowerup(data_.findPowerup(dropNames[idx]), pos);
         }
     }
 
     // Formation bookkeeping.
-    if (e.formation >= 0) {
+    if (formation >= 0) {
         for (auto& f : formations_)
-            if (f.id == e.formation) { --f.aliveCount; break; }
+            if (f.id == formation) { --f.aliveCount; break; }
     }
     kill(i);
 }

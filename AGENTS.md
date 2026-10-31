@@ -165,6 +165,14 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
   them starves the next land chunk until it has scrolled past (symptom: the
   far shore of a wide ocean gap renders as open water with baked-looking
   ground units parked on it). Keep the increment after the span search.
+- **The chunk cache is stage-scoped** (`EnvironmentBaker::cacheStage_`): cache
+  keys are ABSOLUTE world cells, but every stage's scroll starts at Y 0, so the
+  rows collide across stages (stage 2 jungle 3740..5200 vs stage 3 ocean
+  4080+). `get()` drops the whole cache when the rendered `StageDef` changes.
+  Without this, stage N+1 renders stage N's baked land as ghost terrain —
+  ships that the sim correctly placed on open water appear on jungle (the
+  stage-3 destroyer report; only fires across a stage transition, so direct
+  `WWII_START_STAGE` launches look clean). Never key a bake by (cx,cy) alone.
 - **Ground units never wade** (`src/game/Coastline.h` is the shared contract
   between baker and sim): `groundSurfaceAt()` = non-Ocean terrain, with shore
   bands only past their sea-facing margin (`coast::kGroundMargin` 48 px —
@@ -206,6 +214,16 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
   run hit). `test_pool_compaction_remaps_formations` forces `debugCompact()` with dead
   indices below the ships and pins center-on-ocean + never-frozen + never-immortal. Boss
   slots stay safe the old way: `compactIfNeeded()` never runs during an engaged boss.
+- **Never hold an `Entity&` across a spawn** (`Simulation`): `alloc()` may
+  `pool_.push_back` and REALLOCATE the whole pool, so any reference taken
+  before `spawnEnemy`/`spawnShot`/`spawnVolley`/`spawnPowerup` dangles
+  (ASan: heap-use-after-free writes in the enemy/boss firing paths and in
+  `killEnemy`). Capture what you need into locals, then re-acquire `pool_[i]`
+  for every write after the spawn. Related: `resolveCollisions` pending pairs
+  store RAW indices, and `killEnemy` frees + immediately recycles them (LIFO
+  `freeList_`), so a later pair can name a DIFFERENT live entity — re-validate
+  `kind`/`weaponDef` range, not just `alive` (a recycled shot index crashed on
+  `data_.weapons[-1]` in stage 8 under sustained fire).
 - **`env_*` sprites are PNG-overridable** from `assets/sprites/<name>.png`
   like all other sprites; the baker reads them through the Renderer's env
   pixel store, so authored art and procedural fallbacks both bake.

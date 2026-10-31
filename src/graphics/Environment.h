@@ -69,6 +69,13 @@ private:
     Renderer* renderer_ = nullptr;
     std::vector<int> slotTex_;
     int slotNext_ = 0;
+    // The cache is keyed by ABSOLUTE world cell only, but every stage reuses
+    // the same world rows (each stage's scroll starts at Y 0): stage 2's
+    // jungle at rows 3740..5200 and stage 3's ocean there collide. The cache
+    // is therefore scoped to one stage — get() drops it wholesale when the
+    // rendered stage changes, or stale land renders as ghost terrain over
+    // the next stage's ocean (ships appearing on land).
+    const StageDef* cacheStage_ = nullptr;
     std::unordered_map<std::uint64_t, Entry> cache_;
     std::uint64_t useClock_ = 0;
     int frameBakes_ = 0;

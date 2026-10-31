@@ -881,7 +881,10 @@ bool EnvironmentBaker::init(Renderer& r) {
     return true;
 }
 
-void EnvironmentBaker::clear() { cache_.clear(); }
+void EnvironmentBaker::clear() {
+    cache_.clear();
+    cacheStage_ = nullptr;
+}
 
 std::uint64_t EnvironmentBaker::makeKey(int cx, int cy) {
     return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(cx))) |
@@ -890,6 +893,12 @@ std::uint64_t EnvironmentBaker::makeKey(int cx, int cy) {
 
 int EnvironmentBaker::get(Renderer& r, const StageDef& stage, int cx, int cy) {
     if (!ready_) return -1;
+    // Cache keys are world cells shared by every stage: a hit from a
+    // different stage's terrain is a ghost, not a hit (see cacheStage_).
+    if (&stage != cacheStage_) {
+        cache_.clear();
+        cacheStage_ = &stage;
+    }
     const std::uint64_t key = makeKey(cx, cy);
     ++useClock_;
     auto it = cache_.find(key);
