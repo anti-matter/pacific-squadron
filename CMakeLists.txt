@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.20)
 # bundle plist (CFBundleVersion / CFBundleShortVersionString). Format is
 # major.minor.bugfix.
 project(wwii_fighter
-    VERSION 1.0.0
+    VERSION 1.0.1
     DESCRIPTION "WWII-inspired 2D vertical-scrolling arcade shooter"
     LANGUAGES C CXX)
 
