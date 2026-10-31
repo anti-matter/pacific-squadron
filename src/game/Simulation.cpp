@@ -287,6 +287,7 @@ void Simulation::update() {
                     f.offsets =
                         formationOffsets(it->shape, f.totalCount, it->spacing);
                     f.anchor = it->pos;
+                    f.enemyDefRef = it->enemyRef;
                     const EnemyDef& def =
                         data_.enemies[static_cast<std::size_t>(it->enemyRef)];
                     f.lead = formationLeadState(def, it->shape, it->pos,
@@ -670,6 +671,22 @@ void Simulation::updateFormations(float dt) {
                 addScore(300);
                 events_.push_back({SimEvent::Type::FormationCleared,
                                    "formation_bonus", 300, f.anchor});
+                // Per-type wipe bonus (fighter_light / interceptor /
+                // fighter_carrier carry formationBonus > 0 in the data):
+                // awarded only when the player destroyed every member, and
+                // anchored at the last kill so the award pops up right where
+                // the formation went down.
+                if (f.lastDeathValid && f.enemyDefRef >= 0 &&
+                    f.enemyDefRef < static_cast<int>(data_.enemies.size())) {
+                    const EnemyDef& bdef =
+                        data_.enemies[static_cast<std::size_t>(f.enemyDefRef)];
+                    if (bdef.formationBonus > 0) {
+                        addScore(bdef.formationBonus);
+                        events_.push_back({SimEvent::Type::FormationBonus,
+                                           bdef.name, bdef.formationBonus,
+                                           f.lastDeathPos});
+                    }
+                }
                 if (f.anchor.y > 40.0f && f.anchor.y < kPlayH - 80.0f) {
                     const int drop = rng_.chance(0.5f)
                         ? data_.findPowerup("powerup_p")
@@ -950,7 +967,14 @@ void Simulation::updateEnemies(float dt) {
             f.formation >= 0 ? f.age > 0.5f : f.move.t > 0.5f;
         if (f.pos.y > kPlayH + kMargin * 2 || f.pos.y < -kMargin * 6 ||
             f.pos.x < -kMargin * 3 || f.pos.x > kPlayW + kMargin * 3) {
-            if (spawnedLongAgo) kill(static_cast<int>(i));  // don't kill at spawn
+            if (spawnedLongAgo) {
+                // Leaving un-killen voids the whole-formation wipe bonus:
+                // the player did not destroy every hull.
+                if (f.formation >= 0)
+                    for (auto& grp : formations_)
+                        if (grp.id == f.formation) { grp.lastDeathValid = false; break; }
+                kill(static_cast<int>(i));  // don't kill at spawn
+            }
         }
     }
 
@@ -1751,10 +1775,17 @@ void Simulation::killEnemy(int i, bool byPlayer) {
         }
     }
 
-    // Formation bookkeeping.
+    // Formation bookkeeping. Also record the kill for the whole-formation
+    // wipe bonus: position = where the last hull went down (popup anchor).
+    // Non-player kills (rammed under a boss hull) void the wipe.
     if (formation >= 0) {
-        for (auto& f : formations_)
-            if (f.id == formation) { --f.aliveCount; break; }
+        for (auto& f : formations_) {
+            if (f.id != formation) continue;
+            --f.aliveCount;
+            f.lastDeathPos = pos;
+            f.lastDeathValid = byPlayer;
+            break;
+        }
     }
     kill(i);
 }

@@ -327,6 +327,10 @@ bool Application::init() {
         }
         if (SDL_getenv("WWII_SMOKE_HELP"))
             game_->debugSetState(GameState::Help);
+        // WWII_SMOKE_POP=1: inject score popups at wildly off-screen anchors
+        // once gameplay starts (headless check that awards stay on screen).
+        if (SDL_getenv("WWII_SMOKE_POP"))
+            smokePopTest_ = true;
         // Debug: jump straight to a named menu state (Help/Options/HighScores).
         if (const char* st = SDL_getenv("WWII_SMOKE_STATE")) {
             if (!std::strcmp(st, "Options"))
@@ -704,6 +708,32 @@ int Application::run() {
         if (steps == 4) acc_ = 0.0f;  // spiral-of-death guard
 
         consumeGameEvents();
+        // WWII_SMOKE_POP: inject awards anchored far off every edge/corner
+        // once, so a screenshot proves clampPopPos keeps them on screen.
+        if (smokePopTest_ && !smokePopDone_ && game_->state() == GameState::Playing) {
+            smokePopDone_ = true;
+            const Vec2 anchors[] = {{-80.0f, 20.0f},   {250.0f, 600.0f},
+                                    {-60.0f, 480.0f},  {430.0f, 200.0f},
+                                    {192.0f, -60.0f},  {410.0f, 510.0f}};
+            const char* labels[] = {"+50", "+100", "+150",
+                                    "+50", "+100", "+150"};
+            for (int i = 0; i < 6; ++i) {
+                ScorePop pop;
+                pop.pos = anchors[i];
+                pop.text = labels[i];
+                pop.pos = clampPopPos(pop);  // same path as a real award
+                scorePops_.push_back(std::move(pop));
+            }
+        }
+        // Score popups advance on the wall clock (presentation): hold full
+        // alpha for kPopHold, fade over kPopFade, then retire.
+        for (auto it = scorePops_.begin(); it != scorePops_.end();) {
+            it->age += frameDt;
+            if (it->age >= kPopHold + kPopFade)
+                it = scorePops_.erase(it);
+            else
+                ++it;
+        }
         updateMusic();
         audio_.pump();
 
@@ -774,6 +804,16 @@ void Application::playGameSound(const std::string& name, Vec2 pos) {
     audio_.play(name, 1.0f, name != "music");
 }
 
+Vec2 Application::clampPopPos(const ScorePop& pop) const {
+    // String is centred on x with y as the glyph top; the stroke cell is
+    // 11 px tall at scale 1. Margins keep the whole award (plus its 1 px
+    // drop shadow) inside the playfield and clear of the HUD strip on top.
+    const float w = renderer_.textWidth(pop.text, kPopScale);
+    const float h = 11.0f * kPopScale;
+    return {clamp(pop.pos.x, 8.0f + w * 0.5f, kPlayW - 8.0f - w * 0.5f),
+            clamp(pop.pos.y, 52.0f, kPlayH - h - 6.0f)};
+}
+
 void Application::consumeGameEvents() {
     GameEvent ev;
     while (game_->popEvent(ev)) {
@@ -781,6 +821,20 @@ void Application::consumeGameEvents() {
         case GameEvent::Type::Sound:
             playGameSound(ev.name, ev.pos);
             break;
+        case GameEvent::Type::ScorePopup: {
+            // Whole-formation wipe award: float "+N" at the last kill.
+            if (scorePops_.size() >= 16)  // hard cap: never grows unbounded
+                scorePops_.erase(scorePops_.begin());
+            ScorePop pop;
+            pop.text = "+" + std::to_string(ev.value);
+            // The kill (and so the award anchor) can be off-screen: planes
+            // die at spawn just above the top or beyond the side edges.
+            // Clamp once at spawn so the stored anchor is always on-screen.
+            pop.pos = ev.pos;
+            pop.pos = clampPopPos(pop);
+            scorePops_.push_back(std::move(pop));
+            break;
+        }
         case GameEvent::Type::SaveHighScores:
             saveHighScores();
             break;
@@ -1514,6 +1568,27 @@ void Application::renderWorld() {
                            Color{255, 255, 255,
                                  static_cast<std::uint8_t>(235.0f * a *
                                                            std::sqrt(a))});
+    }
+
+    // Floating bonus awards. Text is queued and rasterized at native display
+    // resolution in endFrame, so these glyphs are crisp at any window scale;
+    // a dark drop shadow keeps the gold readable over terrain and smoke.
+    // The anchor is re-clamped here (defensive): the whole string is always
+    // fully visible even for kills at the very edge of the playfield.
+    for (const ScorePop& pop : scorePops_) {
+        const float a = pop.age <= kPopHold
+                            ? 1.0f
+                            : clamp(1.0f - (pop.age - kPopHold) / kPopFade,
+                                    0.0f, 1.0f);
+        const float scale = kPopScale;
+        const Vec2 p = clampPopPos(pop);
+        const auto alpha = static_cast<std::uint8_t>(255.0f * a);
+        renderer_.text(pop.text, p.x + 1.0f, p.y + 1.0f, scale,
+                       Color{10, 12, 20,
+                             static_cast<std::uint8_t>(200.0f * a)},
+                       true);
+        renderer_.text(pop.text, p.x, p.y, scale,
+                       Color{255, 214, 74, alpha}, true);
     }
 }
 

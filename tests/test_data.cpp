@@ -115,6 +115,15 @@ void test_shipped_data() {
           static_cast<float>(heavy.hitW) / static_cast<float>(heavy.width));
     CHECK(elite.speed > heavy.speed);
 
+    // Whole-formation wipe bonuses: only the three fighter types carry one,
+    // escalating with the threat (data drives the sim award + popup).
+    CHECK(data.enemies[static_cast<std::size_t>(data.findEnemy("fighter_light"))]
+              .formationBonus == 50);
+    CHECK(data.enemies[static_cast<std::size_t>(data.findEnemy("interceptor"))]
+              .formationBonus == 100);
+    CHECK(elite.formationBonus == 150);
+    CHECK(heavy.formationBonus == 0);
+
     // Stage 5: the island fortress.
     CHECK(data.stages.size() >= 5);
     const StageDef& st5 = data.stages[4];

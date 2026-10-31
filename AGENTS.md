@@ -94,6 +94,9 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
   transition headlessly without grinding the boss down.
 - `WWII_SMOKE_STATE=StageIntro` = jump straight to a state from the title
   (Options/Help/HelpN/HighScores/StageIntro).
+- `WWII_SMOKE_POP=1` = inject six score popups anchored far off every edge
+  once gameplay starts — verifies the bonus-award on-screen clamp (screenshot
+  ~1 s after the stage intro ends, before the 2 s hold expires).
 - `WWII_SMOKE_BOMB_AT=8,9.5` = press the BOMB special at those **sim** times
   (comma-separated) — headless verification of bomb effects.
 - `WWII_SMOKE_SHOT_AT` is **real elapsed time**, not stage time (~2–3 s
@@ -239,6 +242,18 @@ SDL_VIDEODRIVER=dummy ./build/pacific-squadron
   number plus the band. Chain so far: destroyer 194 → carrier 252 →
   fortress 338 → cruiser 448 → airfield 596 → drydock 800 → battleship 1080
   → sky fortress 1450.
+- **`EnemyDef.formationBonus`** (enemies.json `"formationBonus"`): extra score
+  for wiping out a WHOLE formation of that enemy type (0 = none). Shipped
+  values: fighter_light 50, interceptor 100, fighter_carrier 150. The sim pays
+  it in `updateFormations` when the last member dies, on top of the generic
+  +300 FormationCleared bonus, and only if the player destroyed every member
+  (a despawning/escaping member clears `FormationInstance::lastDeathValid`;
+  boss-ram kills also void it). The `SimEvent::Type::FormationBonus` event
+  carries the kill position, which `Game` forwards as
+  `GameEvent::Type::ScorePopup`; `Application::scorePops_` renders "+N"
+  (scale 1.125) in gold (native-res text overlay, so it is crisp at any window
+  scale) at the last-kill spot, holding 2 s then fading over 0.5 s on the wall
+  clock.
 - `test_data.cpp` pins per-stage boss identity/composition/HP/phases. Any
   data change must update the pins deliberately, never by accident.
 - Boss JSON: `arenaOcean: true` = boss carries its own ground and the world

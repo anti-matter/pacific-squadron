@@ -99,6 +99,8 @@ private:
     float smokeElapsed_ = 0.0f;
     bool smokeBoss_ = false;
     bool smokeNoAuto_ = false;  // idle manual player (no autopilot fire/weave)
+    bool smokePopTest_ = false;  // WWII_SMOKE_POP: inject edge-case popups
+    bool smokePopDone_ = false;  // injection fires exactly once
     int smokeBossIdx_ = 0;
     // Boss presentation timers.
     float lastFlashClock_ = 0.0f;  // wall clock for flash decay (stage clock
@@ -111,6 +113,22 @@ private:
     float smokeKillBossAt_ = 0.0f;  // WWII_SMOKE_KILL_BOSS_AT: sim time to force boss death
     float armorFlashT_ = 0.0f;   // armor-break silhouette pulse
     int lastBossBoom_ = 0;
+    // Floating score awards (whole-formation wipes): hold kPopHold, then
+    // fade out over kPopFade. Presentation-only, advanced on the wall clock.
+    // pos is always clamped to the playfield (clampPopPos), so an award for
+    // a kill at (or beyond) a screen edge still reads fully on screen.
+    struct ScorePop {
+        Vec2 pos;
+        std::string text;
+        float age = 0.0f;
+    };
+    static constexpr float kPopHold = 2.0f;
+    static constexpr float kPopFade = 0.5f;
+    static constexpr float kPopScale = 1.125f;
+    std::vector<ScorePop> scorePops_;
+    // Clamp a pop anchor so the whole string stays inside the playfield:
+    // x is the string centre, y the glyph top (top margin clears the HUD).
+    Vec2 clampPopPos(const ScorePop& pop) const;
     Rng boomRng_{0x800D5u};  // variant/pitch/pan variation for explosions
     int prevCompAlive_ = 0;
     bool smokeBossSpawned_ = false;

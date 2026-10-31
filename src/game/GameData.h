@@ -132,6 +132,8 @@ struct EnemyDef {
     float dropChance = 0.0f;
     DropKind dropKind = DropKind::Random;
     std::string dropWeapon = "";     // for WeaponSpecific drops
+    // Extra score for wiping out a WHOLE formation of this enemy (0 = none).
+    int formationBonus = 0;
     int deathEffect = 1;             // 0 small, 1 medium, 2 large
     std::string deathSound;          // explosion class name; empty = from deathEffect
     float smokeWhileDamaged = 0.5f;  // hp fraction below which it smokes

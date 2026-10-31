@@ -3,7 +3,7 @@
     "hitbox": [0, 0, 16, 13], "hp": 1, "score": 100, "speed": 85,
     "path": "sine_down", "amp": 34, "freq": 0.7,
     "weapon": "e_light_gun", "fireInterval": 2.4, "aimAtPlayer": true,
-    "dropChance": 0.12, "drop": "random", "deathEffect": 1 },
+    "dropChance": 0.12, "drop": "random", "deathEffect": 1, "formationBonus": 50 },
 
   { "name": "fighter_formation", "sprite": "enemy_fighter_light", "width": 40, "height": 38,
     "hitbox": [0, 0, 16, 13], "hp": 1, "score": 120, "speed": 95,
@@ -14,7 +14,7 @@
   { "name": "interceptor", "sprite": "enemy_interceptor", "width": 33, "height": 33,
     "hitbox": [0, 0, 12, 12], "hp": 1, "score": 150, "speed": 210,
     "path": "straight", "angleDeg": 95,
-    "dropChance": 0.10, "deathEffect": 1 },
+    "dropChance": 0.10, "deathEffect": 1, "formationBonus": 100 },
 
   { "name": "heavy_fighter", "sprite": "enemy_heavy_fighter", "width": 40, "height": 32,
     "hitbox": [0, 0, 22, 16], "hp": 4, "score": 300, "speed": 65,
@@ -27,7 +27,7 @@
     "path": "sine_down", "amp": 52, "freq": 1.15,
     "weapon": "e_burst3", "fireInterval": 2.2, "aimAtPlayer": true,
     "dropChance": 0.18, "drop": "random", "deathEffect": 1,
-    "smokeWhileDamaged": 0.5 },
+    "smokeWhileDamaged": 0.5, "formationBonus": 150 },
 
   { "name": "bomber", "sprite": "enemy_bomber", "width": 60, "height": 44,
     "hitbox": [0, 0, 34, 22], "hp": 9, "score": 500, "speed": 42,

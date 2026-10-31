@@ -6,6 +6,7 @@ int main() {
     test_weapons();
     test_formation();
     test_scoring();
+    test_formation_bonus();
     test_levelscript();
     test_boss();
     test_boss_natural_spawn();

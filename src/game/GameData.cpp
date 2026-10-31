@@ -264,6 +264,7 @@ bool parseEnemiesJson(const std::string& text, std::vector<EnemyDef>& out, std::
         e.ground = getB(j, "ground", false);
         e.ship = getB(j, "ship", false);
         e.dropChance = clamp(getF(j, "dropChance", 0.0f), 0.0f, 1.0f);
+        e.formationBonus = std::max(0, getI(j, "formationBonus", 0));
         const std::string drop = getS(j, "drop", "none");
         if (drop == "random") e.dropKind = DropKind::Random;
         else if (!drop.empty() && drop != "none") {

@@ -116,3 +116,148 @@ void test_scoring() {
         CHECK(game2.sim().score() >= 100);  // the score carry-over still works
     }
 }
+
+namespace {
+
+// Indices of the live enemies currently belonging to formation id.
+std::vector<int> formationMembers(const Simulation& sim, int formationId) {
+    std::vector<int> out;
+    const auto& pool = sim.entities();
+    for (std::size_t i = 0; i < pool.size(); ++i)
+        if (pool[i].alive && pool[i].kind == EKind::Enemy &&
+            pool[i].formation == formationId)
+            out.push_back(static_cast<int>(i));
+    return out;
+}
+
+// Drains the sim event queue looking for a formation wipe bonus.
+bool takeBonus(Simulation& sim, SimEvent& out) {
+    SimEvent ev;
+    while (sim.popEvent(ev))
+        if (ev.type == SimEvent::Type::FormationBonus) {
+            out = ev;
+            return true;
+        }
+    return false;
+}
+
+GameData bonusStageData(const char* enemiesJson, const char* stageJson) {
+    const char* weaponsJson = R"([
+      { "name": "gun_l1", "pattern": "forward", "damage": 1, "fireInterval": 0.14,
+        "speed": 520, "count": 2, "lifetime": 1.4 }
+    ])";
+    GameData data;
+    std::string err;
+    CHECK(parseWeaponsJson(weaponsJson, data.weapons, err));
+    CHECK(parseEnemiesJson(enemiesJson, data.enemies, err));
+    StageDef stage;
+    CHECK(parseStageJson(stageJson, stage, err));
+    data.stages.push_back(stage);
+    CHECK(data.linkReferences(err));
+    return data;
+}
+
+}  // namespace
+
+// Whole-formation wipes award the enemy type's formationBonus, anchored at
+// the last kill; partial wipes and non-bonus types award nothing.
+void test_formation_bonus() {
+    const char* enemiesJson = R"([
+      { "name": "bfighter", "hp": 1, "score": 10, "speed": 40,
+        "path": "straight", "angleDeg": 90, "formationBonus": 50 },
+      { "name": "nbomber", "hp": 1, "score": 10, "speed": 40,
+        "path": "straight", "angleDeg": 90 }
+    ])";
+
+    // 1) Full wipe of a 3-plane bonus formation: +50 event at the last kill,
+    //    score = kills + the classic 300 clear bonus + the 50 wipe bonus.
+    {
+        GameData data = bonusStageData(
+            enemiesJson,
+            R"({ "name": "T", "duration": 60, "scrollSpeed": 50,
+                 "events": [ { "trigger": 0.5, "enemy": "bfighter",
+                               "formation": "h_line", "count": 3,
+                               "x": 192, "y": 60 } ] })");
+        Simulation sim(data, 7);
+        sim.startStage(0, {});
+        for (int f = 0; f < 70; ++f) sim.update();  // spawn all staggered members (no firing)
+        const auto members = formationMembers(sim, 1);
+        CHECK(members.size() == 3);
+        sim.debugKillEnemy(members[0]);
+        sim.debugKillEnemy(members[1]);
+        const Vec2 lastPos =
+            sim.entities()[static_cast<std::size_t>(members[2])].pos;
+        sim.debugKillEnemy(members[2]);
+        sim.update();  // the formation controller notices the wipe here
+        SimEvent ev;
+        CHECK(takeBonus(sim, ev));
+        CHECK(ev.value == 50);
+        CHECK_NEAR(ev.pos.x, lastPos.x, 0.5f);
+        CHECK_NEAR(ev.pos.y, lastPos.y, 0.5f);
+        CHECK(sim.score() == 3 * 10 + 300 + 50);
+    }
+
+    // 2) Partial wipe, one member flies away: no bonus (the player did not
+    //    destroy the whole formation).
+    {
+        const char* fastEnemies = R"([
+          { "name": "bfighter", "hp": 1, "score": 10, "speed": 260,
+            "path": "straight", "angleDeg": 90, "formationBonus": 50 },
+          { "name": "nbomber", "hp": 1, "score": 10, "speed": 40,
+            "path": "straight", "angleDeg": 90 }
+        ])";
+        GameData data = bonusStageData(
+            fastEnemies,
+            R"({ "name": "T", "duration": 60, "scrollSpeed": 50,
+                 "events": [ { "trigger": 0.5, "enemy": "bfighter",
+                               "formation": "h_line", "count": 2,
+                               "x": 192, "y": -30 } ] })");
+        Simulation sim(data, 7);
+        sim.startStage(0, {});
+        for (int f = 0; f < 70; ++f) sim.update();
+        const auto members = formationMembers(sim, 1);
+        CHECK(members.size() == 2);
+        sim.debugKillEnemy(members[0]);
+        for (int f = 0; f < 60 * 4; ++f) sim.update();  // survivor escapes
+        SimEvent ev;
+        CHECK(!takeBonus(sim, ev));
+    }
+
+    // 3) Full wipe of a type without formationBonus: no bonus event.
+    {
+        GameData data = bonusStageData(
+            enemiesJson,
+            R"({ "name": "T", "duration": 60, "scrollSpeed": 50,
+                 "events": [ { "trigger": 0.5, "enemy": "nbomber",
+                               "formation": "h_line", "count": 2,
+                               "x": 192, "y": 60 } ] })");
+        Simulation sim(data, 7);
+        sim.startStage(0, {});
+        for (int f = 0; f < 70; ++f) sim.update();
+        const auto members = formationMembers(sim, 1);
+        CHECK(members.size() == 2);
+        sim.debugKillEnemy(members[0]);
+        sim.debugKillEnemy(members[1]);
+        sim.update();
+        SimEvent ev;
+        CHECK(!takeBonus(sim, ev));
+    }
+
+    // 4) A solo bonus-plane (not a formation) never pays the wipe bonus.
+    {
+        GameData data = bonusStageData(
+            enemiesJson,
+            R"({ "name": "T", "duration": 60, "scrollSpeed": 50,
+                 "events": [ { "trigger": 0.5, "enemy": "bfighter",
+                               "count": 1, "x": 192, "y": 60 } ] })");
+        Simulation sim(data, 7);
+        sim.startStage(0, {});
+        for (int f = 0; f < 70; ++f) sim.update();
+        const auto members = formationMembers(sim, -1);
+        CHECK(members.size() == 1);
+        sim.debugKillEnemy(members[0]);
+        sim.update();
+        SimEvent ev;
+        CHECK(!takeBonus(sim, ev));
+    }
+}

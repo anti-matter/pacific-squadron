@@ -89,6 +89,7 @@ struct ExplosionFx {
 struct SimEvent {
     enum class Type : std::uint8_t {
         Sound, PlayerHit, PlayerDied, EnemyKilled, FormationCleared,
+        FormationBonus,  // whole formation of a bonus-flagged enemy wiped (value = pts)
         PowerupTaken, BossSpawned, BossComponentDestroyed, BossDefeated,
         StageComplete, BombUsed,
     };
@@ -186,6 +187,9 @@ public:
     // Debug/testing: force one pool compaction now (bypasses the size
     // thresholds) to exercise the entity-index remap deterministically.
     void debugCompact() { compactPool(); }
+    // Test hook: destroy an enemy exactly as a player kill would (runs the
+    // full death chain: score, drops, formation bookkeeping).
+    void debugKillEnemy(int i) { killEnemy(i, true); }
     // Debug: trigger the current stage's boss at this stage-clock time
     // (see LevelDirector::setBossTimeOverride / WWII_BOSS_NOW).
     void debugSetBossTime(float t) { director_.setBossTimeOverride(t); }
@@ -200,6 +204,15 @@ private:
         int id = -1;
         int aliveCount = 0;
         int totalCount = 0;
+        // Homogeneous group: every member shares this def (drives the
+        // per-type whole-formation wipe bonus; -1 = unknown).
+        int enemyDefRef = -1;
+        // Screen position of the most recent player kill within this group
+        // (lastDeathValid), used as the bonus popup anchor when the last
+        // member dies. Cleared when a member despawns un-killed, so planes
+        // that fly away never hand out a "wiped the formation" bonus.
+        Vec2 lastDeathPos{};
+        bool lastDeathValid = false;
         Vec2 anchor{};
         MoveState lead;
         std::vector<Vec2> offsets;

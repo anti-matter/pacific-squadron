@@ -46,6 +46,7 @@ struct GameInput {
 struct GameEvent {
     enum class Type : std::uint8_t {
         Sound,           // presentation sound by name
+        ScorePopup,      // floating score award at pos (value = points)
         SaveHighScores,  // persist the table now
         SaveSettings,
         Quit,            // leave the application (main menu QUIT)
@@ -53,6 +54,7 @@ struct GameEvent {
     Type type;
     std::string name;
     Vec2 pos{};  // world origin of the event (Sound events pan by x)
+    int value = 0;
 };
 
 enum class Difficulty : std::uint8_t { Easy = 0, Normal = 1, Hard = 2 };

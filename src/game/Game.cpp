@@ -199,6 +199,11 @@ void Game::processSimEvents() {
             bossDefeated_ = true;
             stageCompleteDelay_ = 2.4f;
             break;
+        case SimEvent::Type::FormationBonus:
+            // Forward for the floating award text (presentation only).
+            events_.push_back({GameEvent::Type::ScorePopup, ev.name, ev.pos,
+                               ev.value});
+            break;
         case SimEvent::Type::BombUsed:
         case SimEvent::Type::PlayerHit:
         case SimEvent::Type::PlayerDied:
