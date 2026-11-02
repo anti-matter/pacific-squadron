@@ -1,0 +1,88 @@
+# Builds the self-contained Windows package (SDL3.dll bundled in bin/, the
+# MinGW C++ runtime statically linked -- see the WIN32 distribution block in
+# CMakeLists.txt) on a GitHub-hosted runner with the same Scoop toolchain used
+# locally, and attaches both artifacts to the release:
+# Pacific-Squadron-<ver>-windows-x64.zip (extract + double-click) and
+# Pacific-Squadron-<ver>-windows-x64.exe (NSIS installer).
+#
+# Triggers automatically when a release is published (alongside the macOS
+# workflow and the locally packed Linux artifacts), and manually via
+# "Run workflow" with a tag -- use that to (re)attach a build to an
+# existing release.
+name: Windows release build
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to attach the build to (e.g. v1.0.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  SDL_VERSION: 3.4.18 # bump together with the local SDL3-devel dependency
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Scoop toolchain (cmake, MinGW, Ninja, NSIS)
+        run: |
+          scoop bucket add extras || true  # already-added is not fatal
+          scoop install cmake mingw ninja nsis
+          # Scoop's own PATH persistence does not survive into later steps;
+          # register the shims (makensis etc.) and the compiler explicitly.
+          # cygpath -w because the runner reads GITHUB_PATH literally, and
+          # bash builtins bypass MSYS2 path conversion.
+          cygpath -w "$HOME/scoop/shims" >> "$GITHUB_PATH"
+          cygpath -w "$HOME/scoop/apps/mingw/current/bin" >> "$GITHUB_PATH"
+
+      - name: Download SDL3 (official MinGW devel archive)
+        run: |
+          curl -sL -o "$RUNNER_TEMP/sdl3.zip" \
+            "https://github.com/libsdl-org/SDL/releases/download/release-${SDL_VERSION}/SDL3-devel-${SDL_VERSION}-mingw.zip"
+          unzip -q "$RUNNER_TEMP/sdl3.zip" -d "$GITHUB_WORKSPACE/sdl3"
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
+            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/sdl3/SDL3-${SDL_VERSION}/x86_64-w64-mingw32"
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Audit self-containment (no MinGW runtime DLL imports)
+        run: |
+          objdump -p build/pacific-squadron.exe | grep "DLL Name"
+          if objdump -p build/pacific-squadron.exe \
+             | grep -e libstdc++ -e libgcc -e libwinpthread; then
+            echo "::error::the packaged exe must import SDL3.dll + system DLLs only"
+            exit 1
+          fi
+
+      - name: Package (zip + NSIS installer)
+        run: cpack --config build/CPackConfig.cmake
+
+      - name: Attach to the release
+        run: |
+          gh release upload "$TAG" \
+            build/Pacific-Squadron-*-windows-x64.zip \
+            build/Pacific-Squadron-*-windows-x64.exe --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

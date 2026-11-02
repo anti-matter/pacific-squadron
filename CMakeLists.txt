@@ -391,3 +391,102 @@ if(UNIX AND NOT APPLE)
         COMMENT "Building AppImage"
         VERBATIM)
 endif()
+
+# ---------------------------------------------------------------------------
+# Distribution (Windows): a self-contained zip AND an NSIS installer, cut
+# from the same staged install tree as the Linux packages (bin/ + share/).
+# The executable is fully self-contained apart from the bundled SDL3.dll in
+# bin/: the MinGW C++ runtime is statically linked, so no
+# libstdc++/libgcc/libwinpthread DLLs travel with the game and double-click
+# bin\pacific-squadron.exe just works. NSIS comes from Scoop
+# (`scoop bucket add extras && scoop install nsis`). Artifacts come from a
+# Release build:
+#   cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release ^
+#         -DCMAKE_PREFIX_PATH=<SDL3-devel>/x86_64-w64-mingw32
+#   cmake --build build
+#   cpack --config build/CPackConfig.cmake   # -> build/*.zip and *.exe
+# ---------------------------------------------------------------------------
+if(WIN32)
+    # Bake the C++ runtime into the executable. Plain `-static` is the
+    # mingw-w64 recipe: the driver appends -lwinpthread (needed by static
+    # libstdc++) AFTER any -Wl,-Bstatic scoped earlier on the line, so a
+    # narrowly-scoped -Bstatic cannot catch it. With -static, UCRT still
+    # resolves to the system api-ms DLLs (there is no static UCRT) and
+    # SDL3 stays dynamic (only its import library exists).
+    # Skipped for sanitizer builds, which need the dynamic runtime.
+    if(MINGW AND NOT WWII_ENABLE_SANITIZERS)
+        target_link_options(pacific-squadron PRIVATE -static)
+        # Release ships stripped; Debug keeps its symbols.
+        target_link_options(pacific-squadron PRIVATE $<$<CONFIG:Release>:-s>)
+    endif()
+
+    # Runtime assets into the install tree (Application::init probes
+    # <exe>/../share/pacific-squadron/assets); dev-only artwork excluded
+    # exactly as in the Linux install above.
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/assets/
+            DESTINATION share/pacific-squadron/assets
+            PATTERN "P-38.png" EXCLUDE
+            PATTERN "zero.png" EXCLUDE
+            PATTERN "app-icon-base.png" EXCLUDE
+            PATTERN "Pacific Squadron*" EXCLUDE)
+
+    set(CPACK_PACKAGE_NAME "Pacific-Squadron")
+    set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+    set(CPACK_PACKAGE_VENDOR "anti-matter")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+        "Fast-paced 2D WWII vertical-scrolling arcade shooter")
+    set(CPACK_PACKAGE_HOMEPAGE_URL
+        "https://github.com/anti-matter/pacific-squadron")
+    set(CPACK_PACKAGE_FILE_NAME
+        "Pacific-Squadron-${PROJECT_VERSION}-windows-x64")
+    set(CPACK_PACKAGE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+    set(CPACK_GENERATOR "ZIP;NSIS")
+
+    # Archive-root README + licenses. Like TGZ/ZIP on Linux, the ZIP
+    # generator ignores CPACK_RESOURCE_FILE_*, so they travel via a staged
+    # pkgroot/ dir at the archive root.
+    set(PS_PKG_ROOT ${CMAKE_CURRENT_BINARY_DIR}/pkgroot)
+    file(MAKE_DIRECTORY ${PS_PKG_ROOT})
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/packaging/README-windows.txt.in
+                   ${PS_PKG_ROOT}/README.txt @ONLY)
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/licenses/LICENSE.SDL3.txt
+                   ${PS_PKG_ROOT}/LICENSE.txt COPYONLY)
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/LICENSE
+                   ${PS_PKG_ROOT}/LICENSE.pacific-squadron.txt COPYONLY)
+    set(CPACK_INSTALLED_DIRECTORIES "${PS_PKG_ROOT};/")
+
+    # The NSIS license page shows one file: the project MIT license first,
+    # then SDL3's zlib text.
+    file(READ ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE _ps_license_mit)
+    file(READ ${CMAKE_CURRENT_SOURCE_DIR}/licenses/LICENSE.SDL3.txt
+         _ps_license_sdl)
+    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/LICENSE-windows-combined.txt
+         "${_ps_license_mit}\nThe bundled SDL3 library carries its own "
+         "zlib license:\n\n${_ps_license_sdl}")
+    set(CPACK_RESOURCE_FILE_LICENSE
+        ${CMAKE_CURRENT_BINARY_DIR}/LICENSE-windows-combined.txt)
+
+    # NSIS installer: 64-bit Program Files, Start Menu + desktop shortcuts,
+    # uninstall-before-install, an Add/Remove-Programs entry showing the
+    # game icon, and a link to the project page.
+    set(CPACK_NSIS_DISPLAY_NAME "Pacific Squadron")
+    set(CPACK_NSIS_PACKAGE_NAME "Pacific Squadron")
+    set(CPACK_NSIS_INSTALL_ROOT "$PROGRAMFILES64")
+    set(CPACK_PACKAGE_INSTALL_DIRECTORY "Pacific Squadron")
+    set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+    set(CPACK_NSIS_URL_INFO_ABOUT
+        "https://github.com/anti-matter/pacific-squadron")
+    # Forward slashes survive CPackConfig.cmake escaping and NSIS accepts
+    # them (the template quotes the path); TO_NATIVE_PATH would put bare
+    # backslashes into the generated .cmake and break its parse.
+    set(CPACK_NSIS_MUI_ICON "${GAME_ICO}")
+    set(CPACK_NSIS_MUI_UNIICON "${GAME_ICO}")
+    set(CPACK_NSIS_INSTALLED_ICON_NAME "bin\\\\pacific-squadron.exe")
+    # Start Menu shortcut; the path is relative to the install root.
+    set(CPACK_PACKAGE_EXECUTABLES "bin/pacific-squadron" "Pacific Squadron")
+    set(CPACK_NSIS_CREATE_ICONS_EXTRA
+        "CreateShortCut '$DESKTOP\\\\Pacific Squadron.lnk' '$INSTDIR\\\\bin\\\\pacific-squadron.exe'")
+    set(CPACK_NSIS_DELETE_ICONS_EXTRA
+        "Delete '$DESKTOP\\\\Pacific Squadron.lnk'")
+    include(CPack)
+endif()

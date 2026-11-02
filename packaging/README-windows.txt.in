@@ -1,0 +1,21 @@
+Pacific Squadron @PROJECT_VERSION@ - Windows prebuilt package
+===============================================================
+
+Windows x64, fully self-contained: SDL3 is bundled in bin\ and the C++
+runtime is statically linked into the executable, so nothing else needs
+to be installed.
+
+Run without installing:
+
+    bin\pacific-squadron.exe
+
+Or run the installer (Pacific-Squadron-@PROJECT_VERSION@-windows-x64.exe,
+available separately) for Start Menu / desktop shortcuts and an entry in
+"Add or remove programs".
+
+Save games, settings and the sprite/SFX caches live in
+%APPDATA%\pacific-squadron\pacific-squadron (delete that folder for a
+clean slate).
+
+Licenses: the game is MIT (LICENSE.pacific-squadron.txt); the bundled
+SDL3 library is zlib (LICENSE.txt).

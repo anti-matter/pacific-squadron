@@ -53,6 +53,54 @@ bare executable, and CMake's `MACOSX_BUNDLE` nests the binary inside it, so run
 keeps the startup log in your terminal. Configure with
 `-DPACIFIC_SQUADRON_MAC_BUNDLE=OFF` for a plain `build/pacific-squadron`.
 
+### Windows (MinGW-w64)
+
+The Windows build uses a MinGW-w64 GCC toolchain (the in-tree `.rc` icon
+resource is written for `windres`). With [Scoop](https://scoop.sh):
+
+```sh
+scoop install cmake mingw ninja
+```
+
+SDL3 has no Scoop package; grab the official MinGW devel archive from the
+[SDL3 releases](https://github.com/libsdl-org/SDL/releases) (e.g.
+`SDL3-devel-3.4.18-mingw.zip`), unzip it somewhere (say `C:\deps`) and point
+CMake at its `x86_64-w64-mingw32` prefix:
+
+```sh
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release ^
+      -DCMAKE_PREFIX_PATH=C:\deps\SDL3-3.4.18\x86_64-w64-mingw32
+cmake --build build
+build\pacific-squadron.exe
+```
+
+Windows has no rpath, so the build copies `SDL3.dll` next to both executables
+(mirroring the macOS/Linux SDL bundling) and `cmake --install` places it in
+`bin\` beside the game. The MinGW runtime DLLs (`libstdc++-6.dll`,
+`libgcc_s_seh-1.dll`) must be reachable from the PATH when running from the
+build tree — the plain `mingw` Scoop package adds them there automatically.
+A self-contained distribution additionally needs those two DLLs copied beside
+the exe (or a static-runtime link) — but the release packaging below already
+statically links the runtime, so its artifacts need neither.
+
+### Windows distributions (zip and installer)
+
+Both artifacts are cut from the same staged install tree as the Linux
+packages (`bin/` with the exe and bundled `SDL3.dll`, `share/` with the
+assets, archive-root README + licenses):
+
+```sh
+cpack --config build/CPackConfig.cmake
+```
+
+That produces `Pacific-Squadron-<ver>-windows-x64.zip` and
+`Pacific-Squadron-<ver>-windows-x64.exe` in `build/`. The MinGW C++ runtime
+is statically linked into the executable, so both are fully self-contained
+on any Windows 10/11 x64 machine with nothing else installed: extract the
+zip and double-click `bin\pacific-squadron.exe`, or run the installer for
+Start Menu / desktop shortcuts and an "Add or remove programs" entry
+(installer needs NSIS: `scoop bucket add extras && scoop install nsis`).
+
 ### Self-contained macOS bundle
 
 `cmake/BundleSDL.cmake` copies the SDL3 dylib into

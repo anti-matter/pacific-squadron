@@ -47,13 +47,52 @@ beside it) — the smoke-harness commands below need that path, or configure wit
 `-DPACIFIC_SQUADRON_MAC_BUNDLE=OFF` to keep the plain `./build/pacific-squadron`
 path the docs assume.
 
+**Windows (verified with Scoop)**: `scoop install cmake mingw ninja` gives the
+toolchain (GCC, `windres` for the `.rc` icon, Ninja). SDL3 has no Scoop
+package — download the official `SDL3-devel-<ver>-mingw.zip` from the
+libsdl-org GitHub releases, unzip it, and configure with
+`cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=<unzip>/x86_64-w64-mingw32`.
+The build copies `SDL3.dll` beside both executables (Windows has no rpath;
+see the WIN32 block in `CMakeLists.txt`), so the game and tests run straight
+out of the build tree as long as the MinGW runtime DLLs are on PATH (the
+Scoop `mingw` package ensures that). Two compiler-warning gotchas fixed for
+GCC ≥ 13 on Windows: the LRU-evict `unordered_map::erase` in
+`EnvironmentBaker::get` carries a scoped `-Wnull-dereference` pragma (IPA
+false positive inside inlined libstdc++ internals), and
+`handleTerminateSignal` in `Application.cpp` is `#ifndef _WIN32`-guarded
+(sigaction-only; SDL's console-ctrl handler drives quit on Windows).
+
+**Windows release artifacts** come from CPack on a Release build:
+`cpack --config build/CPackConfig.cmake` produces
+`Pacific-Squadron-<ver>-windows-x64.zip` (extract + double-click
+`bin\pacific-squadron.exe`) and the matching NSIS installer (Start Menu /
+desktop shortcuts, Add/Remove-Programs entry, uninstaller; NSIS via
+`scoop bucket add extras && scoop install nsis`). **Publishing a GitHub
+release also triggers `.github/workflows/windows-release.yml`**, which
+builds on `windows-latest` (Scoop toolchain + the official SDL3 mingw-devel
+zip pinned via its `SDL_VERSION` env — bump it together with the local
+dependency) and attaches both artifacts, mirroring the macOS workflow. The game exe links the
+MinGW runtime with plain `-static` — scoped `-Wl,-Bstatic -lwinpthread`
+does NOT work because mingw-w64's g++ spec appends its own `-lwinpthread`
+after the explicit flags — so the packages need no runtime DLLs beside the
+bundled `SDL3.dll`, and "double-click just works" is verified by running
+the extracted exe with PATH reduced to `C:\Windows\system32` (if that ever
+regresses, `objdump -p build\pacific-squadron.exe | grep "DLL Name"` must
+show SDL3.dll + system api-ms/KERNEL32 only). Gotchas: the NSIS MUI icon
+path must stay in forward slashes (`TO_NATIVE_PATH` writes bare backslashes
+into `CPackConfig.cmake`, whose parse then dies on `\U`), and the
+uninstall registry entry lands under `WOW6432Node` because the Scoop NSIS
+runtime is 32-bit (normal NSIS behavior — Windows' app list shows it fine).
+
 **macOS release assets come from CI** (`.github/workflows/macos-release.yml`):
 publishing a GitHub release triggers a `macos-latest` (arm64) build that zips
 the `.app` with `ditto -c -k --keepParent` and `gh release upload`s
 `Pacific-Squadron-<ver>-macos-arm64.zip`. SDL3 embedding needs no CI-specific
 handling — it is the POST_BUILD bundler. Re-run manually (workflow_dispatch,
-tag input) to re-attach after a broken build. The workflow is the only CI;
-Linux artifacts stay locally packed (cpack + appimage target).
+tag input) to re-attach after a broken build. The macOS and Windows release
+workflows (`.github/workflows/windows-release.yml`, same trigger/dispatch
+pattern, attaches the zip + NSIS installer) are the only CI; Linux artifacts
+stay locally packed (cpack + appimage target).
 
 **Release artifacts (Linux)** come from the same staged install tree:
 `cpack --config build/CPackConfig.cmake -G "TGZ;ZIP"` (run from the repo
