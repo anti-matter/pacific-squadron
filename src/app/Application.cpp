@@ -48,9 +48,12 @@ const std::string kVersionLine =
 // lock-free and async-signal-safe, which is all the handler may touch.
 std::atomic<int> gTerminateSignal{0};
 
+#ifndef _WIN32  // only registered via sigaction below; on Windows SDL's
+                // console-ctrl handler drives SDL_EVENT_QUIT instead
 void handleTerminateSignal(int sig) {
     gTerminateSignal.store(sig, std::memory_order_relaxed);
 }
+#endif
 
 // Installs handleTerminateSignal for SIGINT/SIGTERM (and SIGHUP, so closing the
 // controlling terminal also stops a headless run). Replaces whatever

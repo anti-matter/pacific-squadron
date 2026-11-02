@@ -300,6 +300,26 @@ target_set_warnings(wwii_tests)
 add_test(NAME unit_tests COMMAND wwii_tests)
 
 # ---------------------------------------------------------------------------
+# Windows runtime DLLs: there is no rpath on Windows -- the loader only finds
+# SDL3.dll when it sits beside the .exe. Copy it into the build dir so the
+# game and the test runner start straight out of the build tree (mirrors the
+# macOS embedding in BundleSDL.cmake and the Linux install-tree bundling in
+# BundleSDLUnix.cmake), and ship it beside the installed binary.
+# ---------------------------------------------------------------------------
+if(WIN32)
+    get_target_property(SDL3_TARGET_TYPE SDL3::SDL3 TYPE)
+    if(SDL3_TARGET_TYPE STREQUAL "SHARED_LIBRARY")
+        foreach(sdl_win_target pacific-squadron wwii_tests)
+            add_custom_command(TARGET ${sdl_win_target} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    $<TARGET_FILE:SDL3::SDL3> $<TARGET_FILE_DIR:${sdl_win_target}>
+                COMMENT "Copying SDL3.dll beside ${sdl_win_target}")
+        endforeach()
+        install(FILES $<TARGET_FILE:SDL3::SDL3> DESTINATION bin)
+    endif()
+endif()
+
+# ---------------------------------------------------------------------------
 # Distribution (Linux): zip/tarball via CPack, and a single-file AppImage.
 # Both are cut from the same staged install tree (bin/, lib/, share/) and
 # share the bundled-SDL3 + $ORIGIN-rpath setup above, so what you test is

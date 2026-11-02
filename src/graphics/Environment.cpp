@@ -1002,11 +1002,21 @@ int EnvironmentBaker::get(Renderer& r, const StageDef& stage, int cx, int cy) {
     // should be).
     ++frameBakes_;
 
-    if (cache_.size() >= kPoolSize) {  // LRU eviction
+    if (cache_.size() >= kPoolSize) {  // LRU eviction (kPoolSize > 0 => non-empty)
+#if defined(__GNUC__) && !defined(__clang__)
+        // GCC >= 13 false positive: after inlining, IPA-VRP loses the
+        // non-emptiness fact and speculates a null node inside libstdc++'s
+        // erase/find hashtable internals.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnull-dereference"
+#endif
         auto victim = cache_.begin();
         for (auto i2 = cache_.begin(); i2 != cache_.end(); ++i2)
             if (i2->second.lastUse < victim->second.lastUse) victim = i2;
-        cache_.erase(victim);
+        cache_.erase(victim->first);
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
     }
 
     // ---- bake ----
