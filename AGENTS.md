@@ -69,9 +69,11 @@ false positive inside inlined libstdc++ internals), and
 desktop shortcuts, Add/Remove-Programs entry, uninstaller; NSIS via
 `scoop bucket add extras && scoop install nsis`). **Publishing a GitHub
 release also triggers `.github/workflows/windows-release.yml`**, which
-builds on `windows-latest` (Scoop toolchain + the official SDL3 mingw-devel
-zip pinned via its `SDL_VERSION` env — bump it together with the local
-dependency) and attaches both artifacts, mirroring the macOS workflow. The game exe links the
+builds on `windows-latest` (image CMake/Ninja + MSYS2 UCRT MinGW + Chocolatey
+NSIS — the windows-2025 image ships neither Scoop nor NSIS; local workstation
+builds still use Scoop, same UCRT runtime family) with the official SDL3
+mingw-devel zip pinned via its `SDL_VERSION` env (bump it together with the
+local dependency) and attaches both artifacts, mirroring the macOS workflow. The game exe links the
 MinGW runtime with plain `-static` — scoped `-Wl,-Bstatic -lwinpthread`
 does NOT work because mingw-w64's g++ spec appends its own `-lwinpthread`
 after the explicit flags — so the packages need no runtime DLLs beside the

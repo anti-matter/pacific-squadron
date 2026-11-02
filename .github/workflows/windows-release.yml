@@ -1,9 +1,11 @@
 # Builds the self-contained Windows package (SDL3.dll bundled in bin/, the
 # MinGW C++ runtime statically linked -- see the WIN32 distribution block in
-# CMakeLists.txt) on a GitHub-hosted runner with the same Scoop toolchain used
-# locally, and attaches both artifacts to the release:
-# Pacific-Squadron-<ver>-windows-x64.zip (extract + double-click) and
-# Pacific-Squadron-<ver>-windows-x64.exe (NSIS installer).
+# CMakeLists.txt) on a GitHub-hosted runner, and attaches both artifacts to
+# the release: Pacific-Squadron-<ver>-windows-x64.zip (extract +
+# double-click) and Pacific-Squadron-<ver>-windows-x64.exe (NSIS installer).
+# The toolchain comes from the runner image (CMake, Ninja) plus MSYS2's UCRT
+# MinGW and Chocolatey's NSIS -- the current windows-2025 image ships
+# neither Scoop nor NSIS.
 #
 # Triggers automatically when a release is published (alongside the macOS
 # workflow and the locally packed Linux artifacts), and manually via
@@ -38,16 +40,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Scoop toolchain (cmake, MinGW, Ninja, NSIS)
+      - name: Install MinGW toolchain and NSIS
         run: |
-          scoop bucket add extras || true  # already-added is not fatal
-          scoop install cmake mingw ninja nsis
-          # Scoop's own PATH persistence does not survive into later steps;
-          # register the shims (makensis etc.) and the compiler explicitly.
-          # cygpath -w because the runner reads GITHUB_PATH literally, and
-          # bash builtins bypass MSYS2 path conversion.
-          cygpath -w "$HOME/scoop/shims" >> "$GITHUB_PATH"
-          cygpath -w "$HOME/scoop/apps/mingw/current/bin" >> "$GITHUB_PATH"
+          # The windows-2025 runner image ships CMake + Ninja but no Scoop
+          # and no NSIS. Compiler: MSYS2's UCRT MinGW (same UCRT runtime
+          # family as the Scoop mingw-builds toolchain verified locally).
+          # NSIS: Chocolatey. prepending both keeps the image's stray gcc
+          # from being picked up.
+          C:/msys64/usr/bin/pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-gcc
+          choco install nsis --no-progress -y
+          echo 'C:\msys64\ucrt64\bin' >> "$GITHUB_PATH"
+          echo 'C:\Program Files (x86)\NSIS' >> "$GITHUB_PATH"
+          C:/msys64/ucrt64/bin/gcc.exe --version | head -1
+          C:/msys64/ucrt64/bin/g++.exe --version | head -1
+          "C:/Program Files (x86)/NSIS/makensis.exe" -VERSION
 
       - name: Download SDL3 (official MinGW devel archive)
         run: |
